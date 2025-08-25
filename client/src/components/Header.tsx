@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Hospital, Brain, AlertTriangle, Bed, RotateCcw } from "lucide-react";
+import { Hospital, Brain, AlertTriangle, Bed, RotateCcw, UserPlus } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { apiRequest } from "@/lib/queryClient";
@@ -39,6 +39,7 @@ export function Header() {
   const demoMode = useDashboardStore((state) => state.demoMode);
   const roleView = useDashboardStore((state) => state.roleView);
   const setRoleView = useDashboardStore((state) => state.setRoleView);
+  const openRegister = useDashboardStore((state) => state.openRegister);
   const resetDemo = useDashboardStore((state) => state.resetDemo);
   const { toast } = useToast();
 
@@ -108,6 +109,18 @@ export function Header() {
                 data-testid="button-return-full-view"
               >
                 Return to Full View
+              </button>
+            )}
+            {/* Reception-only: quick register button */}
+            {roleView === "reception" && (
+              <button
+                onClick={openRegister}
+                className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors flex items-center space-x-2"
+                title="Register incoming patient"
+                data-testid="button-open-register"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Register Patient</span>
               </button>
             )}
           </div>

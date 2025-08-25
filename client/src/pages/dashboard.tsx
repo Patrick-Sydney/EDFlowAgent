@@ -6,7 +6,7 @@ import { PatientLane } from "@/components/PatientLane";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { sseManager } from "@/lib/sse";
 import { type Encounter, LANES } from "@shared/schema";
-import RegisterWidget from "@/components/RegisterWidget";
+import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
 
 export default function Dashboard() {
@@ -103,12 +103,8 @@ export default function Dashboard() {
       <main className="p-6">
         <StatsBar />
         
-        {/* Registration Widget for Reception View */}
-        {roleView === "reception" && (
-          <div className="mb-6 flex justify-start">
-            <RegisterWidget />
-          </div>
-        )}
+        {/* Left-side Register drawer (Reception) */}
+        <RegisterDrawer />
         
         {/* Triage Drawer */}
         <TriageDrawer />

@@ -14,6 +14,9 @@ interface DashboardState {
   triageOpen: boolean;
   triageEncounter: Encounter | null;
   
+  // Reception drawer state
+  registerOpen: boolean;
+  
   // Actions
   setEncounters: (encounters: Encounter[]) => void;
   addEncounter: (encounter: Encounter) => void;
@@ -28,6 +31,10 @@ interface DashboardState {
   openTriage: (encounter: Encounter) => void;
   closeTriage: () => void;
   saveTriage: (payload: any) => Promise<any>;
+  
+  // Registration actions
+  openRegister: () => void;
+  closeRegister: () => void;
   
   // Selectors
   getEncountersByLane: (lane: Lane) => Encounter[];
@@ -55,10 +62,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   // Triage widget UI state
   triageOpen: false,
   triageEncounter: null,
+  
+  // Reception drawer state  
+  registerOpen: false,
 
   setEncounters: (encounters) => {
     const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
-    const norm = list.map((e: any) => ({ ...e, lane: e.lane ?? e.state ?? "waiting" }));
+    const norm = list.map((e: any) => ({ ...e, lane: e.lane ?? e.state ?? "waiting" })) as Encounter[];
     set({ 
       encounters: norm,
       lastUpdate: new Date() 
@@ -66,8 +76,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   addEncounter: (encounter) => set((state) => {
-    const enc = { ...encounter, lane: encounter.lane ?? encounter.state ?? "waiting" };
-    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {});
+    const enc = { ...encounter, lane: encounter.lane ?? (encounter as any).state ?? "waiting" } as Encounter;
+    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
     return {
       encounters: [enc, ...current],
       lastUpdate: new Date()
@@ -75,10 +85,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   }),
 
   updateEncounter: (updatedEncounter) => set((state) => {
-    const enc = { ...updatedEncounter, lane: updatedEncounter.lane ?? updatedEncounter.state ?? "waiting" };
-    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {});
+    const enc = { ...updatedEncounter, lane: updatedEncounter.lane ?? (updatedEncounter as any).state ?? "waiting" } as Encounter;
+    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
     return {
-      encounters: current.map((encounter: any) => 
+      encounters: current.map((encounter) => 
         encounter.id === enc.id ? enc : encounter
       ),
       lastUpdate: new Date()
@@ -128,6 +138,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   openTriage: (encounter) => set({ triageOpen: true, triageEncounter: encounter }),
   
   closeTriage: () => set({ triageOpen: false, triageEncounter: null }),
+  
+  // Registration actions
+  openRegister: () => set({ registerOpen: true }),
+  closeRegister: () => set({ registerOpen: false }),
   
   saveTriage: async (payload) => {
     try {

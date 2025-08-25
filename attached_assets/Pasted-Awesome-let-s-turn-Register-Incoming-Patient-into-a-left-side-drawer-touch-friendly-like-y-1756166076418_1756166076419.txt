@@ -1,0 +1,296 @@
+Awesome—let’s turn **Register Incoming Patient** into a **left-side drawer** (touch-friendly, like your triage drawer). Below is a clean, copy-pasteable **Replit patch prompt**.
+
+---
+
+# Prompt: Reception “Register Patient” as a LEFT drawer (touch-first)
+
+Apply these edits to your ED Flow Agent repo.
+
+---
+
+## 1) Store — add UI state + wire register result back
+
+**`client/src/store.js`**
+
+```diff
+ const api = {
+@@
+-  register: async (payload) =>
+-  (await fetch("/api/register", {
++  register: async (payload) =>
++    (await fetch("/api/register", {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify(payload),
+     })).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+@@
+   async register(payload) { await api.register(payload); },
++  // Reception drawer state
++  registerOpen: false,
++  openRegister(){ set({ registerOpen: true }); },
++  closeRegister(){ set({ registerOpen: false }); },
+```
+
+---
+
+## 2) New component — **RegisterDrawer.jsx** (left sheet, touch-friendly)
+
+**`client/src/components/RegisterDrawer.jsx`**
+
+```jsx
+import { useState } from "react";
+import { useED } from "../store";
+import TButton from "./ui/TButton";
+import NumberField from "./ui/NumberField";
+
+export default function RegisterDrawer() {
+  const { registerOpen, closeRegister, register } = useED();
+  const [form, setForm] = useState({
+    name: "", age: "", sex: "F",
+    complaint: "",
+    nhi: "",
+    isolationRequired: false,
+    triageBypass: false,
+    provisionalAts: false,
+    ats: "",
+    arrivalTime: "" // optional ISO or empty
+  });
+
+  const on = (k, v) => setForm(s => ({ ...s, [k]: v }));
+  const toggle = (k) => setForm(s => ({ ...s, [k]: !s[k] }));
+
+  if (!registerOpen) return null;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: form.name,
+      age: Number(form.age),
+      sex: form.sex,
+      complaint: form.complaint,
+      nhi: form.nhi || undefined,
+      isolationRequired: !!form.isolationRequired,
+      triageBypass: !!form.triageBypass,
+      provisionalAts: !!form.provisionalAts,
+      ats: form.ats ? Number(form.ats) : undefined,
+      arrivalTime: form.arrivalTime || undefined
+    };
+    const res = await register(payload);
+    if (!res?.ok) {
+      alert(res?.error || "Registration failed");
+      return;
+    }
+    // Clear critical fields for quick next registration
+    setForm(f => ({ ...f, name:"", age:"", complaint:"", nhi:"", ats:"" }));
+    closeRegister();
+  };
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
+      {/* LEFT sheet */}
+      <div className="absolute top-0 left-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-base sm:text-lg">Register patient</h3>
+            <TButton className="border bg-white" onClick={closeRegister}>Close</TButton>
+          </div>
+          <div className="mt-1 text-xs text-gray-600">Reception • New arrival</div>
+        </div>
+
+        {/* Form */}
+        <form
+          onSubmit={submit}
+          className="flex-1 overflow-y-auto px-4 py-3 space-y-4"
+          onKeyDown={(e)=>{ if(e.key==='Enter' && e.target.tagName==='INPUT') e.preventDefault(); }}
+        >
+          {/* Identity */}
+          <div>
+            <h4 className="font-semibold mb-2">Patient details</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm col-span-2">Full name
+                <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                       value={form.name} onChange={e=>on("name", e.target.value)} required />
+              </label>
+              <NumberField label="Age" value={form.age} onChange={v=>on("age", v)} min={0} max={120} />
+              <label className="text-sm">Sex
+                <select className="mt-1 w-full border rounded px-3 py-3 text-base"
+                        value={form.sex} onChange={e=>on("sex", e.target.value)}>
+                  <option value="F">F</option>
+                  <option value="M">M</option>
+                </select>
+              </label>
+              <label className="text-sm col-span-2">NHI (optional)
+                <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                       value={form.nhi} onChange={e=>on("nhi", e.target.value)} />
+              </label>
+              <label className="text-sm col-span-2">Arrival time (optional ISO)
+                <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                       placeholder="2025-08-26T14:30:00"
+                       value={form.arrivalTime} onChange={e=>on("arrivalTime", e.target.value)} />
+              </label>
+            </div>
+          </div>
+
+          {/* Presenting complaint */}
+          <div>
+            <h4 className="font-semibold mb-2">Presenting complaint</h4>
+            <input className="w-full border rounded px-3 py-3 text-base"
+                   value={form.complaint} onChange={e=>on("complaint", e.target.value)} required />
+          </div>
+
+          {/* Flags */}
+          <div>
+            <h4 className="font-semibold mb-2">Flags</h4>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 py-2 touch-target">
+                <input type="checkbox" className="w-5 h-5"
+                       checked={form.isolationRequired} onChange={()=>toggle("isolationRequired")} />
+                <span>Isolation required</span>
+              </label>
+              <label className="flex items-center gap-2 py-2 touch-target">
+                <input type="checkbox" className="w-5 h-5"
+                       checked={form.triageBypass} onChange={()=>toggle("triageBypass")} />
+                <span>Triage bypass (critical)</span>
+              </label>
+              <label className="flex items-center gap-2 py-2 touch-target">
+                <input type="checkbox" className="w-5 h-5"
+                       checked={form.provisionalAts} onChange={()=>toggle("provisionalAts")} />
+                <span>Provisional ATS from ambulance</span>
+              </label>
+              <div className="flex items-center gap-2 py-2">
+                <span className="text-sm">ATS</span>
+                <select className="border rounded px-3 py-3 text-base"
+                        value={form.ats} onChange={e=>on("ats", e.target.value)}>
+                  <option value="">—</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        {/* Sticky footer */}
+        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+          <TButton className="bg-blue-600 text-white flex-1" onClick={submit}>Register</TButton>
+          <TButton className="border bg-white" onClick={closeRegister}>Cancel</TButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+> Uses the same **TButton** and **NumberField** components you added for touch. If you didn’t add them yet, include the earlier touch patch or change to plain buttons/inputs.
+
+---
+
+## 3) App — mount the drawer & add a **Register Patient** button in Reception view
+
+**`client/src/App.jsx`**
+
+```diff
+-import RegisterWidget from "./components/RegisterWidget.jsx";
++// Remove/stop using inline RegisterWidget (now a drawer)
++import RegisterDrawer from "./components/RegisterDrawer.jsx";
++import { useED } from "./store";
+@@
+-export default function App() {
+-  const { encounters, load, roleView } = useED();
++export default function App() {
++  const { encounters, load, roleView, setRoleView, openRegister } = useED();
+@@
+   return (
+     <div className="min-h-screen bg-gray-100">
+       <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
+         <div className="flex items-center gap-4">
+           <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
+         </div>
+         <div className="flex items-center gap-2">
+           {roleView !== "full" && (
+             <button
+               onClick={()=>setRoleView("full")}
+               className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+               title="Show all lanes"
+             >
+               Return to Full View
+             </button>
+           )}
++          {/* Role View selector (kept as-is) */}
+           <select
+             className="text-sm border rounded px-2 py-1"
+             value={roleView || "full"}
+             onChange={(e)=>setRoleView(e.target.value)}
+             title="Role view (UI filter)"
+           >
+             <option value="full">Full dashboard</option>
+             <option value="rn">RN view</option>
+             <option value="md">MD view</option>
+             <option value="charge">Charge view</option>
+             <option value="bedmgr">BedMgr view</option>
+             <option value="reception">Reception view</option>
+           </select>
++          {/* Reception-only: quick register button */}
++          {roleView === "reception" && (
++            <button
++              onClick={openRegister}
++              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm"
++              title="Register incoming patient"
++            >
++              Register Patient
++            </button>
++          )}
+           <Toolbar />
+         </div>
+       </header>
+ 
+-      <main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
+-        {roleView === "reception" && (
+-          <div className="w-full flex justify-start">
+-            <RegisterWidget />
+-          </div>
+-        )}
++      <main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
++        {/* Left-side Register drawer (Reception) */}
++        <RegisterDrawer />
+         <div className="flex gap-4 overflow-x-auto sm:overflow-x-auto">
+           {LANES.filter(l => visible.includes(l.key)).map(l => (
+             <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />
+           ))}
+         </div>
+       </main>
+     </div>
+   );
+}
+```
+
+> Remove the old `RegisterWidget` import/usage so only the drawer path remains.
+
+---
+
+## 4) (Optional) Server — no change needed
+
+You already have `POST /api/register`. The drawer posts to the same endpoint.
+
+---
+
+## ✅ Acceptance
+
+* Switch **Role View → Reception**.
+* A **“Register Patient”** button appears in the header; tapping it opens a **left-side drawer**.
+* The drawer uses **large, touch-friendly controls** (≥44px tap targets).
+* Submitting **creates a Waiting encounter** and closes the drawer; the new card appears in the **Waiting** lane immediately (SSE).
+* Flags work:
+
+  * **Triage bypass / Isolation** show appropriate buttons/behaviour in Waiting.
+  * **Provisional ATS** shows **ATS n (prov.)** badge until formal triage sets ATS.
+
+If you want, I can also add a **“Register & Start Triage”** secondary button that immediately opens the triage drawer for the newly created patient (hand-off flow on tablets).
