@@ -1,0 +1,71 @@
+Got it — the new error is the same root cause in another spot: after a reset, `encounters` is briefly not an array, so `encounters.forEach` explodes.
+
+Here’s a tight patch for `client/src/components/StatsBar.tsx` (or whatever your path is) to **coerce to an array** and **normalize lane/state** before counting.
+
+### Minimal fix (drop-in)
+
+```diff
+-  const { encounters } = props; // or from store
+-  const statsObj = {
++  const raw = (props as any).encounters; // or from store
++  const encounters = Array.isArray(raw) ? raw : Object.values(raw ?? {});
++
++  const statsObj: Record<string, number> = {
+     waiting: 0,
+     triage: 0,
+     roomed: 0,
+     diagnostics: 0,
+     decision: 0,
+     ready: 0,
+     discharged: 0,
+     admitted: 0,
+   };
+ 
+-  encounters.forEach(encounter => {
+-    if (encounter.lane in statsObj) {
+-      statsObj[encounter.lane as keyof typeof statsObj]++;
+-    }
+-  });
++  encounters.forEach((enc: any) => {
++    const lane = enc?.lane ?? enc?.state ?? "waiting";
++    if (lane in statsObj) statsObj[lane] += 1;
++  });
+```
+
+If you’re **reading from the store** inside `StatsBar`, do the same coercion there:
+
+```ts
+const raw = useED(state => state.encounters);
+const encounters = Array.isArray(raw) ? raw : Object.values(raw ?? {});
+```
+
+### (Nice-to-have) Create a tiny util to standardize everywhere
+
+Make `client/src/utils/normalize.ts`:
+
+```ts
+export function toEncounterArray(raw: any): any[] {
+  const list = Array.isArray(raw) ? raw : Object.values(raw ?? {});
+  return list.map((e: any) => ({ ...e, lane: e?.lane ?? e?.state ?? "waiting" }));
+}
+```
+
+Then in components/stores:
+
+```ts
+import { toEncounterArray } from "../utils/normalize";
+const encounters = toEncounterArray(useED.getState().encounters);
+```
+
+### Why this works
+
+* After reset/SSE reconnect, your state can briefly be `{}` or `undefined`. Converting via `Array.isArray(...) ? ... : Object.values(...)` guarantees an array.
+* Mapping `lane := lane || state` keeps filters consistent across the app.
+
+Run through your demo again:
+
+1. Click **Reset Demo** → no crash.
+2. Trigger **Surge** → waiting count updates correctly in the stats bar.
+3. Trigger **Stroke/Boarding** → stats reflect lane changes.
+
+If the error pops up in any other component, apply the same `toEncounterArray` helper there and you’ll be solid.

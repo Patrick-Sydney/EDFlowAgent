@@ -1,10 +1,14 @@
 import { useMemo } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
+import { toEncounterArray } from "@/utils/normalize";
 
 export function StatsBar() {
-  const encounters = useDashboardStore((state) => state.encounters);
+  const rawEncounters = useDashboardStore((state) => state.encounters);
   
   const stats = useMemo(() => {
+    // Use the normalize utility for consistent handling
+    const encounters = toEncounterArray(rawEncounters);
+    
     const statsObj = {
       waiting: 0,
       triage: 0, 
@@ -16,14 +20,14 @@ export function StatsBar() {
       total: encounters.length
     };
 
-    encounters.forEach(encounter => {
+    encounters.forEach((encounter: any) => {
       if (encounter.lane in statsObj) {
         statsObj[encounter.lane as keyof typeof statsObj]++;
       }
     });
 
     return statsObj;
-  }, [encounters]);
+  }, [rawEncounters]);
 
   const statItems = [
     { label: "Waiting", value: stats.waiting, color: "text-medical-blue" },
