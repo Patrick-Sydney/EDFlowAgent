@@ -10,7 +10,7 @@ import RegisterWidget from "@/components/RegisterWidget";
 import TriageDrawer from "@/components/TriageDrawer";
 
 export default function Dashboard() {
-  const { encounters, setEncounters, setDemoMode, roleView } = useDashboardStore();
+  const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
 
   // Fetch initial encounters and config
   const { data, isLoading, error } = useQuery<Encounter[]>({
@@ -42,7 +42,6 @@ export default function Dashboard() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         try {
-          const { setRoleView } = useDashboardStore.getState();
           setRoleView("full");
         } catch (error) {
           console.error("Failed to set full view:", error);
@@ -57,13 +56,13 @@ export default function Dashboard() {
       sseManager.disconnect();
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [data, config, setEncounters, setDemoMode]);
+  }, [data, config, setEncounters, setDemoMode, setRoleView]);
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
 
-  // Role-based lane filtering
+  // Role-based lane filtering with safe fallback
   const roleToLanes: Record<string, string[]> = {
-    full: LANES.map(l => l.key),
+    full: [...LANES],
     rn: ["waiting", "triage", "roomed"],
     md: ["roomed", "diagnostics", "review"],
     charge: ["waiting", "triage", "roomed", "diagnostics", "review", "ready", "discharged"],
@@ -71,9 +70,9 @@ export default function Dashboard() {
     reception: ["waiting", "triage"]
   };
 
-  const allLaneKeys = LANES.map(l => l.key);
-  const visibleLanes = roleToLanes[roleView] || allLaneKeys;
-  const filteredLanes = LANES.filter(lane => visibleLanes.includes(lane.key));
+  const allLaneKeys = [...LANES];
+  const visibleLanes = roleToLanes[roleView || "full"] || allLaneKeys;
+  const filteredLanes = LANES.filter(lane => visibleLanes.includes(lane));
 
   if (isLoading) {
     return (

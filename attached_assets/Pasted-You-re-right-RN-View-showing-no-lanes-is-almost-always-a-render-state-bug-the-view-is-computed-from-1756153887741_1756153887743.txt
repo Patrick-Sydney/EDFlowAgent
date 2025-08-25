@@ -1,0 +1,148 @@
+You’re right—RN View showing no lanes is almost always a render-state bug: the view is computed from a stale/non‑reactive `roleView` or the role→lanes map isn’t applied correctly.
+
+Here’s a **clean patch** to make RN View reliably show **Waiting, Triage, Roomed**.
+
+---
+
+# Patch: Fix RN View lane visibility
+
+## 1) Ensure `roleView` has a safe default in the store
+
+`client/src/store.js`
+
+```diff
+ export const useED = create((set, get) => ({
+   encounters: [],
+   loading: false,
+   user: { name: "Demo User", role: "demo" },
+-  roleView: "full",
++  roleView: "full", // default to full so the board is never empty
+   setRoleView(r){
+     const view = r || "full";
+     set((state) => ({
+       roleView: view,
+       user: { ...state.user, role: view === "full" ? "charge" : view }
+     }));
+   },
+```
+
+## 2) Use a **reactive** `roleView` (do NOT use `useED.getState()` in render)
+
+`client/src/App.jsx`
+
+```diff
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { useED } from "./store";
+ 
+ // ... your imports (RegisterWidget, TriageDrawer, etc.)
+
+ export default function App() {
+-  const { encounters, load, roleView } = useED();
++  const { encounters, load, roleView, setRoleView } = useED(); // <-- reactive hook usage
+   useEffect(()=>{ load(); }, []);
+ 
+   const byLane = useMemo(() => {
+     const g = Object.fromEntries(LANES.map(l => [l.key, []]));
+     for (const e of encounters) g[e.state]?.push(e);
+     return g;
+   }, [encounters]);
+ 
+-  const roleToLanes = {
+-    full: LANES.map(l=>l.key),
+-    rn: ["waiting","triage","roomed"],
+-    md: ["roomed","diagnostics","decision"],
+-    charge: ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"],
+-    bedmgr: ["ready","admitted"],
+-    reception: ["waiting","triage"]
+-  };
+-  const { roleView, setRoleView } = useED.getState
+-    ? useED()
+-    : { roleView: "full", setRoleView: ()=>{} };
+-  const allLaneKeys = LANES.map(l=>l.key);
+-  const visible = roleToLanes[roleView] || allLaneKeys;
++  const roleToLanes = {
++    full: LANES.map(l => l.key),
++    rn: ["waiting","triage","roomed"],
++    md: ["roomed","diagnostics","decision"],
++    charge: ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"],
++    bedmgr: ["ready","admitted"],
++    reception: ["waiting","triage"]
++  };
++  const allLaneKeys = LANES.map(l => l.key);
++  const visible = roleToLanes[roleView] || allLaneKeys; // fallback to full set
+ 
+   return (
+     <div className="min-h-screen bg-gray-100">
+       <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
+         <div className="flex items-center gap-4">
+           <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
+         </div>
+         <div className="flex items-center gap-2">
+           {roleView !== "full" && (
+             <button
+               onClick={()=>setRoleView("full")}
+               className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+               title="Show all lanes"
+             >
+               Return to Full View
+             </button>
+           )}
+-          {/* Ensure you still render the Role View selector somewhere */}
++          {/* Role View selector */}
++          <select
++            className="text-sm border rounded px-2 py-1"
++            value={roleView || "full"}
++            onChange={(e)=>setRoleView(e.target.value)}
++            title="Role view (UI filter)"
++          >
++            <option value="full">Full dashboard</option>
++            <option value="rn">RN view</option>
++            <option value="md">MD view</option>
++            <option value="charge">Charge view</option>
++            <option value="bedmgr">BedMgr view</option>
++            <option value="reception">Reception view</option>
++          </select>
+           <Toolbar />
+         </div>
+       </header>
+ 
+-      <main className="overflow-x-auto flex gap-4 p-4">
+-        {LANES.filter(l=>visible.includes(l.key)).map(l => (
++      <main className="overflow-x-auto flex gap-4 p-4">
++        {LANES.filter(l => visible.includes(l.key)).map(l => (
+           <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />
+         ))}
+       </main>
+     </div>
+   );
+ }
+```
+
+## 3) Make sure the **Role View dropdown never passes an empty value**
+
+If you use a shadcn `<Select>`, ensure no empty `value` is used:
+
+```jsx
+<Select value={roleView || "full"} onValueChange={(v)=>setRoleView(v)}>
+  <SelectTrigger className="w-44"><SelectValue placeholder="Choose view" /></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="full">Full dashboard</SelectItem>
+    <SelectItem value="rn">RN view</SelectItem>
+    <SelectItem value="md">MD view</SelectItem>
+    <SelectItem value="charge">Charge view</SelectItem>
+    <SelectItem value="bedmgr">BedMgr view</SelectItem>
+    <SelectItem value="reception">Reception view</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+---
+
+## ✅ Acceptance (what you should see)
+
+* Switching **Role View → RN** shows exactly **Waiting**, **Triage**, **Roomed** lanes (with their cards).
+* Switching back to **Full dashboard** shows all lanes.
+* No blank board states; if `roleView` is ever invalid/missing, it **falls back** to all lanes.
+
+If RN still shows empty, it means the lane keys don’t match. In that case, confirm your lane constants (e.g., `"waiting"`, `"triage"`, `"roomed"`) exactly match the `encounter.state` values, and I’ll give you a tiny mapping fix.
