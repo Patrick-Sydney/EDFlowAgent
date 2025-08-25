@@ -19,7 +19,7 @@ export const encounters = pgTable("encounters", {
   triageBypass: varchar("triage_bypass", { length: 10 }).default("false"), // "true" | "false" for critical cases
   isolationRequired: varchar("isolation_required", { length: 10 }).default("false"), // "true" | "false" for isolation needs
   provisionalAts: varchar("provisional_ats", { length: 10 }).default("false"), // "true" | "false" for ambulance-provided ATS
-  // Triage fields
+  // Triage fields - Core vitals and assessment
   triageCompleted: varchar("triage_completed", { length: 10 }).default("false"), // "true" | "false"
   triagePain: integer("triage_pain"), // 0-10 pain scale
   triageNotes: text("triage_notes").default(""),
@@ -29,6 +29,21 @@ export const encounters = pgTable("encounters", {
   triageBpDia: integer("triage_bp_dia"), // diastolic BP
   triageSpo2: integer("triage_spo2"), // oxygen saturation (%)
   triageTemp: integer("triage_temp"), // temperature (°C * 10 for decimal precision)
+  // Triage fields - Extended v2 fields
+  triageModeOfArrival: varchar("triage_mode_of_arrival", { length: 20 }), // walk-in, ambulance, transfer
+  triageComplaintText: text("triage_complaint_text").default(""),
+  triageComplaintCode: varchar("triage_complaint_code", { length: 50 }),
+  triageAllergy: varchar("triage_allergy", { length: 20 }).default("unknown"), // none, known, unknown
+  triagePregnancy: varchar("triage_pregnancy", { length: 20 }).default("unknown"), // yes, no, unknown
+  triageInfection: varchar("triage_infection", { length: 20 }).default("none"), // none, suspected, confirmed
+  triageMobility: varchar("triage_mobility", { length: 20 }).default("independent"), // independent, assist, bed
+  triageRiskSepsis: varchar("triage_risk_sepsis", { length: 10 }).default("false"),
+  triageRiskStroke: varchar("triage_risk_stroke", { length: 10 }).default("false"),
+  triageRiskSuicide: varchar("triage_risk_suicide", { length: 10 }).default("false"),
+  triageProvisionalDispo: varchar("triage_provisional_dispo", { length: 30 }).default("unsure"), // unsure, likelyDischarge, likelyAdmit
+  triageExpectedResources: text("triage_expected_resources").default(""), // JSON array as string
+  triageCareAnalgesia: varchar("triage_care_analgesia", { length: 10 }).default("false"),
+  triageCareIv: varchar("triage_care_iv", { length: 10 }).default("false"),
   arrivalTime: timestamp("arrival_time").notNull().defaultNow(),
   lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });

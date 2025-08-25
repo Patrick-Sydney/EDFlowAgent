@@ -104,11 +104,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Save triage (vitals/pain/notes + optional ATS)
+  // Save triage (vitals/pain/notes + extended v2 fields + optional ATS)
   app.post("/api/triage/save", async (req, res) => {
     try {
       const body = req.body || {};
-      const { id, vitals = {}, pain = null, notes = "", ats, actorName, actorRole } = body;
+      const { 
+        id, vitals = {}, pain = null, notes = "", ats, actorName, actorRole,
+        modeOfArrival, complaintText, complaintCode, allergy, pregnancy, 
+        infection, mobility, risk = {}, provisionalDispo, expectedResources = [], care = {}
+      } = body;
       
       if (!id) {
         return res.status(400).json({ message: "Encounter ID required" });
@@ -130,6 +134,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         triageBpDia: vitals.bpDia ? Number(vitals.bpDia) : null,
         triageSpo2: vitals.spo2 ? Number(vitals.spo2) : null,
         triageTemp: vitals.temp ? Math.round(Number(vitals.temp) * 10) : null, // Store as integer * 10
+        // Extended v2 fields
+        triageModeOfArrival: modeOfArrival || null,
+        triageComplaintText: String(complaintText || ""),
+        triageComplaintCode: complaintCode || null,
+        triageAllergy: allergy || "unknown",
+        triagePregnancy: pregnancy || "unknown",
+        triageInfection: infection || "none",
+        triageMobility: mobility || "independent",
+        triageRiskSepsis: risk.sepsis ? "true" : "false",
+        triageRiskStroke: risk.stroke ? "true" : "false",
+        triageRiskSuicide: risk.suicide ? "true" : "false",
+        triageProvisionalDispo: provisionalDispo || "unsure",
+        triageExpectedResources: JSON.stringify(expectedResources || []),
+        triageCareAnalgesia: care.analgesia ? "true" : "false",
+        triageCareIv: care.iv ? "true" : "false",
         lastUpdated: new Date().toISOString()
       };
 

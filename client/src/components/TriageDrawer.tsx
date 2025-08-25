@@ -16,15 +16,20 @@ export default function TriageDrawer() {
   const enc = triageEncounter;
 
   const [form, setForm] = useState({
-    hr: "",
-    rr: "",
-    bpSys: "",
-    bpDia: "",
-    spo2: "",
-    temp: "",
-    pain: "",
-    notes: "",
-    ats: ""
+    // Core vitals and assessment
+    hr: "", rr: "", bpSys: "", bpDia: "", spo2: "", temp: "",
+    pain: "", notes: "", ats: "",
+    // Extended v2 fields
+    modeOfArrival: "walk-in",
+    complaintText: "", complaintCode: "",
+    allergy: "unknown",
+    pregnancy: "unknown", 
+    infection: "none",
+    mobility: "independent",
+    risk: { sepsis: false, stroke: false, suicide: false },
+    provisionalDispo: "unsure",
+    expectedResources: [] as string[],
+    care: { analgesia: false, iv: false }
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +38,13 @@ export default function TriageDrawer() {
     if (!enc) return;
     
     // Populate form with existing triage data
+    const expectedResources = enc.triageExpectedResources ? 
+      (typeof enc.triageExpectedResources === 'string' ? 
+        JSON.parse(enc.triageExpectedResources || '[]') : 
+        enc.triageExpectedResources) : [];
+
     setForm({
+      // Core vitals
       hr: enc.triageHr ?? "",
       rr: enc.triageRr ?? "",
       bpSys: enc.triageBpSys ?? "",
@@ -42,12 +53,44 @@ export default function TriageDrawer() {
       temp: enc.triageTemp ? (enc.triageTemp / 10).toString() : "",
       pain: enc.triagePain ?? "",
       notes: enc.triageNotes ?? "",
-      ats: enc.ats ?? ""
+      ats: enc.ats ?? "",
+      // Extended v2 fields
+      modeOfArrival: (enc as any).triageModeOfArrival ?? "walk-in",
+      complaintText: (enc as any).triageComplaintText ?? "",
+      complaintCode: (enc as any).triageComplaintCode ?? "",
+      allergy: (enc as any).triageAllergy ?? "unknown",
+      pregnancy: (enc as any).triagePregnancy ?? "unknown",
+      infection: (enc as any).triageInfection ?? "none",
+      mobility: (enc as any).triageMobility ?? "independent",
+      risk: {
+        sepsis: (enc as any).triageRiskSepsis === "true",
+        stroke: (enc as any).triageRiskStroke === "true",
+        suicide: (enc as any).triageRiskSuicide === "true"
+      },
+      provisionalDispo: (enc as any).triageProvisionalDispo ?? "unsure",
+      expectedResources,
+      care: {
+        analgesia: (enc as any).triageCareAnalgesia === "true",
+        iv: (enc as any).triageCareIv === "true"
+      }
     });
   }, [enc]);
 
-  const onChange = (key: string, value: string) => {
+  const onChange = (key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const toggleArrayValue = (field: string, value: string, checked: boolean) => {
+    const currentArray = form[field as keyof typeof form] as string[] || [];
+    const newArray = [...currentArray];
+    
+    if (checked && !newArray.includes(value)) {
+      newArray.push(value);
+    } else if (!checked && newArray.includes(value)) {
+      newArray.splice(newArray.indexOf(value), 1);
+    }
+    
+    setForm(prev => ({ ...prev, [field]: newArray }));
   };
 
   // Clinical risk assessment
@@ -83,7 +126,19 @@ export default function TriageDrawer() {
         },
         pain: numOrNull(form.pain),
         notes: form.notes,
-        ats: form.ats ? Number(form.ats) : undefined
+        ats: form.ats ? Number(form.ats) : undefined,
+        // Extended v2 fields
+        modeOfArrival: form.modeOfArrival,
+        complaintText: form.complaintText,
+        complaintCode: form.complaintCode,
+        allergy: form.allergy,
+        pregnancy: form.pregnancy,
+        infection: form.infection,
+        mobility: form.mobility,
+        risk: form.risk,
+        provisionalDispo: form.provisionalDispo,
+        expectedResources: form.expectedResources,
+        care: form.care
       };
 
       await saveTriage(payload);
@@ -132,118 +187,280 @@ export default function TriageDrawer() {
             </Button>
           </div>
 
-          <form onSubmit={handleSave} className="space-y-6">
-            {/* Vital Signs */}
+          <form onSubmit={handleSave} className="space-y-4">
+            {/* 1. Arrival & Complaint */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Heart className="w-5 h-5" />
-                  <span>Vital Signs</span>
-                </CardTitle>
+                <CardTitle className="text-sm font-semibold">Arrival & Complaint</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-4">
-                  <Field
-                    label="HR (bpm)"
-                    value={form.hr}
-                    onChange={(v) => onChange("hr", v)}
-                    placeholder="80"
-                  />
-                  <Field
-                    label="RR (/min)"
-                    value={form.rr}
-                    onChange={(v) => onChange("rr", v)}
-                    placeholder="16"
-                  />
-                  <Field
-                    label="Temp (°C)"
-                    value={form.temp}
-                    onChange={(v) => onChange("temp", v)}
-                    placeholder="36.5"
-                    step="0.1"
-                  />
-                  <Field
-                    label="SpO₂ (%)"
-                    value={form.spo2}
-                    onChange={(v) => onChange("spo2", v)}
-                    placeholder="98"
-                  />
-                  <Field
-                    label="BP Sys"
-                    value={form.bpSys}
-                    onChange={(v) => onChange("bpSys", v)}
-                    placeholder="120"
-                  />
-                  <Field
-                    label="BP Dia"
-                    value={form.bpDia}
-                    onChange={(v) => onChange("bpDia", v)}
-                    placeholder="80"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Pain and Notes */}
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label htmlFor="pain">Pain Scale (0-10)</Label>
-                    <Input
-                      id="pain"
-                      type="number"
-                      min="0"
-                      max="10"
-                      value={form.pain}
-                      onChange={(e) => onChange("pain", e.target.value)}
-                      placeholder="0"
-                      data-testid="input-triage-pain"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label htmlFor="notes">Clinical Notes</Label>
-                    <Textarea
-                      id="notes"
-                      value={form.notes}
-                      onChange={(e) => onChange("notes", e.target.value)}
-                      placeholder="Assessment notes, observations..."
-                      className="h-20"
-                      data-testid="textarea-triage-notes"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* ATS Assignment */}
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center space-x-4">
-                  <div>
-                    <Label>ATS Priority</Label>
-                    <Select
-                      value={form.ats}
-                      onValueChange={(value) => onChange("ats", value)}
-                    >
-                      <SelectTrigger className="w-48" data-testid="select-triage-ats">
-                        <SelectValue placeholder="Select ATS..." />
+                    <Label className="text-sm">Mode of arrival</Label>
+                    <Select value={form.modeOfArrival} onValueChange={(value) => onChange("modeOfArrival", value)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">ATS 1 - Immediate</SelectItem>
-                        <SelectItem value="2">ATS 2 - Very urgent</SelectItem>
-                        <SelectItem value="3">ATS 3 - Urgent</SelectItem>
-                        <SelectItem value="4">ATS 4 - Semi-urgent</SelectItem>
-                        <SelectItem value="5">ATS 5 - Non-urgent</SelectItem>
+                        <SelectItem value="walk-in">Walk-in</SelectItem>
+                        <SelectItem value="ambulance">Ambulance</SelectItem>
+                        <SelectItem value="transfer">Transfer</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="col-span-2">
+                    <Label className="text-sm">Presenting complaint</Label>
+                    <Input
+                      className="mt-1"
+                      value={form.complaintText}
+                      onChange={(e) => onChange("complaintText", e.target.value)}
+                      placeholder="Patient's primary complaint"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 2. Safety Flags */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">Safety</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-sm">Allergies</Label>
+                    <Select value={form.allergy} onValueChange={(value) => onChange("allergy", value)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="known">Known</SelectItem>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Pregnancy (if applicable)</Label>
+                    <Select value={form.pregnancy} onValueChange={(value) => onChange("pregnancy", value)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Infection risk</Label>
+                    <Select value={form.infection} onValueChange={(value) => onChange("infection", value)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="suspected">Suspected</SelectItem>
+                        <SelectItem value="confirmed">Confirmed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Mobility</Label>
+                    <Select value={form.mobility} onValueChange={(value) => onChange("mobility", value)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="independent">Independent</SelectItem>
+                        <SelectItem value="assist">Requires assist</SelectItem>
+                        <SelectItem value="bed">Bed-bound</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 3. Vitals + Pain */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-sm font-semibold">
+                  <Heart className="w-4 h-4" />
+                  <span>Vitals</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="HR" value={form.hr} onChange={(v) => onChange("hr", v)} placeholder="80" />
+                  <Field label="RR" value={form.rr} onChange={(v) => onChange("rr", v)} placeholder="16" />
+                  <Field label="Temp" value={form.temp} onChange={(v) => onChange("temp", v)} placeholder="36.5" step="0.1" />
+                  <Field label="SpO₂" value={form.spo2} onChange={(v) => onChange("spo2", v)} placeholder="98" />
+                  <Field label="BP Sys" value={form.bpSys} onChange={(v) => onChange("bpSys", v)} placeholder="120" />
+                  <Field label="BP Dia" value={form.bpDia} onChange={(v) => onChange("bpDia", v)} placeholder="80" />
+                  <Field label="Pain 0-10" value={form.pain} onChange={(v) => onChange("pain", v)} placeholder="0" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 4. Risk Screens */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">Risk screens</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={form.risk.sepsis}
+                      onChange={(e) => onChange("risk", { ...form.risk, sepsis: e.target.checked })}
+                    />
+                    <span className="text-sm">Sepsis risk</span>
+                  </Label>
+                  <Label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={form.risk.stroke}
+                      onChange={(e) => onChange("risk", { ...form.risk, stroke: e.target.checked })}
+                    />
+                    <span className="text-sm">Stroke FAST</span>
+                  </Label>
+                  <Label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={form.risk.suicide}
+                      onChange={(e) => onChange("risk", { ...form.risk, suicide: e.target.checked })}
+                    />
+                    <span className="text-sm">Suicide/self-harm risk</span>
+                  </Label>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 5. Forecasting */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">Forecast</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm">Provisional disposition</Label>
+                    <Select value={form.provisionalDispo} onValueChange={(value) => onChange("provisionalDispo", value)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unsure">Unsure</SelectItem>
+                        <SelectItem value="likelyDischarge">Likely discharge</SelectItem>
+                        <SelectItem value="likelyAdmit">Likely admit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Expected resources</Label>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      <Label className="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={form.expectedResources.includes("labs")}
+                          onChange={(e) => toggleArrayValue("expectedResources", "labs", e.target.checked)}
+                        />
+                        <span className="text-sm">Labs</span>
+                      </Label>
+                      <Label className="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={form.expectedResources.includes("imaging")}
+                          onChange={(e) => toggleArrayValue("expectedResources", "imaging", e.target.checked)}
+                        />
+                        <span className="text-sm">Imaging</span>
+                      </Label>
+                      <Label className="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={form.expectedResources.includes("specialist")}
+                          onChange={(e) => toggleArrayValue("expectedResources", "specialist", e.target.checked)}
+                        />
+                        <span className="text-sm">Specialist</span>
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 6. ATS */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">ATS Priority</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center space-x-4">
+                  <Select value={form.ats} onValueChange={(value) => onChange("ats", value)}>
+                    <SelectTrigger className="w-48" data-testid="select-triage-ats">
+                      <SelectValue placeholder="Select ATS..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">ATS 1 - Immediate</SelectItem>
+                      <SelectItem value="2">ATS 2 - Very urgent</SelectItem>
+                      <SelectItem value="3">ATS 3 - Urgent</SelectItem>
+                      <SelectItem value="4">ATS 4 - Semi-urgent</SelectItem>
+                      <SelectItem value="5">ATS 5 - Non-urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {enc.provisionalAts === "true" && (
                     <Badge variant="outline" className="text-xs">
                       Replaces provisional ATS
                     </Badge>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* 7. Care Started */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">Care started</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={form.care.analgesia}
+                      onChange={(e) => onChange("care", { ...form.care, analgesia: e.target.checked })}
+                    />
+                    <span className="text-sm">Analgesia given</span>
+                  </Label>
+                  <Label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={form.care.iv}
+                      onChange={(e) => onChange("care", { ...form.care, iv: e.target.checked })}
+                    />
+                    <span className="text-sm">IV/fluids started</span>
+                  </Label>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 8. Clinical Notes */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">Clinical Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={form.notes}
+                  onChange={(e) => onChange("notes", e.target.value)}
+                  placeholder="Assessment notes, observations, treatment plan..."
+                  className="h-20"
+                  data-testid="textarea-triage-notes"
+                />
               </CardContent>
             </Card>
 

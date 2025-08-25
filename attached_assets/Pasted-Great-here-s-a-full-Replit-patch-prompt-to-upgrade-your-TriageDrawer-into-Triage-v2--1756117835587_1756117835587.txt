@@ -1,0 +1,275 @@
+Great 🚀 — here’s a full **Replit patch prompt** to upgrade your **TriageDrawer** into **Triage v2**. It layers in the new fields (Arrival, Safety, Risk, Forecast, Care started) while keeping the layout structured and <2 min to complete.
+
+---
+
+# Prompt: Upgrade Triage Drawer to v2
+
+Apply the following changes to the ED Flow Agent repo.
+
+---
+
+## 1) Backend — `server/index.js`
+
+Expand the `triage` block in encounters and update `/api/triage/save` to handle new fields.
+
+```diff
+ const mk = (overrides={}) => ({
+   ...
+     triage: {
+       completed: overrides.triage?.completed || false,
+       pain: overrides.triage?.pain ?? null,
+       notes: overrides.triage?.notes || "",
+       vitals: {
+         hr: overrides.triage?.vitals?.hr ?? null,
+         rr: overrides.triage?.vitals?.rr ?? null,
+         bpSys: overrides.triage?.vitals?.bpSys ?? null,
+         bpDia: overrides.triage?.vitals?.bpDia ?? null,
+         spo2: overrides.triage?.vitals?.spo2 ?? null,
+         temp: overrides.triage?.vitals?.temp ?? null
+-      }
++      },
++      modeOfArrival: overrides.triage?.modeOfArrival || null,   // walk-in, ambulance, transfer
++      complaintText: overrides.triage?.complaintText || "",
++      complaintCode: overrides.triage?.complaintCode || null,   // optional structured
++      allergy: overrides.triage?.allergy || "unknown",
++      pregnancy: overrides.triage?.pregnancy || "unknown",
++      infection: overrides.triage?.infection || "none",
++      mobility: overrides.triage?.mobility || "independent",
++      risk: overrides.triage?.risk || { sepsis:false, stroke:false, suicide:false },
++      provisionalDispo: overrides.triage?.provisionalDispo || "unsure",
++      expectedResources: overrides.triage?.expectedResources || [],
++      care: overrides.triage?.care || { analgesia:false, iv:false }
+     }
+   });
+```
+
+Update the save endpoint:
+
+```diff
+ app.post("/api/triage/save", (req, res) => {
+   const b = req.body || {};
+-  const { id, vitals={}, pain=null, notes="" } = b;
++  const { id, vitals={}, pain=null, notes="", modeOfArrival, complaintText, complaintCode,
++    allergy, pregnancy, infection, mobility, risk={}, provisionalDispo, expectedResources=[], care={} } = b;
+@@
+   const triagePatch = {
+     completed: true,
+     pain: (pain ?? null),
+     notes: String(notes || ""),
+     vitals: {
+       hr: vitals.hr ?? null,
+       rr: vitals.rr ?? null,
+       bpSys: vitals.bpSys ?? null,
+       bpDia: vitals.bpDia ?? null,
+       spo2: vitals.spo2 ?? null,
+       temp: vitals.temp ?? null
+-    }
++    },
++    modeOfArrival: modeOfArrival || null,
++    complaintText: complaintText || "",
++    complaintCode: complaintCode || null,
++    allergy: allergy || "unknown",
++    pregnancy: pregnancy || "unknown",
++    infection: infection || "none",
++    mobility: mobility || "independent",
++    risk: { sepsis: !!risk.sepsis, stroke: !!risk.stroke, suicide: !!risk.suicide },
++    provisionalDispo: provisionalDispo || "unsure",
++    expectedResources: expectedResources,
++    care: { analgesia: !!care.analgesia, iv: !!care.iv }
+   };
+```
+
+---
+
+## 2) Frontend store — `client/src/store.js`
+
+No big change — your `saveTriage` already passes payload. Just ensure payload includes new fields.
+
+---
+
+## 3) Frontend UI — `client/src/components/TriageDrawer.jsx`
+
+Replace the form with grouped sections:
+
+```diff
+ export default function TriageDrawer() {
+-  const [form, setForm] = useState({
+-    hr: "", rr: "", bpSys: "", bpDia: "", spo2: "", temp: "",
+-    pain: "", notes: "", ats: ""
+-  });
++  const [form, setForm] = useState({
++    // core
++    hr:"", rr:"", bpSys:"", bpDia:"", spo2:"", temp:"",
++    pain:"", notes:"", ats:"",
++    // new v2
++    modeOfArrival:"walk-in",
++    complaintText:"", complaintCode:"",
++    allergy:"unknown",
++    pregnancy:"unknown",
++    infection:"none",
++    mobility:"independent",
++    risk:{ sepsis:false, stroke:false, suicide:false },
++    provisionalDispo:"unsure",
++    expectedResources:[],
++    care:{ analgesia:false, iv:false }
++  });
+```
+
+Add UI sections:
+
+```jsx
+<form onSubmit={save} className="space-y-4">
+  {/* 1. Arrival & Complaint */}
+  <div>
+    <h4 className="font-semibold mb-2">Arrival & Complaint</h4>
+    <div className="grid grid-cols-2 gap-3">
+      <label className="text-sm">Mode of arrival
+        <select className="mt-1 w-full border rounded px-2 py-1" value={form.modeOfArrival}
+          onChange={e=>on("modeOfArrival", e.target.value)}>
+          <option value="walk-in">Walk-in</option>
+          <option value="ambulance">Ambulance</option>
+          <option value="transfer">Transfer</option>
+        </select>
+      </label>
+      <label className="text-sm col-span-2">Presenting complaint
+        <input className="mt-1 w-full border rounded px-2 py-1" value={form.complaintText}
+          onChange={e=>on("complaintText", e.target.value)} />
+      </label>
+    </div>
+  </div>
+
+  {/* 2. Safety Flags */}
+  <div>
+    <h4 className="font-semibold mb-2">Safety</h4>
+    <div className="grid grid-cols-2 gap-3">
+      <label className="text-sm">Allergies
+        <select value={form.allergy} onChange={e=>on("allergy", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+          <option value="none">None</option>
+          <option value="known">Known</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </label>
+      <label className="text-sm">Pregnancy (if applicable)
+        <select value={form.pregnancy} onChange={e=>on("pregnancy", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+          <option value="unknown">Unknown</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </label>
+      <label className="text-sm">Infection risk
+        <select value={form.infection} onChange={e=>on("infection", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+          <option value="none">None</option>
+          <option value="suspected">Suspected</option>
+          <option value="confirmed">Confirmed</option>
+        </select>
+      </label>
+      <label className="text-sm">Mobility
+        <select value={form.mobility} onChange={e=>on("mobility", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+          <option value="independent">Independent</option>
+          <option value="assist">Requires assist</option>
+          <option value="bed">Bed-bound</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  {/* 3. Vitals + Pain */}
+  <div>
+    <h4 className="font-semibold mb-2">Vitals</h4>
+    <div className="grid grid-cols-3 gap-3">
+      <Field label="HR" val={form.hr} onChange={v=>on("hr",v)} />
+      <Field label="RR" val={form.rr} onChange={v=>on("rr",v)} />
+      <Field label="Temp" val={form.temp} onChange={v=>on("temp",v)} />
+      <Field label="SpO₂" val={form.spo2} onChange={v=>on("spo2",v)} />
+      <Field label="BP Sys" val={form.bpSys} onChange={v=>on("bpSys",v)} />
+      <Field label="BP Dia" val={form.bpDia} onChange={v=>on("bpDia",v)} />
+      <Field label="Pain 0-10" val={form.pain} onChange={v=>on("pain",v)} />
+    </div>
+  </div>
+
+  {/* 4. Risk Prompts */}
+  <div>
+    <h4 className="font-semibold mb-2">Risk screens</h4>
+    <label><input type="checkbox" checked={form.risk.sepsis} onChange={e=>on("risk",{...form.risk,sepsis:e.target.checked})}/> Sepsis risk</label>
+    <label><input type="checkbox" checked={form.risk.stroke} onChange={e=>on("risk",{...form.risk,stroke:e.target.checked})}/> Stroke FAST</label>
+    <label><input type="checkbox" checked={form.risk.suicide} onChange={e=>on("risk",{...form.risk,suicide:e.target.checked})}/> Suicide/self-harm</label>
+  </div>
+
+  {/* 5. Forecasting */}
+  <div>
+    <h4 className="font-semibold mb-2">Forecast</h4>
+    <label className="text-sm">Provisional disposition
+      <select value={form.provisionalDispo} onChange={e=>on("provisionalDispo", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+        <option value="unsure">Unsure</option>
+        <option value="likelyDischarge">Likely discharge</option>
+        <option value="likelyAdmit">Likely admit</option>
+      </select>
+    </label>
+    <div className="mt-2 flex gap-3">
+      <label><input type="checkbox" checked={form.expectedResources.includes("labs")}
+        onChange={e=>toggleArray("expectedResources","labs",e.target.checked,form,setForm)}/> Labs</label>
+      <label><input type="checkbox" checked={form.expectedResources.includes("imaging")}
+        onChange={e=>toggleArray("expectedResources","imaging",e.target.checked,form,setForm)}/> Imaging</label>
+      <label><input type="checkbox" checked={form.expectedResources.includes("specialist")}
+        onChange={e=>toggleArray("expectedResources","specialist",e.target.checked,form,setForm)}/> Specialist</label>
+    </div>
+  </div>
+
+  {/* 6. ATS */}
+  <div>
+    <h4 className="font-semibold mb-2">ATS</h4>
+    <select className="border rounded px-2 py-1" value={form.ats} onChange={e=>on("ats", e.target.value)}>
+      <option value="">—</option>
+      <option value="1">1 Immediate</option>
+      <option value="2">2 Very Urgent</option>
+      <option value="3">3 Urgent</option>
+      <option value="4">4 Semi-urgent</option>
+      <option value="5">5 Non-urgent</option>
+    </select>
+  </div>
+
+  {/* 7. Care at Triage */}
+  <div>
+    <h4 className="font-semibold mb-2">Care started</h4>
+    <label><input type="checkbox" checked={form.care.analgesia} onChange={e=>on("care",{...form.care,analgesia:e.target.checked})}/> Analgesia given</label>
+    <label><input type="checkbox" checked={form.care.iv} onChange={e=>on("care",{...form.care,iv:e.target.checked})}/> IV/fluids started</label>
+  </div>
+
+  {/* 8. Notes */}
+  <div>
+    <h4 className="font-semibold mb-2">Notes</h4>
+    <textarea className="w-full border rounded px-2 py-1 h-20"
+      value={form.notes} onChange={e=>on("notes", e.target.value)} />
+  </div>
+
+  <div className="pt-3 flex gap-2">
+    <button type="submit" className="px-3 py-2 bg-emerald-600 text-white rounded">Save triage</button>
+    <button type="button" onClick={closeTriage} className="px-3 py-2 border rounded">Cancel</button>
+  </div>
+</form>
+```
+
+Add a helper for array toggle at bottom:
+
+```js
+function toggleArray(field,val,checked,form,setForm){
+  const arr=[...(form[field]||[])];
+  if(checked && !arr.includes(val)) arr.push(val);
+  if(!checked) arr.splice(arr.indexOf(val),1);
+  setForm({...form,[field]:arr});
+}
+```
+
+---
+
+## ✅ Acceptance
+
+* Drawer has sections: Arrival, Safety, Vitals, Risk, Forecast, ATS, Care, Notes.
+* Saving triage updates encounter with all fields, moves Waiting→Triage if needed.
+* Provisional dispo/resources captured for forecasting.
+* Risk screens tick-boxes persist.
+* Audit log records all changes.
+
+---
+
+Would you like me to also add a **“Save & Assign Room” button** in the footer so triage can move a patient into a room in one step?
