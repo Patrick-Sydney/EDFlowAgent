@@ -1,0 +1,219 @@
+Great question — you’re right to push for clinical accuracy.
+
+### When is “Assign Room from Waiting” legit?
+
+Most sites expect **Waiting → Triage → Roomed**. But there *are* real exceptions where a patient should **skip the queue and be roomed immediately**:
+
+* **ATS/ESI 1–2 pre‑alert or obvious critical illness** (cardiac arrest, major trauma, stroke code, STEMI, active sepsis): straight to **Resus** or critical bay.
+* **Isolation requirements** (e.g., highly infectious; need a negative‑pressure room).
+* **Behavioural risk/safety concerns** (acute agitation, paediatric safeguarding).
+* **Triage‑in‑room models** used at some sites (nurse does triage at the bedside).
+* **Surge protocols** where a **mini‑triage** at the door sends patients to a chair/vertical‑care bay before formal triage.
+
+Outside of those, **room assignment should come *after* triage.**
+
+---
+
+## What to change in the prototype
+
+* In **Waiting**, show **Start Triage** (moves patient → Triage) by default.
+* Only show **Assign Room** in Waiting if an **override flag** is set, e.g.:
+
+  * `triageBypass: true` (pre‑alert ATS 1–2 / critical)
+  * `isolationRequired: true`
+  * `triageInRoomSite: true` (site config)
+* Stroke/critical scenarios should **set `triageBypass: true`** so you can demo the exception cleanly.
+
+---
+
+## Copy‑paste prompt for Replit (to implement this logic)
+
+**Prompt:**
+
+> Update the ED Flow Agent so Waiting lane is clinically accurate.
+>
+> **Rules:**
+>
+> * Default action in **Waiting** = **Start Triage** (moves patient to `state:"triage"`).
+> * **Assign Room** should **not** appear in Waiting **unless** one of these flags is true on the encounter:
+>
+>   * `triageBypass === true` (e.g., ATS 1–2, pre‑alert, obvious critical)
+>   * `isolationRequired === true`
+>   * `siteConfig?.triageInRoom === true` (global toggle for demo)
+>
+> **Changes to make:**
+>
+> 1. **Backend (`server/index.js`)**
+>
+>    * Extend seed and scenario objects with optional flags: `triageBypass`, `isolationRequired`.
+>    * Add a new endpoint `POST /api/actions/start-triage { id }` → sets `state:"triage"`.
+>    * Add a simple in‑memory site config at the top: `const siteConfig = { triageInRoom: false };`
+>    * Export `siteConfig` via `GET /api/config` so the client can read it (optional).
+>
+> ```diff
+> @@
+> -function seedData() {
+> +function seedData() {
+>    const now = dayjs();
+>    const mk = (overrides={}) => ({
+>      id: uuid(),
+>      patient: { name: overrides.name || "Pat Jones", age: overrides.age || 64, sex: overrides.sex || "F" },
+>      nhi: overrides.nhi || "ABC1234",
+>      ats: overrides.ats ?? 3,
+>      complaint: overrides.complaint || "Chest pain",
+>      state: overrides.state || "waiting",
+>      room: overrides.room || null,
+>      ownerRole: overrides.ownerRole || null,
+>      createdAt: now.toISOString(),
+>      lastUpdated: now.toISOString(),
+>      timers: { doorToCT: null },
+>      resultsStatus: overrides.resultsStatus || (overrides.state === "diagnostics" ? "pending" : null),
+> +    triageBypass: overrides.triageBypass || false,
+> +    isolationRequired: overrides.isolationRequired || false
+>    });
+> @@
+>    encounters.push(
+>      mk({ name:"Hemi Tai", age:72, sex:"M", ats:2, complaint:"Weakness L side", state:"waiting", nhi:"ZZZ9991" }),
+>      mk({ name:"Mere K", age:28, sex:"F", ats:3, complaint:"Abdo pain", state:"triage", nhi:"ZZZ9992" }),
+>      mk({ name:"Alex P", age:54, sex:"M", ats:2, complaint:"SOB", state:"roomed", room:"B3", nhi:"ZZZ9993" }),
+> -    mk({ name:"Sam R", age:41, sex:"M", ats:4, complaint:"Wrist injury", state:"diagnostics", room:"M2", nhi:"ZZZ9994", resultsStatus:"pending" }),
+> +    mk({ name:"Sam R", age:41, sex:"M", ats:4, complaint:"Wrist injury", state:"diagnostics", room:"M2", nhi:"ZZZ9994", resultsStatus:"pending" }),
+>      mk({ name:"Ava W", age:63, sex:"F", ats:3, complaint:"Dizzy", state:"decision", room:"A1", nhi:"ZZZ9995" })
+>    );
+> }
+>
+> +// optional site config for demo
+> +const siteConfig = { triageInRoom: false };
+> +app.get("/api/config", (req,res)=>res.json(siteConfig));
+> +
+> // --- REST endpoints ---
+> app.get("/api/encounters", (req, res) => {
+>   res.json({ data: encounters });
+> });
+>
+> +app.post("/api/actions/start-triage", (req, res) => {
+> +  const { id } = req.body || {};
+> +  if (!id) return res.status(400).json({ ok:false, error:"id required" });
+> +  const out = updateEncounter(id, { state:"triage" });
+> +  if (!out) return res.status(404).json({ ok:false, error:"encounter not found" });
+> +  return res.json({ ok:true, data: out });
+> +});
+>
+> // stroke scenario: set triageBypass so Assign Room appears in Waiting for this case
+> app.post("/api/scenario/stroke", (req, res) => {
+>   const e = {
+>     id: uuid(),
+>     patient: { name: "Pre-alert Stroke", age: 72, sex: "M" },
+>     nhi: "STROKE1",
+>     ats: 2,
+>     complaint: "Unilateral weakness",
+> -   state: "triage",
+> -   room: "Resus",
+> +   state: "waiting",
+> +   room: null,
+>     ownerRole: "physician",
+>     createdAt: dayjs().toISOString(),
+>     lastUpdated: dayjs().toISOString(),
+> -    timers: { doorToCT: dayjs().toISOString() }
+> +    timers: { doorToCT: dayjs().toISOString() },
+> +    triageBypass: true
+>   };
+>   encounters.push(e);
+>   broadcast("encounter:new", e);
+>   res.json({ ok: true });
+> });
+> ```
+>
+> 2. **Frontend (`client/src/store.js`)**
+>
+>    * Add helper `startTriage(id)` calling `/api/actions/start-triage`.
+>
+> ```diff
+>   const api = {
+>     list: async () => (await fetch("/api/encounters")).json(),
+> +    startTriage: async (id) => (await fetch("/api/actions/start-triage",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})).json(),
+>     assignRoom: async (id, room) => (await fetch("/api/actions/assign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
+>     markReady: async (id, disposition) => (await fetch("/api/actions/mark-ready",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,disposition})})).json(),
+>     scenario: async (name) => (await fetch(`/api/scenario/${name}`,{method:"POST"})).json(),
+>     reassignRoom: async (id, room) => (await fetch("/api/actions/reassign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
+>   };
+>
+>   export const useED = create((set, get) => ({
+> @@
+> +    async startTriage(id) { await api.startTriage(id); },
+>     async assignRoom(id, room) { await api.assignRoom(id, room); },
+>     async markReady(id, disposition) { await api.markReady(id, disposition); },
+>     async markResultsComplete(id) { await fetch("/api/actions/results-complete",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); },
+>     async reassignRoom(id, room) { await api.reassignRoom(id, room); },
+>     async trigger(name) { await api.scenario(name); }
+>   }));
+> ```
+>
+> 3. **Frontend (`client/src/App.jsx`)**
+>
+>    * Update **Card** actions in Waiting to show **Start Triage** by default; show **Assign Room** *only* when `enc.triageBypass || enc.isolationRequired || siteConfig.triageInRoom`.
+>    * Expose a `window.triage(id)` action for quick demos.
+>
+> ```diff
+>  function Card({ enc }) {
+>    return (
+>      <div className="bg-white rounded-xl shadow p-3 mb-3 border">
+> @@
+>        <div className="mt-2 flex gap-2">
+> -        {/* Waiting → Assign Room */}
+> -        {enc.state === "waiting" && (
+> -          <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
+> -            Assign Room
+> -          </button>
+> -        )}
+> +        {/* Waiting → Start Triage by default */}
+> +        {enc.state === "waiting" && !((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
+> +          <button className="text-xs px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>window.triage(enc.id)}>
+> +            Start Triage
+> +          </button>
+> +        )}
+> +        {/* Waiting → Assign Room only if exceptions apply */}
+> +        {enc.state === "waiting" && ((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
+> +          <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
+> +            Assign Room
+> +          </button>
+> +        )}
+>         {/* Triage → Assign Room */}
+>         {enc.state === "triage" && (
+>           <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
+>             Assign Room
+>           </button>
+>         )}
+> ```
+>
+> * In the component `App`, fetch config once and stash on `window.__siteConfig` (quick demo trick), and expose the triage action:
+>
+> ```diff
+>  export default function App() {
+> -  const { encounters, load } = useED();
+> +  const { encounters, load } = useED();
+>   useEffect(()=>{ load(); }, []);
+>
+>   // Expose quick actions for demo buttons inside cards
+> -  const { assignRoom, markReady, markResultsComplete, reassignRoom } = useED();
+> +  const { startTriage, assignRoom, markReady, markResultsComplete, reassignRoom } = useED();
+>   useEffect(()=>{
+> +    fetch("/api/config").then(r=>r.json()).then(cfg => { window.__siteConfig = cfg });
+>     window.assign = (id) => assignRoom(id, "T1");
+> +    window.triage = (id) => startTriage(id);
+>     window.ready = (id) => markReady(id, "discharge");
+>     window.results = (id) => markResultsComplete(id);
+>     window.reassign = (id) => reassignRoom(id);
+>   }, [assignRoom, markReady, markResultsComplete, reassignRoom]);
+> ```
+>
+> **Acceptance:**
+>
+> * In **Waiting**, you now see **Start Triage** by default.
+> * In **Waiting** for **Stroke scenario**, you see **Assign Room** (because `triageBypass: true`).
+> * In **Triage**, you still see **Assign Room**.
+> * Other action rules remain as previously fixed.
+
+---
+
+If you want, we can also add a tiny **“Mini‑triage” modal** for the exception path (e.g., pick Resus vs monitored bay, record a one‑liner reason like “ATS‑1/STEMI”).

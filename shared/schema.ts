@@ -16,6 +16,8 @@ export const encounters = pgTable("encounters", {
   provider: varchar("provider", { length: 100 }),
   disposition: varchar("disposition", { length: 100 }),
   resultsStatus: varchar("results_status", { length: 20 }).default("pending"), // "pending" | "complete" | null
+  triageBypass: varchar("triage_bypass", { length: 10 }).default("false"), // "true" | "false" for critical cases
+  isolationRequired: varchar("isolation_required", { length: 10 }).default("false"), // "true" | "false" for isolation needs
   arrivalTime: timestamp("arrival_time").notNull().defaultNow(),
   lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });
@@ -74,6 +76,11 @@ export const markResultsCompleteSchema = z.object({
   id: z.string(),
 });
 
+export const startTriageSchema = z.object({
+  id: z.string(),
+});
+
 export type AssignRoomRequest = z.infer<typeof assignRoomSchema>;
 export type MarkReadyRequest = z.infer<typeof markReadySchema>;
 export type MarkResultsCompleteRequest = z.infer<typeof markResultsCompleteSchema>;
+export type StartTriageRequest = z.infer<typeof startTriageSchema>;

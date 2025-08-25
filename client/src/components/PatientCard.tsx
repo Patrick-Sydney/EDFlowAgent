@@ -1,8 +1,8 @@
 import { type Encounter, ATS_COLORS } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bed, Check } from "lucide-react";
-import { useState } from "react";
+import { Bed, Check, Stethoscope } from "lucide-react";
+import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -22,6 +22,8 @@ export function PatientCard({ encounter }: PatientCardProps) {
   const [showRoomDialog, setShowRoomDialog] = useState(false);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [isMarkingResultsComplete, setIsMarkingResultsComplete] = useState(false);
+  const [isStartingTriage, setIsStartingTriage] = useState(false);
+  const [siteConfig, setSiteConfig] = useState<any>(null);
 
   // Calculate time since arrival
   const getTimeInED = () => {
@@ -140,6 +142,42 @@ export function PatientCard({ encounter }: PatientCardProps) {
     }
   };
 
+  const handleStartTriage = async () => {
+    setIsStartingTriage(true);
+    try {
+      await apiRequest('POST', '/api/actions/start-triage', {
+        id: encounter.id
+      });
+      
+      toast({
+        title: "Triage Started",
+        description: "Patient moved to triage",
+      });
+    } catch (error) {
+      toast({
+        title: "Error", 
+        description: "Failed to start triage",
+        variant: "destructive",
+      });
+    } finally {
+      setIsStartingTriage(false);
+    }
+  };
+
+  // Fetch site configuration on component mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        setSiteConfig(config);
+      } catch (error) {
+        console.error('Failed to fetch site config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
   const atsColorClass = ATS_COLORS[encounter.ats as keyof typeof ATS_COLORS] || "bg-gray-500";
 
   return (
@@ -200,8 +238,24 @@ export function PatientCard({ encounter }: PatientCardProps) {
 
       {/* Clinical Action Buttons Based on Lane */}
       <div className="flex space-x-2">
-        {/* Waiting → Assign Room */}
-        {encounter.lane === "waiting" && (
+        {/* Waiting → Start Triage (default) */}
+        {encounter.lane === "waiting" && 
+         !((encounter.triageBypass === "true" || encounter.isolationRequired === "true") || siteConfig?.triageInRoom) && (
+          <Button 
+            size="sm" 
+            onClick={handleStartTriage}
+            disabled={isStartingTriage}
+            className="flex-1 bg-sky-600 hover:bg-sky-700 text-white"
+            data-testid={`button-start-triage-${encounter.id}`}
+          >
+            <Stethoscope className="w-3 h-3 mr-1" />
+            {isStartingTriage ? "Starting..." : "Start Triage"}
+          </Button>
+        )}
+
+        {/* Waiting → Assign Room (only for exceptions) */}
+        {encounter.lane === "waiting" && 
+         ((encounter.triageBypass === "true" || encounter.isolationRequired === "true") || siteConfig?.triageInRoom) && (
           <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
             <DialogTrigger asChild>
               <Button 

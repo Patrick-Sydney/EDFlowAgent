@@ -7,10 +7,16 @@ import {
   assignRoomSchema, 
   markReadySchema,
   markResultsCompleteSchema,
+  startTriageSchema,
   type Encounter,
   type InsertEncounter,
   LANES
 } from "@shared/schema";
+
+// Site configuration for triage flow
+const siteConfig = {
+  triageInRoom: false // Set to true for sites that do triage at bedside
+};
 
 // SSE connections
 const sseClients = new Set<{
@@ -32,6 +38,11 @@ function broadcastSSE(event: string, data: any) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Get site configuration
+  app.get("/api/config", (req, res) => {
+    res.json(siteConfig);
+  });
+
   // Get all encounters
   app.get("/api/encounters", async (req, res) => {
     try {
@@ -175,6 +186,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Start triage action
+  app.post("/api/actions/start-triage", async (req, res) => {
+    try {
+      const result = startTriageSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: "Invalid request", errors: result.error.errors });
+      }
+
+      const { id } = result.data;
+      const encounter = await storage.updateEncounter({ 
+        id, 
+        lane: "triage" 
+      });
+      
+      if (!encounter) {
+        return res.status(404).json({ message: "Encounter not found" });
+      }
+
+      broadcastSSE("encounter:update", encounter);
+      res.json({ message: "Triage started", encounter });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start triage" });
+    }
+  });
+
   // Scenario endpoints
   app.post("/api/scenario/surge", async (req, res) => {
     try {
@@ -294,7 +330,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         nhi: "STR001", 
         ats: 1,
         complaint: "Suspected stroke - FAST positive, left side weakness",
-        lane: "triage"
+        lane: "waiting",
+        triageBypass: "true" // Critical case can bypass triage and go straight to room
       };
 
       const encounter = await storage.createEncounter(strokePatient);

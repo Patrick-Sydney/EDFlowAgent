@@ -50,6 +50,8 @@ export class MemStorage implements IStorage {
       provider: insertEncounter.provider || null,
       disposition: insertEncounter.disposition || null,
       resultsStatus: insertEncounter.resultsStatus || null,
+      triageBypass: insertEncounter.triageBypass || "false",
+      isolationRequired: insertEncounter.isolationRequired || "false",
       arrivalTime: now,
       lastUpdated: now,
     };
@@ -182,6 +184,8 @@ export class MemStorage implements IStorage {
         provider: encounter.provider || null,
         disposition: encounter.disposition || null,
         resultsStatus: encounter.lane === "diagnostics" ? "pending" : null,
+        triageBypass: encounter.triageBypass || "false",
+        isolationRequired: encounter.isolationRequired || "false",
         arrivalTime,
         lastUpdated: arrivalTime,
       };
