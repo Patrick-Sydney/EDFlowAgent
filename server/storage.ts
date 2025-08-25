@@ -17,6 +17,9 @@ export interface IStorage {
   // Audit trail
   getAuditEntries(encounterId?: string): Promise<AuditEntry[]>;
   createAuditEntry(entry: InsertAuditEntry): Promise<AuditEntry>;
+  
+  // Demo utilities
+  initializeTestData(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -101,7 +104,14 @@ export class MemStorage implements IStorage {
     return results;
   }
 
-  private initializeTestData() {
+  async initializeTestData(): Promise<void> {
+    // Clear existing data
+    this.encounters.clear();
+    
+    this.seedTestData();
+  }
+
+  private seedTestData() {
     const testEncounters: InsertEncounter[] = [
       {
         name: "Sarah Mitchell",

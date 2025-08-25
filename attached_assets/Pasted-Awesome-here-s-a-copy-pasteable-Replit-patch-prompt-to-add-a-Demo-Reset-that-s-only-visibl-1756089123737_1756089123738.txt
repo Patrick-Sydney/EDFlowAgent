@@ -1,0 +1,196 @@
+Awesome — here’s a **copy‑pasteable Replit patch prompt** to add a **Demo Reset** that’s only visible in **Demo Mode**. It clears and reseeds encounters (and audit), then reloads the board.
+
+---
+
+# Prompt: Add “Demo Reset” (behind demo mode flag)
+
+Apply the following edits to the ED Flow Agent repo.
+
+## 1) `server/index.js` — add demo mode flag + reset endpoint
+
+```diff
+@@
+-// optional site config for demo
+-const siteConfig = { triageInRoom: false };
++// optional site config for demo
++const siteConfig = { triageInRoom: false, demoMode: true };
+ app.get("/api/config", (req,res)=>res.json(siteConfig));
+@@
+-const encounters = []; // will seed below
++const encounters = []; // will seed below
+ const sseClients = new Set();
+@@
+ function seedData() {
+   const now = dayjs();
+   const mk = (overrides={}) => ({
+@@
+   encounters.push(
+@@
+   );
+ }
+-seedData();
++seedData();
+@@
+ // --- REST endpoints ---
+ app.get("/api/encounters", (req, res) => {
+   res.json({ data: encounters });
+ });
+@@
+ app.post("/api/actions/results-complete", (req, res) => {
+   const { id } = req.body || {};
+   if (!id) return res.status(400).json({ ok:false, error:"id required" });
+   const out = updateEncounter(id, { resultsStatus: "complete" });
+   if (!out) return res.status(404).json({ ok:false, error:"encounter not found" });
+   return res.json({ ok: true, data: out });
+ });
++
++// --- Demo utilities ---
++// Reset demo board: wipe encounters (+ audit) and reseed
++app.post("/api/demo/reset", (req, res) => {
++  if (!siteConfig.demoMode) return res.status(403).json({ ok:false, error:"demo mode disabled" });
++  const { keepAudit } = req.query || {};
++  // clear arrays
++  encounters.length = 0;
++  try { if (!keepAudit) audit.length = 0; } catch(e) {}
++  // reseed
++  seedData();
++  // tell any SSE listeners to refresh (lightweight ping; client will call /encounters)
++  broadcast("demo:reset", { at: dayjs().toISOString() });
++  res.json({ ok:true, data: { count: encounters.length } });
++});
+```
+
+> Note: This keeps a **demoMode** switch in `siteConfig`. Set `demoMode: false` to hide/disable reset in production-like demos.
+
+---
+
+## 2) `client/src/store.js` — add `resetDemo()` and expose config demoMode
+
+```diff
+ const api = {
+   list: async () => (await fetch("/api/encounters")).json(),
+@@
+   reassignRoom: async (id, room) => (await fetch("/api/actions/reassign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
+   setAts: async (id, ats, actor) => (await fetch("/api/actions/set-ats",{
+     method:"POST",
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id,ats, actorName: actor?.name, actorRole: actor?.role})
+   })).json(),
++  resetDemo: async () => (await fetch("/api/demo/reset",{ method:"POST" })).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+   encounters: [],
+   loading: false,
+   user: { name: "Dr. Wilson", role: "md" }, // simple demo user (change via UI)
+   setUser(u){ set({ user: u }); },
++  demoMode: false,
+   async load() {
+     set({ loading: true });
+-    const { data } = await api.list();
++    // fetch config first (to know demoMode flag)
++    try {
++      const cfg = await fetch("/api/config").then(r=>r.json());
++      set({ demoMode: !!cfg.demoMode });
++      // stash globally for simple checks elsewhere
++      window.__siteConfig = cfg;
++    } catch {}
++    const { data } = await api.list();
+     set({ encounters: data, loading: false });
+     get().listen();
+   },
+   listen() {
+     const es = new EventSource("/api/events");
+@@
+     es.addEventListener("encounter:update", (e) => {
+       const enc = JSON.parse(e.data);
+       set(s => ({ encounters: s.encounters.map(x => x.id===enc.id? enc : x) }));
+     });
++    es.addEventListener("demo:reset", async () => {
++      // reload the full list after a reset
++      const { data } = await api.list();
++      set({ encounters: data });
++    });
+     es.onerror = () => { setTimeout(()=>get().listen(), 2000); };
+   },
+@@
+   async setAts(id, ats) {
+     const actor = get().user;
+     await api.setAts(id, ats, actor);
+   },
++  async resetDemo() {
++    const res = await api.resetDemo();
++    if (res?.ok) {
++      const { data } = await api.list();
++      set({ encounters: data });
++    }
++  },
+   async trigger(name) { await api.scenario(name); }
+ }));
+```
+
+---
+
+## 3) `client/src/App.jsx` — add Reset button to toolbar (only in demo mode)
+
+```diff
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { useED } from "./store";
+@@
+-function Toolbar() {
+-  const { trigger } = useED();
++function Toolbar() {
++  const { trigger, resetDemo, demoMode } = useED();
+   return (
+-    <div className="flex gap-2">
++    <div className="flex gap-2 items-center">
++      {demoMode && (
++        <button
++          onClick={()=>resetDemo()}
++          className="px-3 py-2 bg-gray-700 text-white rounded-lg"
++          title="Clear and reseed demo patients"
++        >
++          Reset Demo
++        </button>
++      )}
+       <button onClick={()=>trigger("surge")} className="px-3 py-2 bg-gray-800 text-white rounded-lg">Trigger Surge</button>
+       <button onClick={()=>trigger("stroke")} className="px-3 py-2 bg-indigo-600 text-white rounded-lg">Trigger Stroke Pathway</button>
+       <button onClick={()=>trigger("boarding")} className="px-3 py-2 bg-rose-600 text-white rounded-lg">Trigger Boarding</button>
+     </div>
+   );
+ }
+@@
+ export default function App() {
+   const { encounters, load } = useED();
+   useEffect(()=>{ load(); }, []);
+@@
+   return (
+     <div className="min-h-screen bg-gray-100">
+       <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
+         <div className="flex items-center gap-4">
+           <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
+           <UserPicker />
+         </div>
+-        <Toolbar />
++        <Toolbar />
+       </header>
+       <main className="overflow-x-auto flex gap-4 p-4">
+         {LANES.map(l => <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />)}
+       </main>
+     </div>
+   );
+ }
+```
+
+---
+
+## ✅ Acceptance
+
+* A **Reset Demo** button appears in the header **only** when `siteConfig.demoMode === true`.
+* Clicking it **clears and reseeds** the board; lanes repopulate with the default seed.
+* SSE sends a `demo:reset` event; the client **reloads** the encounter list automatically.
+* Optional: toggle `demoMode` to `false` in `server/index.js` to hide/disable the Reset in clinical walk‑throughs.
+* (If you want to preserve the audit log across resets, call `/api/demo/reset?keepAudit=1` — already supported.)
+
+If you want, I can also add a tiny **toast** saying “Demo reset complete” after the reload, or a **confirm dialog** to prevent accidental resets.

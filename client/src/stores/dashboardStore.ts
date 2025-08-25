@@ -1,16 +1,20 @@
 import { create } from 'zustand';
 import { type Encounter, type Lane } from '@shared/schema';
+import { apiRequest } from '@/lib/queryClient';
 
 interface DashboardState {
   encounters: Encounter[];
   isConnected: boolean;
   lastUpdate: Date | null;
+  demoMode: boolean;
   
   // Actions
   setEncounters: (encounters: Encounter[]) => void;
   addEncounter: (encounter: Encounter) => void;
   updateEncounter: (encounter: Encounter) => void;
   setConnectionStatus: (connected: boolean) => void;
+  setDemoMode: (demoMode: boolean) => void;
+  resetDemo: () => Promise<void>;
   
   // Selectors
   getEncountersByLane: (lane: Lane) => Encounter[];
@@ -30,6 +34,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   encounters: [],
   isConnected: false,
   lastUpdate: null,
+  demoMode: false,
 
   setEncounters: (encounters) => set({ 
     encounters,
@@ -49,6 +54,21 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   })),
 
   setConnectionStatus: (connected) => set({ isConnected: connected }),
+
+  setDemoMode: (demoMode) => set({ demoMode }),
+
+  resetDemo: async () => {
+    try {
+      const response = await apiRequest('POST', '/api/demo/reset');
+      if (response) {
+        // The SSE will trigger a reload, but we can also manually refresh
+        const encounters = await apiRequest('GET', '/api/encounters') as Encounter[];
+        set({ encounters, lastUpdate: new Date() });
+      }
+    } catch (error) {
+      console.error('Failed to reset demo:', error);
+    }
+  },
 
   getEncountersByLane: (lane) => {
     const { encounters } = get();

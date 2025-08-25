@@ -8,18 +8,28 @@ import { sseManager } from "@/lib/sse";
 import { type Encounter, LANES } from "@shared/schema";
 
 export default function Dashboard() {
-  const { encounters, setEncounters } = useDashboardStore();
+  const { encounters, setEncounters, setDemoMode } = useDashboardStore();
 
-  // Fetch initial encounters
+  // Fetch initial encounters and config
   const { data, isLoading, error } = useQuery<Encounter[]>({
     queryKey: ['/api/encounters'],
     staleTime: 0, // Always fetch fresh data
+  });
+
+  // Fetch config to determine demo mode
+  const { data: config } = useQuery<{demoMode: boolean, triageInRoom: boolean}>({
+    queryKey: ['/api/config'],
+    staleTime: 300000, // Cache for 5 minutes
   });
 
   // Initialize SSE connection and set initial data
   useEffect(() => {
     if (data) {
       setEncounters(data);
+    }
+    
+    if (config) {
+      setDemoMode(config.demoMode);
     }
     
     // Start SSE connection
@@ -29,7 +39,7 @@ export default function Dashboard() {
     return () => {
       sseManager.disconnect();
     };
-  }, [data, setEncounters]);
+  }, [data, config, setEncounters, setDemoMode]);
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
 

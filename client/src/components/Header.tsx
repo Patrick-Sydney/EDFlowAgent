@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Hospital, Brain, AlertTriangle, Bed } from "lucide-react";
+import { Hospital, Brain, AlertTriangle, Bed, RotateCcw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { apiRequest } from "@/lib/queryClient";
@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 export function Header() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const isConnected = useDashboardStore((state) => state.isConnected);
+  const demoMode = useDashboardStore((state) => state.demoMode);
+  const resetDemo = useDashboardStore((state) => state.resetDemo);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -29,6 +31,22 @@ export function Header() {
       toast({
         title: "Error",
         description: `Failed to activate ${scenario} scenario.`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleResetDemo = async () => {
+    try {
+      await resetDemo();
+      toast({
+        title: "Demo Reset Complete",
+        description: "Demo board has been cleared and reseeded with fresh test data.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reset demo.",
         variant: "destructive",
       });
     }
@@ -67,6 +85,21 @@ export function Header() {
 
           {/* Scenario Controls */}
           <div className="flex items-center space-x-3">
+            {demoMode && (
+              <>
+                <Button 
+                  onClick={handleResetDemo}
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-300 hover:bg-gray-50"
+                  data-testid="button-reset-demo"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  Reset Demo
+                </Button>
+                <div className="h-6 border-l border-gray-300 mx-2" />
+              </>
+            )}
             <span className="text-sm font-medium text-gray-700">Demo Scenarios:</span>
             <Button 
               onClick={() => handleScenario('surge')}

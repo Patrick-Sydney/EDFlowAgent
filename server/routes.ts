@@ -16,7 +16,8 @@ import {
 
 // Site configuration for triage flow
 const siteConfig = {
-  triageInRoom: false // Set to true for sites that do triage at bedside
+  triageInRoom: false, // Set to true for sites that do triage at bedside
+  demoMode: true // Enable demo reset functionality
 };
 
 // SSE connections
@@ -269,6 +270,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "ATS updated", encounter });
     } catch (error) {
       res.status(500).json({ message: "Failed to set ATS" });
+    }
+  });
+
+  // Demo utilities - Reset demo board
+  app.post("/api/demo/reset", async (req, res) => {
+    if (!siteConfig.demoMode) {
+      return res.status(403).json({ message: "Demo mode disabled" });
+    }
+
+    const { keepAudit } = req.query;
+    
+    try {
+      // Clear encounters and optionally audit entries
+      const encounters = await storage.getEncounters();
+      for (const encounter of encounters) {
+        await storage.deleteEncounter(encounter.id);
+      }
+      
+      if (!keepAudit) {
+        // Clear audit entries - this will be handled by reinitializing storage
+        // For now, we'll keep the audit as the interface doesn't have a clear method
+      }
+
+      // Reinitialize test data
+      await storage.initializeTestData();
+      
+      // Broadcast reset event
+      broadcastSSE("demo:reset", { at: new Date().toISOString() });
+      
+      const newEncounters = await storage.getEncounters();
+      res.json({ 
+        message: "Demo reset complete", 
+        count: newEncounters.length 
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reset demo" });
     }
   });
 

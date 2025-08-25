@@ -33,6 +33,17 @@ export class SSEManager {
         useDashboardStore.getState().updateEncounter(encounter);
       });
 
+      this.eventSource.addEventListener('demo:reset', async () => {
+        try {
+          console.log("Demo reset event received, reloading encounters");
+          const response = await fetch('/api/encounters');
+          const encounters = await response.json();
+          useDashboardStore.getState().setEncounters(encounters);
+        } catch (error) {
+          console.error("Failed to reload encounters after demo reset:", error);
+        }
+      });
+
       this.eventSource.onerror = (error) => {
         console.error('SSE error:', error);
         useDashboardStore.getState().setConnectionStatus(false);
