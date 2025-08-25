@@ -1,0 +1,152 @@
+Great call. Let’s add a **“Full View”** option + a quick **Return to Full View** button, so you can always show every lane regardless of the current role filter.
+
+Copy‑paste this as a patch prompt to your AI coder in Replit.
+
+---
+
+# Prompt: Add “Full View” (show all lanes) + button
+
+Apply the following changes.
+
+## 1) `client/src/store.js` — support a `full` role view and make it the safe fallback
+
+```diff
+ export const useED = create((set, get) => ({
+   encounters: [],
+   loading: false,
+   user: { name: "Dr. Wilson", role: "md" }, // simple demo user
+-  roleView: "rn", // which role view is active in UI (rn|md|charge|bedmgr|reception)
++  roleView: "full", // active UI view: "full" | rn | md | charge | bedmgr | reception
+   setUser(u){ set({ user: u }); },
+   setRoleView(r){ set({ roleView: r || "full" }); },
+```
+
+> If you prefer to keep your previous default, that’s fine—`"full"` just ensures you can always recover the full dashboard.
+
+---
+
+## 2) `client/src/App.jsx` — include the “full” mapping and a **Return to Full View** button
+
+```diff
+ // near the top where you compute visible lanes
+ const byLane = useMemo(() => {
+   const g = Object.fromEntries(LANES.map(l => [l.key, []]));
+   for (const e of encounters) g[e.state]?.push(e);
+   return g;
+ }, [encounters]);
+
+-const roleToLanes = {
++const roleToLanes = {
++  full: LANES.map(l=>l.key),
+   rn: ["waiting","triage","roomed"],
+   md: ["roomed","diagnostics","decision"],
+   charge: ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"],
+   bedmgr: ["ready","admitted"],
+   reception: ["waiting","triage"]
+ };
+-const visible = roleToLanes[useED.getState().roleView] || LANES.map(l=>l.key);
++const { roleView, setRoleView } = useED.getState
++  ? useED()
++  : { roleView: "full", setRoleView: ()=>{} };
++const allLaneKeys = LANES.map(l=>l.key);
++const visible = roleToLanes[roleView] || allLaneKeys;
+```
+
+### Add a small button in the header (right next to your Toolbars) to jump back to full view
+
+```diff
+-      <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
+-        <div className="flex items-center gap-4">
++      <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
++        <div className="flex items-center gap-4">
+           <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
+           <UserPicker />
+         </div>
+-        <Toolbar />
++        <div className="flex items-center gap-2">
++          {roleView !== "full" && (
++            <button
++              onClick={()=>setRoleView("full")}
++              className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
++              title="Show all lanes"
++            >
++              Return to Full View
++            </button>
++          )}
++          <Toolbar />
++        </div>
+       </header>
+```
+
+---
+
+## 3) `client/src/App.jsx` — update the Role View dropdown to include “Full dashboard”
+
+Where you render the role‑view `<select>` (or shadcn Select), add the **full** option and make sure its value is never an empty string.
+
+**Plain `<select>` example:**
+
+```diff
+-<select
++<select
+   className="text-sm border rounded px-2 py-1"
+   value={roleView || "full"}
+   onChange={e=>setRoleView(e.target.value)}
+   title="Role view (UI filter)"
+ >
++  <option value="full">Full dashboard</option>
+   <option value="rn">RN view</option>
+   <option value="md">MD view</option>
+   <option value="charge">Charge view</option>
+   <option value="bedmgr">BedMgr view</option>
+   <option value="reception">Reception view</option>
+ </select>
+```
+
+**shadcn Select example:**
+
+```jsx
+<Select value={roleView || "full"} onValueChange={(v)=>setRoleView(v)}>
+  <SelectTrigger className="w-44"><SelectValue placeholder="Choose view" /></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="full">Full dashboard</SelectItem>
+    <SelectItem value="rn">RN view</SelectItem>
+    <SelectItem value="md">MD view</SelectItem>
+    <SelectItem value="charge">Charge view</SelectItem>
+    <SelectItem value="bedmgr">BedMgr view</SelectItem>
+    <SelectItem value="reception">Reception view</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+---
+
+## 4) (Optional) Keyboard shortcut
+
+Add a quick keyboard shortcut to jump back to full view (nice for demos).
+
+```diff
+ useEffect(()=>{
+   fetch("/api/config").then(r=>r.json()).then(cfg => { window.__siteConfig = cfg });
+   // ...existing window actions...
++  const onKey = (e) => {
++    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
++      e.preventDefault();
++      try { useED.getState().setRoleView("full"); } catch {}
++    }
++  };
++  window.addEventListener("keydown", onKey);
++  return () => window.removeEventListener("keydown", onKey);
+ }, [assignRoom, markReady, markResultsComplete, reassignRoom, setAts]);
+```
+
+---
+
+## ✅ Acceptance
+
+* You can switch any Role View, then click **Return to Full View** to see **all lanes** again.
+* The Role View dropdown has a **Full dashboard** option.
+* If `roleView` is missing/invalid, it **falls back to full** automatically.
+* No red runtime overlay; dropdown values are non‑empty.
+
+If any of your files are TypeScript (`.tsx`) and complain about types, I can give you tiny type annotations, but the logic above should work as‑is in JS or TS.

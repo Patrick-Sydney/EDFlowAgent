@@ -41,7 +41,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   lastUpdate: null,
   demoMode: false,
   user: { name: "Dr. Wilson", role: "md" },
-  roleView: "rn",
+  roleView: "full",
 
   setEncounters: (encounters) => {
     const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
@@ -78,7 +78,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   setUser: (user) => set({ user }),
 
-  setRoleView: (roleView) => set({ roleView }),
+  setRoleView: (roleView) => set({ roleView: roleView || "full" }),
 
   resetDemo: async () => {
     try {

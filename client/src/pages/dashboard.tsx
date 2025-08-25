@@ -36,9 +36,25 @@ export default function Dashboard() {
     // Start SSE connection
     sseManager.connect();
 
+    // Keyboard shortcut: Ctrl/Cmd+F for Full View
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        try {
+          const { setRoleView } = useDashboardStore.getState();
+          setRoleView("full");
+        } catch (error) {
+          console.error("Failed to set full view:", error);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
     // Cleanup on unmount
     return () => {
       sseManager.disconnect();
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [data, config, setEncounters, setDemoMode]);
 
@@ -46,6 +62,7 @@ export default function Dashboard() {
 
   // Role-based lane filtering
   const roleToLanes: Record<string, string[]> = {
+    full: LANES.map(l => l.key),
     rn: ["waiting", "triage", "roomed"],
     md: ["roomed", "diagnostics", "review"],
     charge: ["waiting", "triage", "roomed", "diagnostics", "review", "ready", "discharged"],
@@ -53,7 +70,8 @@ export default function Dashboard() {
     reception: ["waiting", "triage"]
   };
 
-  const visibleLanes = roleToLanes[roleView] || LANES.map(l => l.key);
+  const allLaneKeys = LANES.map(l => l.key);
+  const visibleLanes = roleToLanes[roleView] || allLaneKeys;
   const filteredLanes = LANES.filter(lane => visibleLanes.includes(lane.key));
 
   if (isLoading) {

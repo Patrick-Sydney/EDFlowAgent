@@ -17,6 +17,7 @@ function UserRolePicker() {
   ];
 
   const roleViewOptions = [
+    { value: "full", label: "Full dashboard" },
     { value: "rn", label: "RN view" },
     { value: "md", label: "MD view" },
     { value: "charge", label: "Charge view" },
@@ -44,7 +45,7 @@ function UserRolePicker() {
       
       <select
         className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
-        value={roleView}
+        value={roleView || "full"}
         onChange={(e) => setRoleView(e.target.value)}
         title="Role view (UI filter)"
       >
@@ -62,6 +63,8 @@ export function Header() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const isConnected = useDashboardStore((state) => state.isConnected);
   const demoMode = useDashboardStore((state) => state.demoMode);
+  const roleView = useDashboardStore((state) => state.roleView);
+  const setRoleView = useDashboardStore((state) => state.setRoleView);
   const resetDemo = useDashboardStore((state) => state.resetDemo);
   const { toast } = useToast();
 
@@ -123,6 +126,20 @@ export function Header() {
           {/* User and Role Selection */}
           <div className="flex items-center space-x-4">
             <UserRolePicker />
+          </div>
+
+          {/* Control Actions */}
+          <div className="flex items-center space-x-3">
+            {roleView !== "full" && (
+              <button
+                onClick={() => setRoleView("full")}
+                className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+                title="Show all lanes"
+                data-testid="button-return-full-view"
+              >
+                Return to Full View
+              </button>
+            )}
           </div>
 
           {/* Real-time Status */}
