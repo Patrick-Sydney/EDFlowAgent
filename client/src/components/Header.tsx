@@ -5,16 +5,8 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-function UserRolePicker() {
-  const { user, setUser, roleView, setRoleView } = useDashboardStore();
-  
-  const userOptions = [
-    { name: "Nurse J. Smith", role: "rn" },
-    { name: "Dr. Wilson", role: "md" },
-    { name: "Charge Nurse", role: "charge" },
-    { name: "Bed Manager", role: "bedmgr" },
-    { name: "Reception/Admin", role: "reception" }
-  ];
+function RoleViewPicker() {
+  const { roleView, setRoleView } = useDashboardStore();
 
   const roleViewOptions = [
     { value: "full", label: "Full dashboard" },
@@ -26,36 +18,18 @@ function UserRolePicker() {
   ];
 
   return (
-    <div className="flex items-center space-x-3">
-      <select
-        className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
-        value={`${user.role}|${user.name}`}
-        onChange={(e) => {
-          const [role, ...rest] = e.target.value.split("|");
-          const name = rest.join("|");
-          setUser({ name, role });
-        }}
-      >
-        {userOptions.map(option => (
-          <option key={option.role} value={`${option.role}|${option.name}`}>
-            {option.name} ({option.role})
-          </option>
-        ))}
-      </select>
-      
-      <select
-        className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
-        value={roleView || "full"}
-        onChange={(e) => setRoleView(e.target.value)}
-        title="Role view (UI filter)"
-      >
-        {roleViewOptions.map(option => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
+    <select
+      className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
+      value={roleView || "full"}
+      onChange={(e) => setRoleView(e.target.value)}
+      title="Role view (UI filter)"
+    >
+      {roleViewOptions.map(option => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -123,13 +97,9 @@ export function Header() {
             </div>
           </div>
 
-          {/* User and Role Selection */}
-          <div className="flex items-center space-x-4">
-            <UserRolePicker />
-          </div>
-
           {/* Control Actions */}
           <div className="flex items-center space-x-3">
+            <RoleViewPicker />
             {roleView !== "full" && (
               <button
                 onClick={() => setRoleView("full")}

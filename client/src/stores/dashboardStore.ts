@@ -16,7 +16,6 @@ interface DashboardState {
   updateEncounter: (encounter: Encounter) => void;
   setConnectionStatus: (connected: boolean) => void;
   setDemoMode: (demoMode: boolean) => void;
-  setUser: (user: { name: string; role: string }) => void;
   setRoleView: (roleView: string) => void;
   resetDemo: () => Promise<void>;
   registerPatient: (payload: any) => Promise<void>;
@@ -40,7 +39,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   isConnected: false,
   lastUpdate: null,
   demoMode: false,
-  user: { name: "Dr. Wilson", role: "md" },
+  // Actor used for audit trails. No UI picker now.
+  user: { name: "Demo User", role: "demo" },
   roleView: "full",
 
   setEncounters: (encounters) => {
@@ -76,9 +76,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   setDemoMode: (demoMode) => set({ demoMode }),
 
-  setUser: (user) => set({ user }),
-
-  setRoleView: (roleView) => set({ roleView: roleView || "full" }),
+  // When roleView changes, map the actor role to match (helps audit look sane)
+  setRoleView: (roleView) => {
+    const view = roleView || "full";
+    set((state) => ({
+      roleView: view,
+      user: { ...state.user, role: view === "full" ? "charge" : view } // default to 'charge' for full view
+    }));
+  },
 
   resetDemo: async () => {
     try {

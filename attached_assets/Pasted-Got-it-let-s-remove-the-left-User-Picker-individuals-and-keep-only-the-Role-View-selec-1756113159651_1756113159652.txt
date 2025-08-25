@@ -1,0 +1,142 @@
+Got it — let’s remove the **left “User Picker”** (individuals) and keep only the **Role View** selector (right). We’ll also make sure audits still work by using a sensible default actor and auto‑mapping the actor’s role to whatever **Role View** is selected.
+
+Copy‑paste this to your AI coder in Replit.
+
+---
+
+# Prompt: Remove User Picker; keep Role View + audit defaults
+
+## 1) `client/src/store.js` — default user + auto‑map role from roleView
+
+```diff
+ export const useED = create((set, get) => ({
+   encounters: [],
+   loading: false,
+-  user: { name: "Dr. Wilson", role: "md" }, // simple demo user
+-  roleView: "full", // active UI view: "full" | rn | md | charge | bedmgr | reception
+-  setUser(u){ set({ user: u }); },
+-  setRoleView(r){ set({ roleView: r || "full" }); },
++  // Actor used for audit trails. No UI picker now.
++  user: { name: "Demo User", role: "demo" },
++  roleView: "full", // active UI view: "full" | rn | md | charge | bedmgr | reception
++  // remove setUser; not needed without the user dropdown
++  // When roleView changes, map the actor role to match (helps audit look sane).
++  setRoleView(r){
++    const view = r || "full";
++    set((state) => ({
++      roleView: view,
++      user: { ...state.user, role: view === "full" ? "charge" : view } // default to 'charge' for full view
++    }));
++  },
+```
+
+> Audits will now record `actor: "Demo User"` and `role` = the current role view (RN/MD/Charge/BedMgr/Reception or Charge for Full view).
+
+No other changes needed in this file.
+
+---
+
+## 2) `client/src/App.jsx` — remove the **UserPicker** component and its usage
+
+### A) Delete the UserPicker definition (if present)
+
+```diff
+- function UserPicker() {
+-   const { user, setUser, roleView, setRoleView } = useED();
+-   const opts = [
+-     { name:"Nurse J. Smith", role:"rn" },
+-     { name:"Dr. Wilson", role:"md" },
+-     { name:"Charge Nurse", role:"charge" },
+-     { name:"Bed Manager", role:"bedmgr" },
+-     { name:"Reception/Admin", role:"reception" }
+-   ];
+-   return (
+-     <div className="flex items-center gap-2">
+-       <select
+-         className="text-sm border rounded px-2 py-1"
+-         value={`${user.role}|${user.name}`}
+-         onChange={e=>{
+-           const [role, ...rest] = e.target.value.split("|");
+-           const name = rest.join("|");
+-           setUser({ name, role });
+-         }}>
+-         {opts.map(o => <option key={o.role} value={`${o.role}|${o.name}`}>{o.name} ({o.role})</option>)}
+-       </select>
+-       <select
+-         className="text-sm border rounded px-2 py-1"
+-         value={roleView}
+-         onChange={e=>setRoleView(e.target.value)}
+-         title="Role view (UI filter)"
+-       >
+-         <option value="full">Full dashboard</option>
+-         <option value="rn">RN view</option>
+-         <option value="md">MD view</option>
+-         <option value="charge">Charge view</option>
+-         <option value="bedmgr">BedMgr view</option>
+-         <option value="reception">Reception view</option>
+-       </select>
+-     </div>
+-   );
+- }
+```
+
+### B) Remove `UserPicker` usage in the header
+
+```diff
+-      <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
+-        <div className="flex items-center gap-4">
+-          <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
+-          <UserPicker />
+-        </div>
+-        <div className="flex items-center gap-2">
++      <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
++        <div className="flex items-center gap-4">
++          <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
++        </div>
++        <div className="flex items-center gap-2">
+           {roleView !== "full" && (
+             <button
+               onClick={()=>setRoleView("full")}
+               className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
+               title="Show all lanes"
+             >
+               Return to Full View
+             </button>
+           )}
+           <Toolbar />
+         </div>
+       </header>
+```
+
+### C) Keep/ensure the **Role View** dropdown lives wherever you placed it (typically near Toolbar). If you don’t have it yet outside `UserPicker`, add this simple control:
+
+```diff
++        <div className="flex items-center gap-2 mr-2">
++          <select
++            className="text-sm border rounded px-2 py-1"
++            value={roleView || "full"}
++            onChange={e=>setRoleView(e.target.value)}
++            title="Role view (UI filter)"
++          >
++            <option value="full">Full dashboard</option>
++            <option value="rn">RN view</option>
++            <option value="md">MD view</option>
++            <option value="charge">Charge view</option>
++            <option value="bedmgr">BedMgr view</option>
++            <option value="reception">Reception view</option>
++          </select>
++        </div>
+```
+
+(If you already have a right‑hand Role View dropdown, leave it as-is; just remove the left one.)
+
+---
+
+## ✅ Acceptance
+
+* The **left** dropdown (individual user picker) is gone.
+* The **right** dropdown (Role View) remains and controls visible lanes.
+* **Return to Full View** button still appears when not in Full view.
+* Audit entries still record an actor: `Demo User` with `role` matching the current Role View.
+
+If you’d like the actor **name** to change automatically with role view (e.g., “Charge Nurse” when viewing Charge), I can add a one‑liner to map names too.
