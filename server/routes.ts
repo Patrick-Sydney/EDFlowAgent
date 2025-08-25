@@ -6,6 +6,7 @@ import {
   updateEncounterSchema, 
   assignRoomSchema, 
   markReadySchema,
+  markResultsCompleteSchema,
   type Encounter,
   type InsertEncounter,
   LANES
@@ -146,6 +147,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(encounter);
     } catch (error) {
       res.status(500).json({ message: "Failed to mark ready" });
+    }
+  });
+
+  // Mark results complete action
+  app.post("/api/actions/results-complete", async (req, res) => {
+    try {
+      const result = markResultsCompleteSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: "Invalid request", errors: result.error.errors });
+      }
+
+      const { id } = result.data;
+      const encounter = await storage.updateEncounter({ 
+        id, 
+        resultsStatus: "complete" 
+      });
+      
+      if (!encounter) {
+        return res.status(404).json({ message: "Encounter not found" });
+      }
+
+      broadcastSSE("encounter:update", encounter);
+      res.json({ message: "Results marked complete", encounter });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to mark results complete" });
     }
   });
 

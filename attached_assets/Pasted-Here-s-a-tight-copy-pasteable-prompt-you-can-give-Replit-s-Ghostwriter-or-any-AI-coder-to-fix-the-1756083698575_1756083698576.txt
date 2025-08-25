@@ -1,0 +1,174 @@
+Here’s a tight, copy‑pasteable prompt you can give Replit’s Ghostwriter (or any AI coder) to fix the action logic so buttons only show where they make clinical sense.
+
+---
+
+# Prompt: Fix action logic by ED state (Triage vs Roomed, etc.)
+
+You are editing the **ED Flow Agent** prototype.
+Update the UI and minimal backend to enforce **clinically correct actions per state**.
+
+## What to change
+
+1. **Card button rules**
+
+   * **Waiting** → show **Assign Room** only.
+   * **Triage** → show **Assign Room** only.
+   * **Roomed** → show **Mark Ready** only.
+   * **Diagnostics** → show **Mark Ready** **only if** results are complete; otherwise hide/disable it.
+   * **Review/Decision** → show **Mark Ready**.
+   * **Ready / Discharged / Admitted** → no actions.
+   * Optional (future): a separate **Reassign Room** action; do **not** show “Assign Room” once already roomed.
+
+2. **Add a simple results flag** so Diagnostics can gate “Mark Ready”.
+
+   * Extend encounter shape with `resultsStatus: "pending" | "complete"` (default `"pending"` when in `diagnostics`).
+   * For demo control, add an endpoint `POST /api/actions/results-complete { id }` that sets `resultsStatus:"complete"` and broadcasts an update.
+   * Seed data: any patient already in Diagnostics should have `resultsStatus:"pending"`.
+
+## Code edits (apply these exact patches)
+
+### A) Backend: `server/index.js`
+
+* Add `resultsStatus` to seeded encounters (only when `state === "diagnostics"`).
+* Add endpoint to flip results complete.
+* No change to existing response shapes.
+
+```diff
+@@
+-const STATES = ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"];
++const STATES = ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"];
+
+@@ function seedData() {
+-  const mk = (overrides={}) => ({
++  const mk = (overrides={}) => ({
+     id: uuid(),
+     patient: { name: overrides.name || "Pat Jones", age: overrides.age || 64, sex: overrides.sex || "F" },
+     nhi: overrides.nhi || "ABC1234",
+     ats: overrides.ats ?? 3,
+     complaint: overrides.complaint || "Chest pain",
+     state: overrides.state || "waiting",
+     room: overrides.room || null,
+     ownerRole: overrides.ownerRole || null,
+     createdAt: now.toISOString(),
+     lastUpdated: now.toISOString(),
+-    timers: { doorToCT: null }
++    timers: { doorToCT: null },
++    resultsStatus: overrides.resultsStatus || (overrides.state === "diagnostics" ? "pending" : null)
+   });
+@@
+-    mk({ name:"Sam R", age:41, sex:"M", ats:4, complaint:"Wrist injury", state:"diagnostics", room:"M2", nhi:"ZZZ9994" }),
++    mk({ name:"Sam R", age:41, sex:"M", ats:4, complaint:"Wrist injury", state:"diagnostics", room:"M2", nhi:"ZZZ9994", resultsStatus:"pending" }),
+@@
+ }
+ 
+@@ // --- REST endpoints ---
+ app.get("/api/encounters", (req, res) => {
+   res.json({ data: encounters });
+ });
+ 
+@@
+ // --- Actions ---
++app.post("/api/actions/results-complete", (req, res) => {
++  const { id } = req.body || {};
++  if (!id) return res.status(400).json({ ok:false, error:"id required" });
++  const out = updateEncounter(id, { resultsStatus: "complete" });
++  if (!out) return res.status(404).json({ ok:false, error:"encounter not found" });
++  return res.json({ ok: true, data: out });
++});
+```
+
+### B) Frontend: `client/src/store.js`
+
+* Add a helper to call `results-complete` (handy for demos).
+
+```diff
+ export const useED = create((set, get) => ({
+@@
+   async assignRoom(id, room) { await api.assignRoom(id, room); },
+   async markReady(id, disposition) { await api.markReady(id, disposition); },
++  async markResultsComplete(id) { await fetch("/api/actions/results-complete",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); },
+   async trigger(name) { await api.scenario(name); }
+ }));
+```
+
+### C) Frontend: `client/src/App.jsx`
+
+* Update **Card** to render buttons based strictly on `enc.state` and, for Diagnostics, on `enc.resultsStatus === "complete"`.
+
+```diff
+ function Card({ enc }) {
+   return (
+     <div className="bg-white rounded-xl shadow p-3 mb-3 border">
+@@
+       <div className="mt-2 flex gap-2">
+-        {enc.state==="waiting" && <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>Assign room</button>}
+-        {["decision","roomed","diagnostics"].includes(enc.state) && <button className="text-xs px-2 py-1 bg-emerald-600 text-white rounded" onClick={()=>window.ready(enc.id)}>Mark ready</button>}
++        {/* Waiting → Assign Room */}
++        {enc.state === "waiting" && (
++          <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
++            Assign Room
++          </button>
++        )}
++        {/* Triage → Assign Room */}
++        {enc.state === "triage" && (
++          <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
++            Assign Room
++          </button>
++        )}
++        {/* Roomed → Mark Ready */}
++        {enc.state === "roomed" && (
++          <button className="text-xs px-2 py-1 bg-emerald-600 text-white rounded" onClick={()=>window.ready(enc.id)}>
++            Mark Ready
++          </button>
++        )}
++        {/* Diagnostics → Mark Ready only when results complete */}
++        {enc.state === "diagnostics" && enc.resultsStatus === "complete" && (
++          <button className="text-xs px-2 py-1 bg-emerald-600 text-white rounded" onClick={()=>window.ready(enc.id)}>
++            Mark Ready
++          </button>
++        )}
++        {/* Decision → Mark Ready */}
++        {enc.state === "decision" && (
++          <button className="text-xs px-2 py-1 bg-emerald-600 text-white rounded" onClick={()=>window.ready(enc.id)}>
++            Mark Ready
++          </button>
++        )}
++        {/* (Optional) Diagnostics helper button for demo: set results complete */}
++        {enc.state === "diagnostics" && enc.resultsStatus !== "complete" && (
++          <button className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded" title="Results pending; click when results are back" onClick={()=>window.results(enc.id)}>
++            Mark Results Complete
++          </button>
++        )}
+       </div>
+     </div>
+   );
+ }
+@@
+ export default function App() {
+-  const { encounters, load } = useED();
++  const { encounters, load } = useED();
+   useEffect(()=>{ load(); }, []);
+ 
+   // Expose quick actions for demo buttons inside cards
+-  const { assignRoom, markReady } = useED();
++  const { assignRoom, markReady, markResultsComplete } = useED();
+   useEffect(()=>{
+     window.assign = (id) => assignRoom(id, "T1");
+     window.ready = (id) => markReady(id, "discharge");
++    window.results = (id) => markResultsComplete(id);
+   }, [assignRoom, markReady]);
+```
+
+## Acceptance criteria
+
+* In **Triage** lane you see **Assign Room** only (no Mark Ready).
+* In **Roomed** lane you see **Mark Ready** only (no Assign Room).
+* In **Diagnostics**, **Mark Ready** appears **only after** clicking **Mark Results Complete** (or when seeded as complete).
+* Other lanes show no actions.
+
+## Run
+
+* Dev: `npm run dev`
+* Single-port: `npm run build && npm start`
+
+After applying, reload the app and verify buttons match the corrected logic in your screenshot lanes.

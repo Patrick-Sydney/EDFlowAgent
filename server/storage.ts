@@ -49,6 +49,7 @@ export class MemStorage implements IStorage {
       room: insertEncounter.room || null,
       provider: insertEncounter.provider || null,
       disposition: insertEncounter.disposition || null,
+      resultsStatus: insertEncounter.resultsStatus || null,
       arrivalTime: now,
       lastUpdated: now,
     };
@@ -162,7 +163,8 @@ export class MemStorage implements IStorage {
         complaint: "Chest pain, rule out MI",
         lane: "diagnostics",
         room: "Room 15",
-        provider: "Dr. Martinez"
+        provider: "Dr. Martinez",
+        resultsStatus: "pending"
       }
     ];
 
@@ -179,6 +181,7 @@ export class MemStorage implements IStorage {
         room: encounter.room || null,
         provider: encounter.provider || null,
         disposition: encounter.disposition || null,
+        resultsStatus: encounter.lane === "diagnostics" ? "pending" : null,
         arrivalTime,
         lastUpdated: arrivalTime,
       };

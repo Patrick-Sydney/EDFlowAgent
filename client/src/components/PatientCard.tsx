@@ -21,6 +21,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
   const [disposition, setDisposition] = useState("");
   const [showRoomDialog, setShowRoomDialog] = useState(false);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
+  const [isMarkingResultsComplete, setIsMarkingResultsComplete] = useState(false);
 
   // Calculate time since arrival
   const getTimeInED = () => {
@@ -117,6 +118,28 @@ export function PatientCard({ encounter }: PatientCardProps) {
     }
   };
 
+  const handleMarkResultsComplete = async () => {
+    setIsMarkingResultsComplete(true);
+    try {
+      await apiRequest('POST', '/api/actions/results-complete', {
+        id: encounter.id
+      });
+      
+      toast({
+        title: "Results Complete",
+        description: "Diagnostic results have been marked complete",
+      });
+    } catch (error) {
+      toast({
+        title: "Error", 
+        description: "Failed to mark results complete",
+        variant: "destructive",
+      });
+    } finally {
+      setIsMarkingResultsComplete(false);
+    }
+  };
+
   const atsColorClass = ATS_COLORS[encounter.ats as keyof typeof ATS_COLORS] || "bg-gray-500";
 
   return (
@@ -175,8 +198,10 @@ export function PatientCard({ encounter }: PatientCardProps) {
         </div>
       )}
 
-      {(encounter.lane === 'triage' || encounter.lane === 'roomed') && (
-        <div className="flex space-x-2">
+      {/* Clinical Action Buttons Based on Lane */}
+      <div className="flex space-x-2">
+        {/* Waiting → Assign Room */}
+        {encounter.lane === "waiting" && (
           <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
             <DialogTrigger asChild>
               <Button 
@@ -224,7 +249,61 @@ export function PatientCard({ encounter }: PatientCardProps) {
               </div>
             </DialogContent>
           </Dialog>
+        )}
 
+        {/* Triage → Assign Room */}
+        {encounter.lane === "triage" && (
+          <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
+            <DialogTrigger asChild>
+              <Button 
+                size="sm" 
+                className="flex-1 bg-medical-blue hover:bg-blue-700 text-white"
+                data-testid={`button-assign-room-${encounter.id}`}
+              >
+                <Bed className="w-3 h-3 mr-1" />
+                Assign Room
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Assign Room - {encounter.name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="room">Room Number</Label>
+                  <Input
+                    id="room"
+                    value={roomNumber}
+                    onChange={(e) => setRoomNumber(e.target.value)}
+                    placeholder="e.g., Room 8"
+                    data-testid="input-room-number"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <Button 
+                    onClick={handleAssignRoom}
+                    disabled={isAssigningRoom}
+                    className="flex-1"
+                    data-testid="button-confirm-assign-room"
+                  >
+                    {isAssigningRoom ? "Assigning..." : "Assign"}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowRoomDialog(false)}
+                    className="flex-1"
+                    data-testid="button-cancel-assign-room"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Roomed → Mark Ready */}
+        {encounter.lane === "roomed" && (
           <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
             <DialogTrigger asChild>
               <Button 
@@ -272,8 +351,126 @@ export function PatientCard({ encounter }: PatientCardProps) {
               </div>
             </DialogContent>
           </Dialog>
-        </div>
-      )}
+        )}
+
+        {/* Diagnostics → Mark Results Complete or Mark Ready if complete */}
+        {encounter.lane === "diagnostics" && (
+          <>
+            {encounter.resultsStatus === "complete" ? (
+              <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
+                <DialogTrigger asChild>
+                  <Button 
+                    size="sm" 
+                    className="flex-1 bg-medical-green hover:bg-green-700 text-white"
+                    data-testid={`button-mark-ready-${encounter.id}`}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Mark Ready
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Mark Ready - {encounter.name}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="disposition">Disposition</Label>
+                      <Input
+                        id="disposition"
+                        value={disposition}
+                        onChange={(e) => setDisposition(e.target.value)}
+                        placeholder="e.g., Discharge home with medications"
+                        data-testid="input-disposition"
+                      />
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button 
+                        onClick={handleMarkReady}
+                        disabled={isMarkingReady}
+                        className="flex-1"
+                        data-testid="button-confirm-mark-ready"
+                      >
+                        {isMarkingReady ? "Processing..." : "Mark Ready"}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setShowReadyDialog(false)}
+                        className="flex-1"
+                        data-testid="button-cancel-mark-ready"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <Button 
+                size="sm" 
+                onClick={handleMarkResultsComplete}
+                disabled={isMarkingResultsComplete}
+                className="flex-1 bg-gray-600 hover:bg-gray-700 text-white"
+                data-testid={`button-mark-results-complete-${encounter.id}`}
+              >
+                {isMarkingResultsComplete ? "Processing..." : "Mark Results Complete"}
+              </Button>
+            )}
+          </>
+        )}
+
+        {/* Review/Decision → Mark Ready */}
+        {encounter.lane === "review" && (
+          <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
+            <DialogTrigger asChild>
+              <Button 
+                size="sm" 
+                className="flex-1 bg-medical-green hover:bg-green-700 text-white"
+                data-testid={`button-mark-ready-${encounter.id}`}
+              >
+                <Check className="w-3 h-3 mr-1" />
+                Mark Ready
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Mark Ready - {encounter.name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="disposition">Disposition</Label>
+                  <Input
+                    id="disposition"
+                    value={disposition}
+                    onChange={(e) => setDisposition(e.target.value)}
+                    placeholder="e.g., Discharge home with medications"
+                    data-testid="input-disposition"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <Button 
+                    onClick={handleMarkReady}
+                    disabled={isMarkingReady}
+                    className="flex-1"
+                    data-testid="button-confirm-mark-ready"
+                  >
+                    {isMarkingReady ? "Processing..." : "Mark Ready"}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowReadyDialog(false)}
+                    className="flex-1"
+                    data-testid="button-cancel-mark-ready"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Ready/Discharged/Admitted → No actions shown */}
+      </div>
     </div>
   );
 }
