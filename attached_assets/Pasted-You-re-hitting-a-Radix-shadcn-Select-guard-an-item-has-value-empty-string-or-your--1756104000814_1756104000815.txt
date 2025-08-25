@@ -1,0 +1,132 @@
+You’re hitting a **Radix/shadcn `<Select>`** guard: an item has `value=""` (empty string) or your `<Select>` is controlled with `value=""`. In shadcn, **empty string is reserved** for “clear to placeholder,” so every `<SelectItem>` must have a **non‑empty value**, and the `<Select>` should use `undefined` (not `""`) when nothing is selected.
+
+Here’s a drop‑in patch you can give your AI coder.
+
+---
+
+# Prompt: Fix Select error in Reception view (Register widget & pickers)
+
+**Goal:** ensure all `<SelectItem>`s have non‑empty `value`, and controlled `<Select>` never receives `""`.
+
+## 1) `client/src/components/RegisterWidget.jsx` (or `.tsx`)
+
+If you’re using shadcn Select, update the Sex and ATS controls:
+
+```diff
+-import { useState } from "react";
++import { useState } from "react";
++import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+```
+
+```diff
+-<label className="text-sm">Sex
+-  <select className="mt-1 w-full border rounded px-2 py-1" value={form.sex} onChange={e=>onChange("sex", e.target.value)}>
+-    <option value="F">F</option>
+-    <option value="M">M</option>
+-  </select>
+-</label>
++<label className="text-sm block">Sex</label>
++<Select
++  value={form.sex || "F"}            // never "", default to F
++  onValueChange={(v)=>onChange("sex", v)}
++>
++  <SelectTrigger className="w-full mt-1">
++    <SelectValue placeholder="Select sex" />
++  </SelectTrigger>
++  <SelectContent>
++    <SelectItem value="F">F</SelectItem>
++    <SelectItem value="M">M</SelectItem>
++  </SelectContent>
++ </Select>
+```
+
+Replace the ATS field if you used a Select (recommended), and **don’t use an empty item** for placeholder:
+
+```diff
+-<label className="text-sm flex items-center gap-2">
+-  ATS:
+-  <input type="number" min="1" max="5" className="w-16 border rounded px-2 py-1"
+-         value={form.ats} onChange={e=>onChange("ats", e.target.value)} />
+-</label>
++<div className="text-sm flex items-center gap-2">
++  <span>ATS:</span>
++  <Select
++    value={form.ats ? String(form.ats) : undefined}   // undefined shows placeholder
++    onValueChange={(v)=>onChange("ats", Number(v))}
++  >
++    <SelectTrigger className="w-24">
++      <SelectValue placeholder="—" />
++    </SelectTrigger>
++    <SelectContent>
++      <SelectItem value="1">1</SelectItem>
++      <SelectItem value="2">2</SelectItem>
++      <SelectItem value="3">3</SelectItem>
++      <SelectItem value="4">4</SelectItem>
++      <SelectItem value="5">5</SelectItem>
++    </SelectContent>
++  </Select>
++</div>
+```
+
+> Note: **Do not** include `<SelectItem value="">…</SelectItem>` in shadcn; use the `<SelectValue placeholder="…"/>` for placeholders and feed `undefined` as the Select’s value when nothing is chosen.
+
+Also, when you build the payload, coerce `ats` safely:
+
+```diff
+ const payload = {
+   ...
+-  ats: form.ats ? Number(form.ats) : undefined
++  ats: (form.ats ?? undefined) ? Number(form.ats) : undefined
+ };
+```
+
+## 2) If you swapped other pickers to shadcn (User/Role pickers)
+
+Wherever you have a shadcn `<Select>` for **User** or **Role View**, make sure:
+
+* Every `<SelectItem>` has a **non‑empty** `value` (e.g., `"rn"`, `"md"`, `"charge"`).
+* The controlled `value` prop is **never `""`**. Use a default (e.g., `"rn"`) or `undefined` to show the placeholder.
+
+Example fix:
+
+```jsx
+<Select value={roleView || "rn"} onValueChange={setRoleView}>
+  <SelectTrigger className="w-40"><SelectValue placeholder="Choose role view" /></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="rn">RN view</SelectItem>
+    <SelectItem value="md">MD view</SelectItem>
+    <SelectItem value="charge">Charge view</SelectItem>
+    <SelectItem value="bedmgr">BedMgr view</SelectItem>
+    <SelectItem value="reception">Reception view</SelectItem>
+  </SelectContent>
+</Select>
+```
+
+If you have a combined value (e.g., `${role}|${name}`), ensure it’s **not empty** and that `value` is set on every `<SelectItem>` accordingly.
+
+## 3) Optional guard (helps avoid regressions)
+
+Create a tiny util:
+
+```ts
+// client/src/utils/select.ts
+export const safeSelectValue = (v?: string | null) =>
+  v === "" || v === null ? undefined : v;
+```
+
+Use like:
+
+```jsx
+<Select value={safeSelectValue(form.ats ? String(form.ats) : undefined)} ... />
+```
+
+---
+
+## Acceptance
+
+* Reception view opens with **no red overlay**.
+* Sex Select renders with **F** preselected (or your chosen default).
+* ATS Select shows **placeholder “—”** until chosen; selecting sets a 1–5 value.
+* No `<SelectItem>` has an empty `value`, and no `<Select>` receives `value=""`.
+
+If you still see the error, paste the component path it references (line number too), and I’ll give you a pinpoint patch for that file.

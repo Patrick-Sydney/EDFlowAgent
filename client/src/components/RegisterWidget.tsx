@@ -54,7 +54,7 @@ export default function RegisterWidget() {
         isolationRequired: form.isolationRequired,
         triageBypass: form.triageBypass,
         provisionalAts: form.provisionalAts,
-        ats: form.ats ? Number(form.ats) : undefined
+        ats: (form.ats && form.ats !== "") ? Number(form.ats) : undefined
       };
 
       await registerPatient(payload);
@@ -122,9 +122,9 @@ export default function RegisterWidget() {
             
             <div>
               <Label htmlFor="sex">Sex</Label>
-              <Select value={form.sex} onValueChange={(value) => onChange("sex", value)}>
+              <Select value={form.sex || "F"} onValueChange={(value) => onChange("sex", value)}>
                 <SelectTrigger data-testid="select-patient-sex">
-                  <SelectValue />
+                  <SelectValue placeholder="Select sex" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="F">Female</SelectItem>
@@ -192,12 +192,14 @@ export default function RegisterWidget() {
             
             <div>
               <Label htmlFor="ats">ATS Score (if provisional)</Label>
-              <Select value={form.ats} onValueChange={(value) => onChange("ats", value)}>
+              <Select 
+                value={form.ats ? String(form.ats) : undefined} 
+                onValueChange={(value) => onChange("ats", value ? Number(value) : "")}
+              >
                 <SelectTrigger data-testid="select-ats-score">
-                  <SelectValue placeholder="Select ATS..." />
+                  <SelectValue placeholder="No ATS" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No ATS</SelectItem>
                   <SelectItem value="1">ATS 1 - Immediate</SelectItem>
                   <SelectItem value="2">ATS 2 - Urgent</SelectItem>
                   <SelectItem value="3">ATS 3 - Standard</SelectItem>
