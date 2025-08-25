@@ -5,6 +5,59 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+function UserRolePicker() {
+  const { user, setUser, roleView, setRoleView } = useDashboardStore();
+  
+  const userOptions = [
+    { name: "Nurse J. Smith", role: "rn" },
+    { name: "Dr. Wilson", role: "md" },
+    { name: "Charge Nurse", role: "charge" },
+    { name: "Bed Manager", role: "bedmgr" },
+    { name: "Reception/Admin", role: "reception" }
+  ];
+
+  const roleViewOptions = [
+    { value: "rn", label: "RN view" },
+    { value: "md", label: "MD view" },
+    { value: "charge", label: "Charge view" },
+    { value: "bedmgr", label: "BedMgr view" },
+    { value: "reception", label: "Reception view" }
+  ];
+
+  return (
+    <div className="flex items-center space-x-3">
+      <select
+        className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
+        value={`${user.role}|${user.name}`}
+        onChange={(e) => {
+          const [role, ...rest] = e.target.value.split("|");
+          const name = rest.join("|");
+          setUser({ name, role });
+        }}
+      >
+        {userOptions.map(option => (
+          <option key={option.role} value={`${option.role}|${option.name}`}>
+            {option.name} ({option.role})
+          </option>
+        ))}
+      </select>
+      
+      <select
+        className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
+        value={roleView}
+        onChange={(e) => setRoleView(e.target.value)}
+        title="Role view (UI filter)"
+      >
+        {roleViewOptions.map(option => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function Header() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const isConnected = useDashboardStore((state) => state.isConnected);
@@ -65,6 +118,11 @@ export function Header() {
               <h1 className="text-xl font-bold text-gray-900">ED Flow Agent</h1>
               <p className="text-sm text-gray-600">Emergency Department Patient Flow Dashboard</p>
             </div>
+          </div>
+
+          {/* User and Role Selection */}
+          <div className="flex items-center space-x-4">
+            <UserRolePicker />
           </div>
 
           {/* Real-time Status */}

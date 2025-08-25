@@ -1,0 +1,361 @@
+Absolutely — let’s put in a **lightweight role system** and ship the **first widget: Register incoming patients** (Reception/Admin view). We’ll create real objects and (optionally) FHIR‑shaped stubs so you’re ready for later integration. Then we’ll be set up to add the **Triage widget for the Waiting lane** next.
+
+Below is a copy‑pasteable **Replit patch prompt**.
+
+---
+
+# Prompt: Add roles + “Register Patient” widget (Reception/Admin)
+
+Apply these edits to the ED Flow Agent repo.
+
+## 1) Backend – `server/index.js`
+
+Add a **register** endpoint that creates a new Patient/Encounter (state=`waiting`) and emits SSE. Include optional FHIR stubs.
+
+```diff
+@@
+ const STATES = ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"];
+@@
+ // --- REST endpoints ---
+ app.get("/api/encounters", (req, res) => {
+   res.json({ data: encounters });
+ });
+ 
++// Register a new incoming patient (Reception/Admin)
++// Body: { name, age, sex, complaint, arrivalTime?, nhi?, isolationRequired?, triageBypass?, provisionalAts? }
++app.post("/api/register", (req, res) => {
++  const b = req.body || {};
++  const required = ["name","age","sex","complaint"];
++  const missing = required.filter(k => b[k] === undefined || b[k] === null || b[k] === "");
++  if (missing.length) return res.status(400).json({ ok:false, error:`Missing fields: ${missing.join(", ")}` });
++  const now = dayjs();
++  const e = {
++    id: uuid(),
++    patient: { name: String(b.name), age: Number(b.age), sex: b.sex === "F" ? "F" : "M" },
++    nhi: b.nhi || `NEW${Math.floor(Math.random()*9000+1000)}`,
++    ats: null, // not triaged yet
++    complaint: String(b.complaint),
++    state: "waiting",
++    room: null,
++    ownerRole: null,
++    createdAt: (b.arrivalTime && dayjs(b.arrivalTime).isValid() ? dayjs(b.arrivalTime) : now).toISOString(),
++    lastUpdated: now.toISOString(),
++    timers: { doorToCT: null },
++    resultsStatus: null,
++    triageBypass: !!b.triageBypass,
++    isolationRequired: !!b.isolationRequired,
++    provisionalAts: !!b.provisionalAts && Number.isInteger(b.ats) ? true : false
++  };
++  if (b.ats && [1,2,3,4,5].includes(Number(b.ats))) {
++    e.ats = Number(b.ats);
++  }
++  encounters.unshift(e);
++  broadcast("encounter:new", e);
++  res.json({ ok:true, data:e });
++});
++
++// (Optional) Minimal FHIR stubs for demo (maps latest object to FHIR shape)
++app.get("/fhir/Patient/:encounterId", (req,res)=>{
++  const enc = encounters.find(x=>x.id===req.params.encounterId);
++  if (!enc) return res.status(404).json({ resourceType:"OperationOutcome", issue:[{severity:"error",code:"not-found"}]});
++  const [given, ...family] = (enc.patient.name || "Unknown Person").split(" ");
++  res.json({
++    resourceType: "Patient",
++    id: enc.id,
++    identifier: [{ system: "https://health.govt.nz/nhi", value: enc.nhi }],
++    name: [{ use:"official", given:[given], family: family.join(" ") }],
++    gender: enc.patient.sex === "F" ? "female" : "male",
++    birthDate: null // unknown in demo
++  });
++});
++app.get("/fhir/Encounter/:encounterId", (req,res)=>{
++  const enc = encounters.find(x=>x.id===req.params.encounterId);
++  if (!enc) return res.status(404).json({ resourceType:"OperationOutcome", issue:[{severity:"error",code:"not-found"}]});
++  res.json({
++    resourceType:"Encounter",
++    id: enc.id,
++    status: enc.state === "discharged" ? "finished" : "in-progress",
++    class: { code:"EMER", display:"Emergency" },
++    subject: { reference: `Patient/${enc.id}` },
++    period: { start: enc.createdAt, end: enc.state==="discharged"? enc.lastUpdated : undefined },
++    extension: [
++      { url:"ats", valueInteger: enc.ats ?? null },
++      { url:"provisionalAts", valueBoolean: !!enc.provisionalAts }
++    ]
++  });
++});
+```
+
+---
+
+## 2) Frontend store – `client/src/store.js`
+
+Add a **role** and a **register** action. (We’ll reuse your existing `user` object; add `roleView` for the UI filter if you like.)
+
+```diff
+ export const useED = create((set, get) => ({
+   encounters: [],
+   loading: false,
+   user: { name: "Dr. Wilson", role: "md" }, // simple demo user
++  roleView: "rn", // which role view is active in UI (rn|md|charge|bedmgr|reception)
+   setUser(u){ set({ user: u }); },
++  setRoleView(r){ set({ roleView: r }); },
+@@
+   async trigger(name) { await api.scenario(name); }
+ }));
++
++// Add to api object near the top:
++// register: async (payload) => (await fetch("/api/register",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).json(),
+```
+
+Make sure `api` includes:
+
+```js
+register: async (payload) =>
+  (await fetch("/api/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })).json(),
+```
+
+And add method to the store:
+
+```diff
+ export const useED = create((set, get) => ({
+@@
++  async register(payload) { await api.register(payload); },
+```
+
+---
+
+## 3) Frontend UI – role selector + Reception widget
+
+### 3.1 Add/extend the role picker (header)
+
+In `client/src/App.jsx`, adjust the picker to choose **view role**, including **Reception**.
+
+```diff
+ function UserPicker() {
+-  const { user, setUser } = useED();
++  const { user, setUser, roleView, setRoleView } = useED();
+   const opts = [
+     { name:"Nurse J. Smith", role:"rn" },
+     { name:"Dr. Wilson", role:"md" },
+     { name:"Charge Nurse", role:"charge" },
+-    { name:"Bed Manager", role:"bedmgr" }
++    { name:"Bed Manager", role:"bedmgr" },
++    { name:"Reception/Admin", role:"reception" }
+   ];
+   return (
+     <div className="flex items-center gap-2">
+       <select
+         className="text-sm border rounded px-2 py-1"
+         value={`${user.role}|${user.name}`}
+         onChange={e=>{
+           const [role, ...rest] = e.target.value.split("|");
+           const name = rest.join("|");
+           setUser({ name, role });
+         }}>
+         {opts.map(o => <option key={o.role} value={`${o.role}|${o.name}`}>{o.name} ({o.role})</option>)}
+       </select>
++      <select
++        className="text-sm border rounded px-2 py-1"
++        value={roleView}
++        onChange={e=>setRoleView(e.target.value)}
++        title="Role view (UI filter)"
++      >
++        <option value="rn">RN view</option>
++        <option value="md">MD view</option>
++        <option value="charge">Charge view</option>
++        <option value="bedmgr">BedMgr view</option>
++        <option value="reception">Reception view</option>
++      </select>
+     </div>
+   );
+ }
+```
+
+### 3.2 Gate lanes by role view
+
+Still in `App.jsx`, when rendering lanes, filter by `roleView`.
+
+```diff
+ const byLane = useMemo(() => {
+   const g = Object.fromEntries(LANES.map(l => [l.key, []]));
+   for (const e of encounters) g[e.state]?.push(e);
+   return g;
+ }, [encounters]);
+ 
++const roleToLanes = {
++  rn: ["waiting","triage","roomed"],
++  md: ["roomed","diagnostics","decision"],
++  charge: ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"],
++  bedmgr: ["ready","admitted"],
++  reception: ["waiting","triage"]
++};
++const visible = roleToLanes[useED.getState().roleView] || LANES.map(l=>l.key);
++
+ return (
+   <div className="min-h-screen bg-gray-100">
+@@
+     <main className="overflow-x-auto flex gap-4 p-4">
+-      {LANES.map(l => <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />)}
++      {LANES.filter(l=>visible.includes(l.key)).map(l => (
++        <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />
++      ))}
+     </main>
+   </div>
+ );
+```
+
+### 3.3 Reception/Admin – **Register Patient** widget
+
+Create `client/src/components/RegisterWidget.jsx`:
+
+```jsx
+import { useState } from "react";
+import { useED } from "../store";
+
+export default function RegisterWidget() {
+  const { register } = useED();
+  const [form, setForm] = useState({
+    name: "",
+    age: "",
+    sex: "F",
+    complaint: "",
+    nhi: "",
+    isolationRequired: false,
+    triageBypass: false,
+    provisionalAts: false,
+    ats: ""
+  });
+
+  const onChange = (k, v) => setForm(s => ({ ...s, [k]: v }));
+  const submit = async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: form.name,
+      age: Number(form.age),
+      sex: form.sex,
+      complaint: form.complaint,
+      nhi: form.nhi || undefined,
+      isolationRequired: !!form.isolationRequired,
+      triageBypass: !!form.triageBypass,
+      provisionalAts: !!form.provisionalAts,
+      ats: form.ats ? Number(form.ats) : undefined
+    };
+    const res = await register(payload);
+    if (res?.ok) {
+      // clear minimal fields, keep flags for speed if you like
+      setForm({ ...form, name:"", age:"", complaint:"", nhi:"", ats:"" });
+    } else {
+      alert(res?.error || "Registration failed");
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="bg-white border rounded-2xl p-4 shadow w-full max-w-xl">
+      <h3 className="font-semibold mb-3">Register incoming patient</h3>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-sm">Name
+          <input className="mt-1 w-full border rounded px-2 py-1" value={form.name} onChange={e=>onChange("name", e.target.value)} required />
+        </label>
+        <label className="text-sm">Age
+          <input type="number" min="0" className="mt-1 w-full border rounded px-2 py-1" value={form.age} onChange={e=>onChange("age", e.target.value)} required />
+        </label>
+        <label className="text-sm">Sex
+          <select className="mt-1 w-full border rounded px-2 py-1" value={form.sex} onChange={e=>onChange("sex", e.target.value)}>
+            <option value="F">F</option>
+            <option value="M">M</option>
+          </select>
+        </label>
+        <label className="text-sm">NHI (optional)
+          <input className="mt-1 w-full border rounded px-2 py-1" value={form.nhi} onChange={e=>onChange("nhi", e.target.value)} />
+        </label>
+        <label className="col-span-2 text-sm">Presenting Complaint
+          <input className="mt-1 w-full border rounded px-2 py-1" value={form.complaint} onChange={e=>onChange("complaint", e.target.value)} required />
+        </label>
+        <div className="col-span-2 flex gap-4 items-center">
+          <label className="text-sm flex items-center gap-2">
+            <input type="checkbox" checked={form.isolationRequired} onChange={e=>onChange("isolationRequired", e.target.checked)} />
+            Isolation required
+          </label>
+          <label className="text-sm flex items-center gap-2">
+            <input type="checkbox" checked={form.triageBypass} onChange={e=>onChange("triageBypass", e.target.checked)} />
+            Triage bypass (critical)
+          </label>
+          <label className="text-sm flex items-center gap-2">
+            <input type="checkbox" checked={form.provisionalAts} onChange={e=>onChange("provisionalAts", e.target.checked)} />
+            Provisional ATS from ambulance
+          </label>
+          <label className="text-sm flex items-center gap-2">
+            ATS:
+            <input type="number" min="1" max="5" className="w-16 border rounded px-2 py-1" value={form.ats} onChange={e=>onChange("ats", e.target.value)} />
+          </label>
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button className="px-3 py-2 bg-blue-600 text-white rounded-lg" type="submit">Register</button>
+      </div>
+    </form>
+  );
+}
+```
+
+### 3.4 Place the widget when **Reception** view is selected
+
+In `client/src/App.jsx`, import & render above the lanes when `roleView === 'reception'`.
+
+```diff
++import RegisterWidget from "./components/RegisterWidget.jsx";
+@@
+ export default function App() {
+-  const { encounters, load } = useED();
++  const { encounters, load, roleView } = useED();
+@@
+   return (
+     <div className="min-h-screen bg-gray-100">
+@@
+       <main className="overflow-x-auto flex flex-col gap-4 p-4">
++        {roleView === "reception" && (
++          <div className="w-full flex justify-start">
++            <RegisterWidget />
++          </div>
++        )}
+         <div className="flex gap-4">
+           {LANES.filter(l=>visible.includes(l.key)).map(l => (
+             <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />
+           ))}
+         </div>
+       </main>
+     </div>
+   );
+ }
+```
+
+---
+
+## ✅ Acceptance (what you should see)
+
+* Switch **Role view** to **Reception view** (dropdown in header).
+* A **Register incoming patient** form appears.
+* Submitting creates a new **Waiting** encounter (SSE updates board live).
+* Optional flags:
+
+  * **Isolation required** → card shows flag (you can add a small badge later).
+  * **Triage bypass / Provisional ATS** → Waiting card shows **Assign Room** (per your earlier logic) with **ATS n (prov.)** badge.
+* FHIR stubs: `GET /fhir/Patient/:encounterId` and `/fhir/Encounter/:encounterId` return demo resources.
+
+---
+
+## Next up: **Triage widget** for Waiting → Triage
+
+When you’re ready, we’ll add a **Triage pane** that opens from a Waiting card (or shows in the Triage lane) to:
+
+* Record vitals (HR, BP, RR, SpO₂, Temp), pain score.
+* Assign **ATS 1–5** (writes audited set‑ATS).
+* Capture quick risk flags (sepsis prompt if temp+HR+RR; stroke FAST if neuro complaint).
+* Move to **Triage** (Start Triage) → **Assign Room**.
+
+Say the word and I’ll send the next patch prompt for the **Triage widget**.

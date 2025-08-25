@@ -66,6 +66,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Register a new incoming patient (Reception/Admin)
+  app.post("/api/register", async (req, res) => {
+    try {
+      const body = req.body || {};
+      const required = ["name", "age", "sex", "complaint"];
+      const missing = required.filter(k => body[k] === undefined || body[k] === null || body[k] === "");
+      
+      if (missing.length) {
+        return res.status(400).json({ 
+          message: `Missing required fields: ${missing.join(", ")}` 
+        });
+      }
+
+      const encounter: InsertEncounter = {
+        name: String(body.name),
+        age: Number(body.age),
+        sex: body.sex === "F" ? "F" : "M",
+        nhi: body.nhi || `NEW${Math.floor(Math.random() * 9000 + 1000)}`,
+        ats: body.ats && [1, 2, 3, 4, 5].includes(Number(body.ats)) ? Number(body.ats) : null,
+        complaint: String(body.complaint),
+        lane: "waiting",
+        triageBypass: body.triageBypass ? "true" : "false",
+        isolationRequired: body.isolationRequired ? "true" : "false",
+        provisionalAts: (body.provisionalAts && body.ats) ? "true" : "false"
+      };
+
+      const newEncounter = await storage.createEncounter(encounter);
+      broadcastSSE("encounter:new", newEncounter);
+      
+      res.json({ 
+        message: "Patient registered successfully", 
+        encounter: newEncounter 
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to register patient" });
+    }
+  });
+
   // Get encounters by lane
   app.get("/api/encounters/lane/:lane", async (req, res) => {
     try {

@@ -6,9 +6,10 @@ import { PatientLane } from "@/components/PatientLane";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { sseManager } from "@/lib/sse";
 import { type Encounter, LANES } from "@shared/schema";
+import RegisterWidget from "@/components/RegisterWidget";
 
 export default function Dashboard() {
-  const { encounters, setEncounters, setDemoMode } = useDashboardStore();
+  const { encounters, setEncounters, setDemoMode, roleView } = useDashboardStore();
 
   // Fetch initial encounters and config
   const { data, isLoading, error } = useQuery<Encounter[]>({
@@ -43,6 +44,18 @@ export default function Dashboard() {
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
 
+  // Role-based lane filtering
+  const roleToLanes: Record<string, string[]> = {
+    rn: ["waiting", "triage", "roomed"],
+    md: ["roomed", "diagnostics", "review"],
+    charge: ["waiting", "triage", "roomed", "diagnostics", "review", "ready", "discharged"],
+    bedmgr: ["ready", "discharged"],
+    reception: ["waiting", "triage"]
+  };
+
+  const visibleLanes = roleToLanes[roleView] || LANES.map(l => l.key);
+  const filteredLanes = LANES.filter(lane => visibleLanes.includes(lane.key));
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -72,11 +85,18 @@ export default function Dashboard() {
       <main className="p-6">
         <StatsBar />
         
+        {/* Registration Widget for Reception View */}
+        {roleView === "reception" && (
+          <div className="mb-6 flex justify-start">
+            <RegisterWidget />
+          </div>
+        )}
+        
         {/* Patient Flow Lanes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div className="overflow-x-auto">
             <div className="flex space-x-6 pb-4" style={{ minWidth: '1960px' }}>
-              {LANES.map(lane => (
+              {filteredLanes.map(lane => (
                 <PatientLane
                   key={lane}
                   lane={lane}

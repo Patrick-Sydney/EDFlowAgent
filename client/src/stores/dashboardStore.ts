@@ -7,6 +7,8 @@ interface DashboardState {
   isConnected: boolean;
   lastUpdate: Date | null;
   demoMode: boolean;
+  user: { name: string; role: string };
+  roleView: string;
   
   // Actions
   setEncounters: (encounters: Encounter[]) => void;
@@ -14,7 +16,10 @@ interface DashboardState {
   updateEncounter: (encounter: Encounter) => void;
   setConnectionStatus: (connected: boolean) => void;
   setDemoMode: (demoMode: boolean) => void;
+  setUser: (user: { name: string; role: string }) => void;
+  setRoleView: (roleView: string) => void;
   resetDemo: () => Promise<void>;
+  registerPatient: (payload: any) => Promise<void>;
   
   // Selectors
   getEncountersByLane: (lane: Lane) => Encounter[];
@@ -35,6 +40,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   isConnected: false,
   lastUpdate: null,
   demoMode: false,
+  user: { name: "Dr. Wilson", role: "md" },
+  roleView: "rn",
 
   setEncounters: (encounters) => {
     const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
@@ -69,6 +76,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   setDemoMode: (demoMode) => set({ demoMode }),
 
+  setUser: (user) => set({ user }),
+
+  setRoleView: (roleView) => set({ roleView }),
+
   resetDemo: async () => {
     try {
       const response = await apiRequest('POST', '/api/demo/reset');
@@ -79,6 +90,19 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to reset demo:', error);
+    }
+  },
+
+  registerPatient: async (payload) => {
+    try {
+      const response = await apiRequest('POST', '/api/register', payload);
+      if (response) {
+        // Patient will be added via SSE, but we could also add it directly
+        console.log('Patient registered:', response.encounter?.id);
+      }
+    } catch (error) {
+      console.error('Failed to register patient:', error);
+      throw error;
     }
   },
 
