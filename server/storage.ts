@@ -45,6 +45,10 @@ export class MemStorage implements IStorage {
     const encounter: Encounter = {
       ...insertEncounter,
       id,
+      lane: insertEncounter.lane || "waiting", // Provide default value
+      room: insertEncounter.room || null,
+      provider: insertEncounter.provider || null,
+      disposition: insertEncounter.disposition || null,
       arrivalTime: now,
       lastUpdated: now,
     };
@@ -171,6 +175,10 @@ export class MemStorage implements IStorage {
       const fullEncounter: Encounter = {
         ...encounter,
         id,
+        lane: encounter.lane || "waiting", // Provide default value
+        room: encounter.room || null,
+        provider: encounter.provider || null,
+        disposition: encounter.disposition || null,
         arrivalTime,
         lastUpdated: arrivalTime,
       };

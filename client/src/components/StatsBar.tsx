@@ -1,7 +1,29 @@
+import { useMemo } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 
 export function StatsBar() {
-  const stats = useDashboardStore((state) => state.getStats());
+  const encounters = useDashboardStore((state) => state.encounters);
+  
+  const stats = useMemo(() => {
+    const statsObj = {
+      waiting: 0,
+      triage: 0, 
+      roomed: 0,
+      diagnostics: 0,
+      review: 0,
+      ready: 0,
+      discharged: 0,
+      total: encounters.length
+    };
+
+    encounters.forEach(encounter => {
+      if (encounter.lane in statsObj) {
+        statsObj[encounter.lane as keyof typeof statsObj]++;
+      }
+    });
+
+    return statsObj;
+  }, [encounters]);
 
   const statItems = [
     { label: "Waiting", value: stats.waiting, color: "text-medical-blue" },
