@@ -8,6 +8,7 @@ import {
   markReadySchema,
   markResultsCompleteSchema,
   startTriageSchema,
+  setAtsSchema,
   type Encounter,
   type InsertEncounter,
   LANES
@@ -208,6 +209,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Triage started", encounter });
     } catch (error) {
       res.status(500).json({ message: "Failed to start triage" });
+    }
+  });
+
+  // Set ATS action
+  app.post("/api/actions/set-ats", async (req, res) => {
+    try {
+      const result = setAtsSchema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: "Invalid request", errors: result.error.errors });
+      }
+
+      const { id, ats } = result.data;
+      const encounter = await storage.updateEncounter({ 
+        id, 
+        ats 
+      });
+      
+      if (!encounter) {
+        return res.status(404).json({ message: "Encounter not found" });
+      }
+
+      broadcastSSE("encounter:update", encounter);
+      res.json({ message: "ATS updated", encounter });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to set ATS" });
     }
   });
 

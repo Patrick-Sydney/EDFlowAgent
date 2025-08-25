@@ -1,0 +1,167 @@
+Good spot. Let’s make ATS visible on every card and add a simple way to set/change it during triage.
+
+Below is a copy‑pasteable prompt for your AI coder in Replit to (1) render an **ATS badge** on cards and (2) add a minimal **Set ATS** action for triage (with server validation).
+
+---
+
+# Prompt: Show ATS on cards + Set ATS during triage
+
+Update the **ED Flow Agent** so ATS (Australasian Triage Scale 1–5) is clearly displayed and editable during triage.
+
+## Changes to make
+
+### A) Backend — `server/index.js`
+
+1. Add a **Set ATS** endpoint with validation (1–5).
+2. Seed already includes `ats`; keep default of 3.
+
+```diff
+@@
+ app.get("/api/encounters", (req, res) => {
+   res.json({ data: encounters });
+ });
+ 
++// Set ATS (1–5)
++app.post("/api/actions/set-ats", (req, res) => {
++  const { id, ats } = req.body || {};
++  if (!id) return res.status(400).json({ ok:false, error:"id required" });
++  const n = Number(ats);
++  if (![1,2,3,4,5].includes(n)) {
++    return res.status(400).json({ ok:false, error:"ats must be 1..5" });
++  }
++  const out = updateEncounter(id, { ats: n });
++  if (!out) return res.status(404).json({ ok:false, error:"encounter not found" });
++  return res.json({ ok:true, data: out });
++});
+```
+
+---
+
+### B) Frontend store — `client/src/store.js`
+
+Add a `setAts` action that calls the new endpoint.
+
+```diff
+ const api = {
+   list: async () => (await fetch("/api/encounters")).json(),
+   startTriage: async (id) => (await fetch("/api/actions/start-triage",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})).json(),
+   assignRoom: async (id, room) => (await fetch("/api/actions/assign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
+   markReady: async (id, disposition) => (await fetch("/api/actions/mark-ready",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,disposition})})).json(),
+   scenario: async (name) => (await fetch(`/api/scenario/${name}`,{method:"POST"})).json(),
+   reassignRoom: async (id, room) => (await fetch("/api/actions/reassign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
++  setAts: async (id, ats) => (await fetch("/api/actions/set-ats",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,ats})})).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+@@
+   async markResultsComplete(id) { await fetch("/api/actions/results-complete",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); },
+   async reassignRoom(id, room) { await api.reassignRoom(id, room); },
++  async setAts(id, ats) { await api.setAts(id, ats); },
+   async trigger(name) { await api.scenario(name); }
+ }));
+```
+
+---
+
+### C) Frontend UI — `client/src/App.jsx`
+
+1. Render an **ATS badge** on every card with color mapping.
+2. Provide a simple **Set ATS** control in **Waiting** and **Triage** cards (for the prototype, use `window.prompt` to keep UI light).
+
+```diff
+ function Card({ enc }) {
++  const atsColor =
++    enc.ats <= 2 ? "bg-red-100 text-red-700" :
++    enc.ats === 3 ? "bg-amber-100 text-amber-700" :
++    "bg-emerald-100 text-emerald-700";
++
+   return (
+     <div className="bg-white rounded-xl shadow p-3 mb-3 border">
+       <div className="flex items-center justify-between">
+-        <div className="font-semibold">{enc.patient.name} <span className="text-xs text-gray-500">({enc.patient.age}/{enc.patient.sex})</span></div>
+-        <span className={`text-xs px-2 py-0.5 rounded-full ${enc.ats<=2?'bg-red-100 text-red-700': enc.ats===3?'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700'}`}>
+-          ATS {enc.ats}
+-        </span>
++        <div className="font-semibold">
++          {enc.patient.name} <span className="text-xs text-gray-500">({enc.patient.age}/{enc.patient.sex})</span>
++        </div>
++        <span className={`text-xs px-2 py-0.5 rounded-full ${atsColor}`}>ATS {enc.ats ?? "—"}</span>
+       </div>
+       <div className="text-sm text-gray-600">{enc.complaint}</div>
+       <div className="mt-2 text-xs text-gray-500 flex gap-3">
+         <span>NHI: {enc.nhi}</span>
+         <span>Room: {enc.room || '—'}</span>
+       </div>
+       <div className="mt-2 flex gap-2">
++        {/* Waiting/Triage → Set ATS helper (prototype) */}
++        {(enc.state === "waiting" || enc.state === "triage") && (
++          <button
++            className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded border"
++            onClick={()=>window.setAts(enc.id)}
++            title="Set ATS (1–5)"
++          >
++            Set ATS
++          </button>
++        )}
+         {/* Waiting → Start Triage by default */}
+         {enc.state === "waiting" && !((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
+           <button className="text-xs px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>window.triage(enc.id)}>
+             Start Triage
+           </button>
+         )}
+@@
+         {/* Roomed → Mark Ready */}
+         {enc.state === "roomed" && (
+           <>
+             <button className="text-xs px-2 py-1 bg-emerald-600 text-white rounded" onClick={()=>window.ready(enc.id)}>
+               Mark Ready
+             </button>
+             <button className="text-xs px-2 py-1 bg-orange-600 text-white rounded" onClick={()=>window.reassign(enc.id)}>
+               Reassign Room
+             </button>
+           </>
+         )}
+@@
+       </div>
+     </div>
+   );
+ }
+ 
+ export default function App() {
+-  const { encounters, load } = useED();
++  const { encounters, load } = useED();
+   useEffect(()=>{ load(); }, []);
+ 
+   // Expose quick actions for demo buttons inside cards
+-  const { startTriage, assignRoom, markReady, markResultsComplete, reassignRoom } = useED();
++  const { startTriage, assignRoom, markReady, markResultsComplete, reassignRoom, setAts } = useED();
+   useEffect(()=>{
+     fetch("/api/config").then(r=>r.json()).then(cfg => { window.__siteConfig = cfg });
+     window.assign = (id) => assignRoom(id, "T1");
+     window.triage = (id) => startTriage(id);
+     window.ready = (id) => markReady(id, "discharge");
+     window.results = (id) => markResultsComplete(id);
+     window.reassign = (id) => reassignRoom(id);
++    window.setAts = (id) => {
++      const v = prompt("Enter ATS (1–5):","");
++      const n = Number(v);
++      if ([1,2,3,4,5].includes(n)) setAts(id, n);
++      else alert("ATS must be 1–5");
++    };
+   }, [assignRoom, markReady, markResultsComplete, reassignRoom, setAts]);
+```
+
+---
+
+## Acceptance
+
+* Every card shows an **ATS badge** with appropriate color (1–2 red, 3 amber, 4–5 green).
+* In **Waiting** and **Triage**, a **Set ATS** button appears; entering 1–5 updates instantly.
+* Server validates ATS (1–5). Invalid input returns an error.
+
+Run:
+
+* Dev: `npm run dev`
+* Single port: `npm run build && npm start`
+
+If you want a nicer UI (dropdown instead of `prompt()`), say the word and I’ll add a tiny popover component next.

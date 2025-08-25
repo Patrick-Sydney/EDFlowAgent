@@ -80,7 +80,13 @@ export const startTriageSchema = z.object({
   id: z.string(),
 });
 
+export const setAtsSchema = z.object({
+  id: z.string(),
+  ats: z.number().int().min(1).max(5),
+});
+
 export type AssignRoomRequest = z.infer<typeof assignRoomSchema>;
 export type MarkReadyRequest = z.infer<typeof markReadySchema>;
 export type MarkResultsCompleteRequest = z.infer<typeof markResultsCompleteSchema>;
 export type StartTriageRequest = z.infer<typeof startTriageSchema>;
+export type SetAtsRequest = z.infer<typeof setAtsSchema>;

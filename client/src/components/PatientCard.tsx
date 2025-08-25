@@ -24,6 +24,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
   const [isMarkingResultsComplete, setIsMarkingResultsComplete] = useState(false);
   const [isStartingTriage, setIsStartingTriage] = useState(false);
   const [siteConfig, setSiteConfig] = useState<any>(null);
+  const [isSettingAts, setIsSettingAts] = useState(false);
 
   // Calculate time since arrival
   const getTimeInED = () => {
@@ -164,6 +165,42 @@ export function PatientCard({ encounter }: PatientCardProps) {
     }
   };
 
+  const handleSetAts = async () => {
+    const atsValue = prompt("Enter ATS (1-5):", encounter.ats?.toString() || "3");
+    if (!atsValue) return;
+    
+    const ats = Number(atsValue);
+    if (![1, 2, 3, 4, 5].includes(ats)) {
+      toast({
+        title: "Invalid ATS",
+        description: "ATS must be between 1 and 5",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSettingAts(true);
+    try {
+      await apiRequest('POST', '/api/actions/set-ats', {
+        id: encounter.id,
+        ats
+      });
+      
+      toast({
+        title: "ATS Updated",
+        description: `ATS set to ${ats}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error", 
+        description: "Failed to set ATS",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSettingAts(false);
+    }
+  };
+
   // Fetch site configuration on component mount
   useEffect(() => {
     const fetchConfig = async () => {
@@ -179,6 +216,14 @@ export function PatientCard({ encounter }: PatientCardProps) {
   }, []);
 
   const atsColorClass = ATS_COLORS[encounter.ats as keyof typeof ATS_COLORS] || "bg-gray-500";
+  
+  const getAtsColor = () => {
+    return encounter.ats <= 2 
+      ? "bg-red-100 text-red-700 border-red-200" 
+      : encounter.ats === 3 
+      ? "bg-amber-100 text-amber-700 border-amber-200"
+      : "bg-emerald-100 text-emerald-700 border-emerald-200";
+  };
 
   return (
     <div className="patient-card bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all duration-200" data-testid={`card-patient-${encounter.id}`}>
@@ -192,12 +237,12 @@ export function PatientCard({ encounter }: PatientCardProps) {
         </div>
         <div className="text-right">
           <div className="text-xs font-medium text-gray-900" data-testid={`text-nhi-${encounter.id}`}>{encounter.nhi}</div>
-          <Badge 
-            className={`text-xs font-medium ${atsColorClass} text-white`}
+          <span 
+            className={`text-xs px-2 py-1 rounded-full border font-medium ${getAtsColor()}`}
             data-testid={`badge-ats-${encounter.id}`}
           >
-            ATS {encounter.ats}
-          </Badge>
+            ATS {encounter.ats || "—"}
+          </span>
         </div>
       </div>
       
@@ -238,6 +283,20 @@ export function PatientCard({ encounter }: PatientCardProps) {
 
       {/* Clinical Action Buttons Based on Lane */}
       <div className="flex space-x-2">
+        {/* Set ATS for Waiting/Triage patients */}
+        {(encounter.lane === "waiting" || encounter.lane === "triage") && (
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={handleSetAts}
+            disabled={isSettingAts}
+            className="text-xs"
+            data-testid={`button-set-ats-${encounter.id}`}
+          >
+            {isSettingAts ? "Setting..." : "Set ATS"}
+          </Button>
+        )}
+
         {/* Waiting → Start Triage (default) */}
         {encounter.lane === "waiting" && 
          !((encounter.triageBypass === "true" || encounter.isolationRequired === "true") || siteConfig?.triageInRoom) && (
