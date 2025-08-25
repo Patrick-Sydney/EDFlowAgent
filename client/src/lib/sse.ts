@@ -24,12 +24,14 @@ export class SSEManager {
       });
 
       this.eventSource.addEventListener('encounter:new', (event) => {
-        const encounter: Encounter = JSON.parse(event.data);
+        const encounterRaw = JSON.parse(event.data);
+        const encounter = { ...encounterRaw, lane: encounterRaw.lane ?? encounterRaw.state ?? "waiting" };
         useDashboardStore.getState().addEncounter(encounter);
       });
 
       this.eventSource.addEventListener('encounter:update', (event) => {
-        const encounter: Encounter = JSON.parse(event.data);
+        const encounterRaw = JSON.parse(event.data);
+        const encounter = { ...encounterRaw, lane: encounterRaw.lane ?? encounterRaw.state ?? "waiting" };
         useDashboardStore.getState().updateEncounter(encounter);
       });
 
@@ -37,8 +39,10 @@ export class SSEManager {
         try {
           console.log("Demo reset event received, reloading encounters");
           const response = await fetch('/api/encounters');
-          const encounters = await response.json();
-          useDashboardStore.getState().setEncounters(encounters);
+          const data = await response.json();
+          const list = Array.isArray(data) ? data : Object.values(data ?? {});
+          const norm = list.map((e: any) => ({ ...e, lane: e.lane ?? e.state ?? "waiting" }));
+          useDashboardStore.getState().setEncounters(norm);
         } catch (error) {
           console.error("Failed to reload encounters after demo reset:", error);
         }

@@ -1,0 +1,122 @@
+Good catch—this usually happens because after **Reset Demo** your frontend is treating `encounters` like an **array**, but it’s actually an **object** (or `undefined`) for a moment. Hence: `encounters.filter is not a function`.
+
+Here’s a tight patch to make the store **defensive** and normalize data so the UI never breaks. Copy‑paste this to your AI coder in Replit.
+
+---
+
+# Prompt: Fix “encounters.filter is not a function” after Reset
+
+We need to make the dashboard store robust. Apply these edits:
+
+## 1) In `client/src/stores/dashboardStore.ts` (or your store file)
+
+* Always coerce `encounters` to an array before filtering.
+* Normalize each encounter so we always have a `lane` (fall back to `state`).
+* Make the SSE “demo\:reset” handler refresh safely.
+
+```diff
+@@
+-  getEncountersByLane: (lane: string) => {
+-    const { encounters } = get();
+-    return encounters
+-      .filter(encounter => encounter.lane === lane)
+-      .sort((a, b) => new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime());
+-  },
++  // Always work with an array; map state->lane when needed
++  getEncountersByLane: (lane: string) => {
++    const raw = (get() as any).encounters;
++    const asArray = Array.isArray(raw) ? raw : Object.values(raw ?? {});
++    const normed = asArray.map((e: any) => ({
++      ...e,
++      lane: e?.lane ?? e?.state ?? "waiting",
++    }));
++    return normed
++      .filter((enc: any) => enc.lane === lane)
++      .sort((a: any, b: any) =>
++        new Date(a.arrivalTime ?? a.createdAt ?? 0).getTime() -
++        new Date(b.arrivalTime ?? b.createdAt ?? 0).getTime()
++      );
++  },
+```
+
+## 2) Wherever you **set** `encounters` from the API / SSE (usually in the same store)
+
+* Normalize on write so the rest of the app sees consistent shape.
+
+```diff
+@@
+-  async load() {
++  async load() {
+     set({ loading: true });
+     const res = await fetch("/api/encounters").then(r=>r.json());
+-    set({ encounters: res.data, loading: false });
++    const list = Array.isArray(res.data) ? res.data : Object.values(res.data ?? {});
++    const norm = list.map((e:any)=>({ ...e, lane: e.lane ?? e.state }));
++    set({ encounters: norm, loading: false });
+     get().listen();
+   },
+@@
+-    es.addEventListener("encounter:new", (e:any) => {
+-      const enc = JSON.parse(e.data);
+-      set((s:any) => ({ encounters: [enc, ...(Array.isArray(s.encounters)?s.encounters:Object.values(s.encounters||{}))] }));
+-    });
++    es.addEventListener("encounter:new", (e:any) => {
++      const enc = { ...JSON.parse(e.data), lane: JSON.parse(e.data).lane ?? JSON.parse(e.data).state };
++      set((s:any) => {
++        const cur = Array.isArray(s.encounters) ? s.encounters : Object.values(s.encounters ?? {});
++        return { encounters: [enc, ...cur] };
++      });
++    });
+@@
+-    es.addEventListener("encounter:update", (e:any) => {
+-      const enc = JSON.parse(e.data);
+-      set((s:any) => ({ encounters: s.encounters.map((x:any)=> x.id===enc.id ? enc : x) }));
+-    });
++    es.addEventListener("encounter:update", (e:any) => {
++      const encRaw = JSON.parse(e.data);
++      const enc = { ...encRaw, lane: encRaw.lane ?? encRaw.state };
++      set((s:any) => {
++        const cur = Array.isArray(s.encounters) ? s.encounters : Object.values(s.encounters ?? {});
++        return { encounters: cur.map((x:any)=> x.id===enc.id ? enc : x) };
++      });
++    });
+@@
+-    es.addEventListener("demo:reset", async () => {
+-      const { data } = await fetch("/api/encounters").then(r=>r.json());
+-      set({ encounters: data });
+-    });
++    es.addEventListener("demo:reset", async () => {
++      try {
++        const { data } = await fetch("/api/encounters").then(r=>r.json());
++        const list = Array.isArray(data) ? data : Object.values(data ?? {});
++        const norm = list.map((e:any)=>({ ...e, lane: e.lane ?? e.state }));
++        set({ encounters: norm });
++      } catch {}
++    });
+```
+
+## 3) (Optional but recommended) In any **selectors/components** that read `encounters` directly
+
+Wrap with the same coercion if needed:
+
+```ts
+const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
+```
+
+---
+
+## Why this fixes it
+
+* After **Reset**, your SSE fires quickly. For a brief moment, `encounters` may be `{}` or something other than an array. Converting via `Array.isArray(...) ? ... : Object.values(...)` makes the downstream `.filter()` safe.
+* Some parts of the app use `lane`, others use `state`. Normalizing to `lane: state` ensures consistent filtering.
+
+---
+
+### Quick smoke test
+
+1. Click **Reset Demo** — the board should reseed without errors.
+2. Trigger **Surge** — Waiting fills, no runtime error.
+3. Trigger **Stroke** — new patient appears; still no error.
+4. Reload the page — no errors on initial render.
+
+If you still see a stack trace referencing another file, paste that path and I’ll give you a tiny diff for that spot too.

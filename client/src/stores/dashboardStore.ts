@@ -36,22 +36,34 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   lastUpdate: null,
   demoMode: false,
 
-  setEncounters: (encounters) => set({ 
-    encounters,
-    lastUpdate: new Date() 
+  setEncounters: (encounters) => {
+    const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
+    const norm = list.map((e: any) => ({ ...e, lane: e.lane ?? e.state ?? "waiting" }));
+    set({ 
+      encounters: norm,
+      lastUpdate: new Date() 
+    });
+  },
+
+  addEncounter: (encounter) => set((state) => {
+    const enc = { ...encounter, lane: encounter.lane ?? encounter.state ?? "waiting" };
+    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {});
+    return {
+      encounters: [enc, ...current],
+      lastUpdate: new Date()
+    };
   }),
 
-  addEncounter: (encounter) => set((state) => ({ 
-    encounters: [...state.encounters, encounter],
-    lastUpdate: new Date()
-  })),
-
-  updateEncounter: (updatedEncounter) => set((state) => ({
-    encounters: state.encounters.map(encounter => 
-      encounter.id === updatedEncounter.id ? updatedEncounter : encounter
-    ),
-    lastUpdate: new Date()
-  })),
+  updateEncounter: (updatedEncounter) => set((state) => {
+    const enc = { ...updatedEncounter, lane: updatedEncounter.lane ?? updatedEncounter.state ?? "waiting" };
+    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {});
+    return {
+      encounters: current.map((encounter: any) => 
+        encounter.id === enc.id ? enc : encounter
+      ),
+      lastUpdate: new Date()
+    };
+  }),
 
   setConnectionStatus: (connected) => set({ isConnected: connected }),
 
@@ -71,14 +83,28 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   getEncountersByLane: (lane) => {
-    const { encounters } = get();
-    return encounters
-      .filter(encounter => encounter.lane === lane)
-      .sort((a, b) => new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime());
+    const raw = (get() as any).encounters;
+    const asArray = Array.isArray(raw) ? raw : Object.values(raw ?? {});
+    const normed = asArray.map((e: any) => ({
+      ...e,
+      lane: e?.lane ?? e?.state ?? "waiting",
+    }));
+    return normed
+      .filter((enc: any) => enc.lane === lane)
+      .sort((a: any, b: any) =>
+        new Date(a.arrivalTime ?? a.createdAt ?? 0).getTime() -
+        new Date(b.arrivalTime ?? b.createdAt ?? 0).getTime()
+      );
   },
 
   getStats: () => {
-    const { encounters } = get();
+    const raw = (get() as any).encounters;
+    const asArray = Array.isArray(raw) ? raw : Object.values(raw ?? {});
+    const encounters = asArray.map((e: any) => ({
+      ...e,
+      lane: e?.lane ?? e?.state ?? "waiting",
+    }));
+    
     const stats = {
       waiting: 0,
       triage: 0, 
@@ -90,7 +116,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       total: encounters.length
     };
 
-    encounters.forEach(encounter => {
+    encounters.forEach((encounter: any) => {
       if (encounter.lane in stats) {
         stats[encounter.lane as keyof typeof stats]++;
       }
