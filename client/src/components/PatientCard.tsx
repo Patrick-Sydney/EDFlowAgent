@@ -294,11 +294,10 @@ export function PatientCard({ encounter }: PatientCardProps) {
         {/* ATS controls: Only in Triage for Set ATS, post-triage for Change ATS */}
         {encounter.lane === "triage" && (
           <Button 
-            size="sm" 
             variant="outline"
             onClick={handleSetAts}
             disabled={isSettingAts}
-            className="text-xs"
+            className="text-sm px-3 py-3 min-h-[44px] min-w-[44px]"
             data-testid={`button-set-ats-${encounter.id}`}
           >
             {isSettingAts ? "Setting..." : encounter.ats ? "Change ATS" : "Set ATS"}
@@ -308,11 +307,10 @@ export function PatientCard({ encounter }: PatientCardProps) {
         {/* Change ATS for post-triage lanes */}
         {["roomed", "diagnostics", "review"].includes(encounter.lane) && (
           <Button 
-            size="sm" 
             variant="outline"
             onClick={handleSetAts}
             disabled={isSettingAts}
-            className="text-xs"
+            className="text-sm px-3 py-3 min-h-[44px] min-w-[44px]"
             data-testid={`button-change-ats-${encounter.id}`}
           >
             {isSettingAts ? "Changing..." : "Change ATS"}
@@ -323,10 +321,9 @@ export function PatientCard({ encounter }: PatientCardProps) {
         {encounter.lane === "waiting" && 
          !((encounter.triageBypass === "true" || encounter.isolationRequired === "true") || siteConfig?.triageInRoom) && (
           <Button 
-            size="sm" 
             onClick={() => openTriage(encounter)}
             disabled={false}
-            className="flex-1 bg-sky-600 hover:bg-sky-700 text-white"
+            className="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-sm px-3 py-3 min-h-[44px]"
             data-testid={`button-start-triage-${encounter.id}`}
           >
             <Stethoscope className="w-3 h-3 mr-1" />
@@ -340,8 +337,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
           <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
             <DialogTrigger asChild>
               <Button 
-                size="sm" 
-                className="flex-1 bg-medical-blue hover:bg-blue-700 text-white"
+                className="flex-1 bg-medical-blue hover:bg-blue-700 text-white text-sm px-3 py-3 min-h-[44px]"
                 data-testid={`button-assign-room-${encounter.id}`}
               >
                 <Bed className="w-3 h-3 mr-1" />

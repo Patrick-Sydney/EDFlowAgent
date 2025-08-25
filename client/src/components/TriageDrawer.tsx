@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { useToast } from "@/hooks/use-toast";
 import { X, AlertTriangle, Heart } from "lucide-react";
+import TButton from "./ui/TButton";
+import NumberField from "./ui/NumberField";
+import { haptic, once } from "@/utils/touch";
 
 export default function TriageDrawer() {
   const { triageOpen, triageEncounter, closeTriage, saveTriage } = useDashboardStore();
@@ -45,15 +48,15 @@ export default function TriageDrawer() {
 
     setForm({
       // Core vitals
-      hr: enc.triageHr ?? "",
-      rr: enc.triageRr ?? "",
-      bpSys: enc.triageBpSys ?? "",
-      bpDia: enc.triageBpDia ?? "",
-      spo2: enc.triageSpo2 ?? "",
+      hr: enc.triageHr ? enc.triageHr.toString() : "",
+      rr: enc.triageRr ? enc.triageRr.toString() : "",
+      bpSys: enc.triageBpSys ? enc.triageBpSys.toString() : "",
+      bpDia: enc.triageBpDia ? enc.triageBpDia.toString() : "",
+      spo2: enc.triageSpo2 ? enc.triageSpo2.toString() : "",
       temp: enc.triageTemp ? (enc.triageTemp / 10).toString() : "",
-      pain: enc.triagePain ?? "",
+      pain: enc.triagePain ? enc.triagePain.toString() : "",
       notes: enc.triageNotes ?? "",
-      ats: enc.ats ?? "",
+      ats: enc.ats ? enc.ats.toString() : "",
       // Extended v2 fields
       modeOfArrival: (enc as any).triageModeOfArrival ?? "walk-in",
       complaintText: (enc as any).triageComplaintText ?? "",
@@ -165,29 +168,30 @@ export default function TriageDrawer() {
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={closeTriage} />
       
-      {/* Drawer */}
-      <div className="absolute top-0 right-0 h-full w-full max-w-lg bg-white shadow-xl overflow-y-auto">
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Triage Assessment</h2>
-              <p className="text-sm text-gray-600">
-                {enc.name} • {enc.age}y {enc.sex} • NHI: {enc.nhi}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">{enc.complaint}</p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={closeTriage}
-              data-testid="button-close-triage"
-            >
+      {/* Full-height mobile sheet with sticky header/footer */}
+      <div className="absolute top-0 right-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-base sm:text-lg">
+              Triage — {enc.name}
+            </h3>
+            <TButton className="border bg-white min-w-[44px]" onClick={closeTriage} data-testid="button-close-triage">
               <X className="w-4 h-4" />
-            </Button>
+            </TButton>
           </div>
+          <div className="mt-1 text-xs text-gray-600">
+            {enc.age}y {enc.sex} • NHI: {enc.nhi}
+          </div>
+          <div className="text-xs text-gray-500">{enc.complaint}</div>
+        </div>
 
-          <form onSubmit={handleSave} className="space-y-4">
+        {/* Scrollable form area */}
+        <form 
+          onSubmit={handleSave} 
+          className="flex-1 overflow-y-auto px-4 py-3 space-y-4"
+          onKeyDown={(e) => { if(e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault(); }}
+        >
             {/* 1. Arrival & Complaint */}
             <Card>
               <CardHeader>
@@ -198,7 +202,7 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Mode of arrival</Label>
                     <Select value={form.modeOfArrival} onValueChange={(value) => onChange("modeOfArrival", value)}>
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 px-3 py-3 text-base min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -211,10 +215,11 @@ export default function TriageDrawer() {
                   <div className="col-span-2">
                     <Label className="text-sm">Presenting complaint</Label>
                     <Input
-                      className="mt-1"
+                      className="mt-1 px-3 py-3 text-base min-h-[44px]"
                       value={form.complaintText}
                       onChange={(e) => onChange("complaintText", e.target.value)}
                       placeholder="Patient's primary complaint"
+                      enterKeyHint="next"
                     />
                   </div>
                 </div>
@@ -231,7 +236,7 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Allergies</Label>
                     <Select value={form.allergy} onValueChange={(value) => onChange("allergy", value)}>
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 px-3 py-3 text-base min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -244,7 +249,7 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Pregnancy (if applicable)</Label>
                     <Select value={form.pregnancy} onValueChange={(value) => onChange("pregnancy", value)}>
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 px-3 py-3 text-base min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -257,7 +262,7 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Infection risk</Label>
                     <Select value={form.infection} onValueChange={(value) => onChange("infection", value)}>
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 px-3 py-3 text-base min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -270,7 +275,7 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Mobility</Label>
                     <Select value={form.mobility} onValueChange={(value) => onChange("mobility", value)}>
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 px-3 py-3 text-base min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -293,14 +298,14 @@ export default function TriageDrawer() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="HR" value={form.hr} onChange={(v) => onChange("hr", v)} placeholder="80" />
-                  <Field label="RR" value={form.rr} onChange={(v) => onChange("rr", v)} placeholder="16" />
-                  <Field label="Temp" value={form.temp} onChange={(v) => onChange("temp", v)} placeholder="36.5" step="0.1" />
-                  <Field label="SpO₂" value={form.spo2} onChange={(v) => onChange("spo2", v)} placeholder="98" />
-                  <Field label="BP Sys" value={form.bpSys} onChange={(v) => onChange("bpSys", v)} placeholder="120" />
-                  <Field label="BP Dia" value={form.bpDia} onChange={(v) => onChange("bpDia", v)} placeholder="80" />
-                  <Field label="Pain 0-10" value={form.pain} onChange={(v) => onChange("pain", v)} placeholder="0" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <NumberField label="HR (bpm)" value={form.hr} onChange={(v) => onChange("hr", v)} min={0} max={220} placeholder="80" />
+                  <NumberField label="RR (/min)" value={form.rr} onChange={(v) => onChange("rr", v)} min={0} max={60} placeholder="16" />
+                  <NumberField label="Temp (°C)" value={form.temp} onChange={(v) => onChange("temp", v)} min={30} max={43} step={0.1} placeholder="36.5" />
+                  <NumberField label="SpO₂ (%)" value={form.spo2} onChange={(v) => onChange("spo2", v)} min={50} max={100} placeholder="98" />
+                  <NumberField label="BP Sys" value={form.bpSys} onChange={(v) => onChange("bpSys", v)} min={50} max={260} placeholder="120" />
+                  <NumberField label="BP Dia" value={form.bpDia} onChange={(v) => onChange("bpDia", v)} min={30} max={160} placeholder="80" />
+                  <NumberField label="Pain 0-10" value={form.pain} onChange={(v) => onChange("pain", v)} min={0} max={10} placeholder="0" />
                 </div>
               </CardContent>
             </Card>
@@ -312,25 +317,28 @@ export default function TriageDrawer() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <Label className="flex items-center space-x-2 cursor-pointer">
+                  <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                     <input 
                       type="checkbox" 
+                      className="w-5 h-5"
                       checked={form.risk.sepsis}
                       onChange={(e) => onChange("risk", { ...form.risk, sepsis: e.target.checked })}
                     />
                     <span className="text-sm">Sepsis risk</span>
                   </Label>
-                  <Label className="flex items-center space-x-2 cursor-pointer">
+                  <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                     <input 
                       type="checkbox" 
+                      className="w-5 h-5"
                       checked={form.risk.stroke}
                       onChange={(e) => onChange("risk", { ...form.risk, stroke: e.target.checked })}
                     />
                     <span className="text-sm">Stroke FAST</span>
                   </Label>
-                  <Label className="flex items-center space-x-2 cursor-pointer">
+                  <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                     <input 
                       type="checkbox" 
+                      className="w-5 h-5"
                       checked={form.risk.suicide}
                       onChange={(e) => onChange("risk", { ...form.risk, suicide: e.target.checked })}
                     />
@@ -350,7 +358,7 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Provisional disposition</Label>
                     <Select value={form.provisionalDispo} onValueChange={(value) => onChange("provisionalDispo", value)}>
-                      <SelectTrigger className="mt-1">
+                      <SelectTrigger className="mt-1 px-3 py-3 text-base min-h-[44px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -363,25 +371,28 @@ export default function TriageDrawer() {
                   <div>
                     <Label className="text-sm">Expected resources</Label>
                     <div className="mt-2 flex flex-wrap gap-3">
-                      <Label className="flex items-center space-x-2 cursor-pointer">
+                      <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                         <input 
                           type="checkbox" 
+                          className="w-5 h-5"
                           checked={form.expectedResources.includes("labs")}
                           onChange={(e) => toggleArrayValue("expectedResources", "labs", e.target.checked)}
                         />
                         <span className="text-sm">Labs</span>
                       </Label>
-                      <Label className="flex items-center space-x-2 cursor-pointer">
+                      <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                         <input 
                           type="checkbox" 
+                          className="w-5 h-5"
                           checked={form.expectedResources.includes("imaging")}
                           onChange={(e) => toggleArrayValue("expectedResources", "imaging", e.target.checked)}
                         />
                         <span className="text-sm">Imaging</span>
                       </Label>
-                      <Label className="flex items-center space-x-2 cursor-pointer">
+                      <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                         <input 
                           type="checkbox" 
+                          className="w-5 h-5"
                           checked={form.expectedResources.includes("specialist")}
                           onChange={(e) => toggleArrayValue("expectedResources", "specialist", e.target.checked)}
                         />
@@ -401,7 +412,7 @@ export default function TriageDrawer() {
               <CardContent>
                 <div className="flex items-center space-x-4">
                   <Select value={form.ats} onValueChange={(value) => onChange("ats", value)}>
-                    <SelectTrigger className="w-48" data-testid="select-triage-ats">
+                    <SelectTrigger className="w-full sm:w-48 px-3 py-3 text-base min-h-[44px]" data-testid="select-triage-ats">
                       <SelectValue placeholder="Select ATS..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -428,17 +439,19 @@ export default function TriageDrawer() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <Label className="flex items-center space-x-2 cursor-pointer">
+                  <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                     <input 
                       type="checkbox" 
+                      className="w-5 h-5"
                       checked={form.care.analgesia}
                       onChange={(e) => onChange("care", { ...form.care, analgesia: e.target.checked })}
                     />
                     <span className="text-sm">Analgesia given</span>
                   </Label>
-                  <Label className="flex items-center space-x-2 cursor-pointer">
+                  <Label className="flex items-center space-x-2 cursor-pointer touch-target py-2">
                     <input 
                       type="checkbox" 
+                      className="w-5 h-5"
                       checked={form.care.iv}
                       onChange={(e) => onChange("care", { ...form.care, iv: e.target.checked })}
                     />
@@ -458,7 +471,7 @@ export default function TriageDrawer() {
                   value={form.notes}
                   onChange={(e) => onChange("notes", e.target.value)}
                   placeholder="Assessment notes, observations, treatment plan..."
-                  className="h-20"
+                  className="h-20 px-3 py-3 text-base min-h-[44px]"
                   data-testid="textarea-triage-notes"
                 />
               </CardContent>
@@ -493,25 +506,25 @@ export default function TriageDrawer() {
               </Card>
             )}
 
-            {/* Actions */}
-            <div className="flex justify-end space-x-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeTriage}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                data-testid="button-save-triage"
-              >
-                {isSubmitting ? "Saving..." : "Save Triage"}
-              </Button>
-            </div>
-          </form>
+        </form>
+        
+        {/* Sticky action bar */}
+        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+          <TButton 
+            className="bg-emerald-600 text-white flex-1 min-h-[50px]" 
+            onClick={once((e: React.MouseEvent) => { handleSave(e); haptic(); })}
+            disabled={isSubmitting}
+            data-testid="button-save-triage"
+          >
+            {isSubmitting ? "Saving..." : "Save Triage"}
+          </TButton>
+          <TButton 
+            className="border bg-white min-h-[50px] min-w-[100px]" 
+            onClick={closeTriage}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </TButton>
         </div>
       </div>
     </div>

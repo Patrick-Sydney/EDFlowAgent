@@ -1,0 +1,334 @@
+Absolutely — triage will often be done on a wheeled tablet or touch workstation. Let’s make the UI **finger‑first**, **fast**, and **forgiving**.
+
+Below is a copy‑pasteable **Replit patch prompt** that upgrades your app (esp. the Triage drawer) for **mobile/touch** use:
+
+---
+
+# Prompt: Optimize UI for touch/mobile triage
+
+Apply these changes to the ED Flow Agent repo.
+
+---
+
+## 1) `client/index.html` — mobile viewport + disable double‑tap zoom
+
+```diff
+ <head>
+-  <meta charset="UTF-8" />
+-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <meta charset="UTF-8" />
++  <!-- Mobile-friendly viewport, prevent accidental zoom during rapid taps -->
++  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
++  <meta name="theme-color" content="#0f172a" />
++  <!-- iOS PWA friendly (optional) -->
++  <meta name="apple-mobile-web-app-capable" content="yes">
++  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+ </head>
+```
+
+---
+
+## 2) Global styles — bigger tap targets, safe touch behavior
+
+Create `client/src/touch.css` and import it in your root (e.g., `main.jsx` or `index.css`):
+
+```css
+/* Touch-first defaults */
+:root {
+  --tap-size: 44px; /* Apple HIG minimum */
+}
+button, .btn, [role="button"], select, input, .touch-target {
+  min-height: var(--tap-size);
+  min-width: var(--tap-size);
+}
+* { -webkit-tap-highlight-color: rgba(0,0,0,0.06); }
+html, body { touch-action: manipulation; }
+```
+
+Then import once (e.g., in `client/src/main.jsx` or `index.css`):
+
+```diff
++import "./touch.css";
+```
+
+---
+
+## 3) Reusable components for touch: `Button.tsx` and `NumberField.tsx`
+
+Create `client/src/components/ui/TButton.jsx`:
+
+```jsx
+export default function TButton({ className="", children, ...props }) {
+  return (
+    <button
+      className={`px-4 py-3 rounded-xl text-sm font-medium shadow-sm active:scale-[0.99] ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+Create `client/src/components/ui/NumberField.jsx`:
+
+```jsx
+export default function NumberField({ label, value, onChange, min, max, step=1, suffix, inputProps={} }) {
+  const inc = () => {
+    const n = Number(value || 0);
+    const next = isFinite(n) ? n + step : step;
+    if (max != null && next > max) return;
+    onChange(String(next));
+  };
+  const dec = () => {
+    const n = Number(value || 0);
+    const next = isFinite(n) ? n - step : 0;
+    if (min != null && next < min) return;
+    onChange(String(next));
+  };
+  return (
+    <label className="text-sm block">
+      {label}
+      <div className="mt-1 flex items-stretch rounded-xl border overflow-hidden">
+        <button type="button" onClick={dec} className="px-3 text-lg bg-gray-50">–</button>
+        <input
+          className="w-full px-3 py-3 text-base outline-none"
+          value={value ?? ""}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          enterKeyHint="next"
+          onChange={(e)=>onChange(e.target.value)}
+          {...inputProps}
+        />
+        <button type="button" onClick={inc} className="px-3 text-lg bg-gray-50">+</button>
+      </div>
+      {suffix && <span className="text-xs text-gray-500">{suffix}</span>}
+    </label>
+  );
+}
+```
+
+---
+
+## 4) Triage drawer — full‑height sheet, big inputs, sticky action bar
+
+Edit `client/src/components/TriageDrawer.jsx`:
+
+```diff
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { useED } from "../store";
++import TButton from "./ui/TButton";
++import NumberField from "./ui/NumberField";
+
+ export default function TriageDrawer() {
+@@
+-  if (!triageOpen || !enc) return null;
++  if (!triageOpen || !enc) return null;
+
+   const save = async (e) => {
+     e.preventDefault();
+@@
+-  return (
+-    <div className="fixed inset-0 z-40">
+-      <div className="absolute inset-0 bg-black/30" onClick={closeTriage}/>
+-      <div className="absolute top-0 right-0 h-full w-full max-w-md bg-white shadow-xl p-4 overflow-y-auto">
+-        <div className="flex items-center justify-between mb-3">
+-          <h3 className="font-semibold text-lg">Triage — {enc.patient?.name}</h3>
+-          <button className="text-sm px-2 py-1 border rounded" onClick={closeTriage}>Close</button>
+-        </div>
++  return (
++    <div className="fixed inset-0 z-40">
++      <div className="absolute inset-0 bg-black/30" onClick={closeTriage}/>
++      {/* Full-height mobile sheet with sticky header/footer */}
++      <div className="absolute top-0 right-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
++        {/* Header */}
++        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
++          <div className="flex items-center justify-between">
++            <h3 className="font-semibold text-base sm:text-lg">
++              Triage — {enc.patient?.name}
++            </h3>
++            <TButton className="border bg-white">Close</TButton>
++          </div>
++          <div className="mt-1 text-xs text-gray-600">
++            {enc.patient?.age}/{enc.patient?.sex} • {enc.complaint}
++          </div>
++        </div>
+-        <form onSubmit={save} className="space-y-3">
++        {/* Scrollable form area */}
++        <form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+@@
+-          <div className="grid grid-cols-3 gap-3">
+-            <Field label="HR (bpm)" val={form.hr} onChange={v=>on("hr", v)} />
+-            <Field label="RR (/min)" val={form.rr} onChange={v=>on("rr", v)} />
+-            <Field label="Temp (°C)" val={form.temp} onChange={v=>on("temp", v)} />
+-            <Field label="SpO₂ (%)" val={form.spo2} onChange={v=>on("spo2", v)} />
+-            <Field label="BP Sys" val={form.bpSys} onChange={v=>on("bpSys", v)} />
+-            <Field label="BP Dia" val={form.bpDia} onChange={v=>on("bpDia", v)} />
+-            <Field label="Pain 0–10" val={form.pain} onChange={v=>on("pain", v)} />
+-          </div>
++          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
++            <NumberField label="HR (bpm)" value={form.hr} onChange={v=>on("hr", v)} min={0} max={220} />
++            <NumberField label="RR (/min)" value={form.rr} onChange={v=>on("rr", v)} min={0} max={60} />
++            <NumberField label="Temp (°C)" value={form.temp} onChange={v=>on("temp", v)} min={30} max={43} step={0.1} />
++            <NumberField label="SpO₂ (%)" value={form.spo2} onChange={v=>on("spo2", v)} min={50} max={100} />
++            <NumberField label="BP Sys" value={form.bpSys} onChange={v=>on("bpSys", v)} min={50} max={260} />
++            <NumberField label="BP Dia" value={form.bpDia} onChange={v=>on("bpDia", v)} min={30} max={160} />
++            <NumberField label="Pain 0–10" value={form.pain} onChange={v=>on("pain", v)} min={0} max={10} />
++          </div>
+@@
+-          <div className="pt-2 flex gap-2">
+-            <button type="submit" className="px-3 py-2 bg-emerald-600 text-white rounded">Save triage</button>
+-            <button type="button" className="px-3 py-2 border rounded" onClick={closeTriage}>Cancel</button>
+-          </div>
+-        </form>
++        </form>
++        {/* Sticky action bar */}
++        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
++          <TButton className="bg-emerald-600 text-white flex-1" onClick={save}>Save triage</TButton>
++          <TButton className="border bg-white" onClick={closeTriage}>Cancel</TButton>
++        </div>
+       </div>
+     </div>
+   );
+ }
+```
+
+Also update your primitive `Field` (if still present) to add mobile keyboard hints when used elsewhere:
+
+```diff
+ <input
+-  className="mt-1 w-full border rounded px-2 py-1"
++  className="mt-1 w-full border rounded px-3 py-3 text-base"
+   value={val ?? ""}
++  inputMode="decimal"
++  enterKeyHint="next"
+   onChange={e=>onChange(e.target.value)}
+ />
+```
+
+---
+
+## 5) Bigger buttons in Cards for touch
+
+In `client/src/App.jsx` (inside `Card` buttons block), enlarge hit areas:
+
+```diff
+-<button className="text-xs px-2 py-1 bg-sky-600 text-white rounded" ...>
++<button className="text-sm px-3 py-3 bg-sky-600 text-white rounded-xl" ...>
+```
+
+Apply similarly to other action buttons (`Assign Room`, `Mark Ready`, etc.).
+
+---
+
+## 6) Role/Lane layout — single column on narrow screens
+
+Where lanes render:
+
+```diff
+-<main className="overflow-x-auto flex gap-4 p-4">
++<main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
+```
+
+Wrap the lanes in a responsive container:
+
+```jsx
+<div className="flex gap-4 overflow-x-auto sm:overflow-x-auto">
+  {/* lanes */}
+</div>
+```
+
+---
+
+## 7) Form controls: mobile‑friendly selects & checkboxes
+
+In `TriageDrawer`, ensure selects are easy to tap:
+
+```diff
+-<select className="mt-1 w-full border rounded px-2 py-1" ...>
++<select className="mt-1 w-full border rounded px-3 py-3 text-base" ...>
+```
+
+Checkbox labels:
+
+```diff
+-<label><input type="checkbox" .../> Sepsis risk</label>
++<label className="flex items-center gap-2 py-2 touch-target">
++  <input type="checkbox" className="w-5 h-5" .../>
++  <span>Sepsis risk</span>
++</label>
+```
+
+---
+
+## 8) Accessibility & reduced motion
+
+Add to `touch.css`:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+@media (prefers-color-scheme: dark) {
+  body { background-color: #0b1020; color: #f8fafc; }
+}
+```
+
+---
+
+## 9) Prevent accidental form submission with “Enter” on mobile
+
+In `TriageDrawer.jsx`, on `<form>`:
+
+```diff
+-<form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
++<form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3 space-y-4" onKeyDown={(e)=>{ if(e.key==='Enter' && e.target.tagName==='INPUT') e.preventDefault(); }}>
+```
+
+---
+
+## 10) (Optional) Haptic feedback and click debounce
+
+Add a tiny helper `client/src/utils/touch.js`:
+
+```js
+export function haptic() {
+  try { if (navigator.vibrate) navigator.vibrate(10); } catch {}
+}
+export function once(fn, ms=500) {
+  let last = 0;
+  return (...args) => {
+    const now = Date.now();
+    if (now - last < ms) return;
+    last = now; fn(...args);
+  };
+}
+```
+
+Use it on primary buttons:
+
+```diff
+-import TButton from "./ui/TButton";
++import TButton from "./ui/TButton";
++import { haptic, once } from "../utils/touch";
+...
+-<TButton className="bg-emerald-600 text-white flex-1" onClick={save}>Save triage</TButton>
++<TButton className="bg-emerald-600 text-white flex-1" onClick={once((e)=>{ save(e); haptic(); })}>Save triage</TButton>
+```
+
+---
+
+## ✅ Acceptance checklist
+
+* Triage drawer is **full-height** on mobile, with **sticky header/footer** and **large controls**.
+* All action buttons and inputs have **≥44px** touch targets.
+* Numeric fields open **numeric keyboards** (inputMode) and provide **+ / – steppers**.
+* Buttons don’t trigger zoom or accidental double submissions.
+* The lanes collapse into **single column** on narrow screens; still scrollable horizontally if many lanes.
+* Saving triage works exactly as before; no errors on **Reset Demo**.
+* Optional: device vibrates subtly on Save (if supported).
+
+---
+
+If you want, we can also add a **one‑tap “Save & Assign Room”** button in the sticky bar (calling both `saveTriage` and `assignRoom`) to reduce steps during busy periods.

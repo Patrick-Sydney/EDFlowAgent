@@ -1,0 +1,58 @@
+/* Touch-first defaults */
+:root {
+  --tap-size: 44px; /* Apple HIG minimum */
+}
+
+button, .btn, [role="button"], select, input, .touch-target {
+  min-height: var(--tap-size);
+  min-width: var(--tap-size);
+}
+
+* { 
+  -webkit-tap-highlight-color: rgba(0,0,0,0.06); 
+}
+
+html, body { 
+  touch-action: manipulation; 
+}
+
+/* Bigger checkbox and radio buttons */
+input[type="checkbox"], input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+/* Enhanced touch targets for form controls */
+.touch-target {
+  min-height: var(--tap-size);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Prevent accidental zoom on iOS */
+input, select, textarea {
+  font-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { 
+    animation: none !important; 
+    transition: none !important; 
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  body { 
+    background-color: #0b1020; 
+    color: #f8fafc; 
+  }
+}
+
+/* Active button feedback */
+button:active, .btn:active {
+  transform: scale(0.99);
+  transition: transform 0.1s ease;
+}

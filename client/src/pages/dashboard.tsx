@@ -115,9 +115,10 @@ export default function Dashboard() {
         <TriageDrawer />
         
         {/* Patient Flow Lanes */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="overflow-x-auto">
-            <div className="flex space-x-6 pb-4" style={{ minWidth: '1960px' }}>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
+          {/* Mobile: Single column stack, Desktop: Horizontal scroll */}
+          <div className="sm:overflow-x-auto">
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6 pb-4" style={{ minWidth: '1960px' }}>
               {filteredLanes.map(lane => (
                 <PatientLane
                   key={lane}
