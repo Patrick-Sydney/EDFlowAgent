@@ -54,6 +54,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get audit entries
+  app.get("/api/audit", async (req, res) => {
+    try {
+      const { encounterId } = req.query;
+      const entries = await storage.getAuditEntries(encounterId as string);
+      res.json(entries);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch audit entries" });
+    }
+  });
+
   // Get encounters by lane
   app.get("/api/encounters/lane/:lane", async (req, res) => {
     try {
@@ -212,7 +223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Set ATS action
+  // Set ATS action with audit trail
   app.post("/api/actions/set-ats", async (req, res) => {
     try {
       const result = setAtsSchema.safeParse(req.body);
@@ -220,15 +231,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid request", errors: result.error.errors });
       }
 
-      const { id, ats } = result.data;
+      const { id, ats, actorName, actorRole } = result.data;
+      
+      // Get current encounter for audit trail
+      const currentEncounter = await storage.getEncounter(id);
+      if (!currentEncounter) {
+        return res.status(404).json({ message: "Encounter not found" });
+      }
+
+      const beforeValue = JSON.stringify({ 
+        ats: currentEncounter.ats, 
+        provisionalAts: currentEncounter.provisionalAts 
+      });
+      
+      // Update encounter - setting ATS removes provisional flag
       const encounter = await storage.updateEncounter({ 
         id, 
-        ats 
+        ats,
+        provisionalAts: "false"
       });
       
       if (!encounter) {
         return res.status(404).json({ message: "Encounter not found" });
       }
+
+      // Create audit entry
+      await storage.createAuditEntry({
+        encounterId: id,
+        action: "set-ats",
+        beforeValue,
+        afterValue: JSON.stringify({ ats, provisionalAts: "false" }),
+        actorName: actorName || "Unknown",
+        actorRole: actorRole || "Unknown"
+      });
 
       broadcastSSE("encounter:update", encounter);
       res.json({ message: "ATS updated", encounter });
@@ -357,7 +392,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ats: 1,
         complaint: "Suspected stroke - FAST positive, left side weakness",
         lane: "waiting",
-        triageBypass: "true" // Critical case can bypass triage and go straight to room
+        triageBypass: "true", // Critical case can bypass triage and go straight to room
+        provisionalAts: "true" // Ambulance-provided provisional ATS
       };
 
       const encounter = await storage.createEncounter(strokePatient);

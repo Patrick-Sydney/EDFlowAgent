@@ -25,6 +25,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
   const [isStartingTriage, setIsStartingTriage] = useState(false);
   const [siteConfig, setSiteConfig] = useState<any>(null);
   const [isSettingAts, setIsSettingAts] = useState(false);
+  const [user, setUser] = useState({ name: "Dr. Wilson", role: "md" });
 
   // Calculate time since arrival
   const getTimeInED = () => {
@@ -183,7 +184,9 @@ export function PatientCard({ encounter }: PatientCardProps) {
     try {
       await apiRequest('POST', '/api/actions/set-ats', {
         id: encounter.id,
-        ats
+        ats,
+        actorName: user?.name || "Unknown",
+        actorRole: user?.role || "Unknown"
       });
       
       toast({
@@ -218,11 +221,39 @@ export function PatientCard({ encounter }: PatientCardProps) {
   const atsColorClass = ATS_COLORS[encounter.ats as keyof typeof ATS_COLORS] || "bg-gray-500";
   
   const getAtsColor = () => {
+    if (!encounter.ats) return "bg-gray-100 text-gray-600 border-gray-200";
+    
     return encounter.ats <= 2 
       ? "bg-red-100 text-red-700 border-red-200" 
       : encounter.ats === 3 
       ? "bg-amber-100 text-amber-700 border-amber-200"
       : "bg-emerald-100 text-emerald-700 border-emerald-200";
+  };
+
+  const renderAtsBadge = () => {
+    // Waiting lane: Show "ATS —" unless provisional ATS
+    if (encounter.lane === "waiting") {
+      if (encounter.provisionalAts === "true" && encounter.ats) {
+        return (
+          <span className={`text-xs px-2 py-1 rounded-full border border-dashed font-medium ${getAtsColor()}`}>
+            ATS {encounter.ats} (prov.)
+          </span>
+        );
+      } else {
+        return (
+          <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 border-gray-200">
+            ATS —
+          </span>
+        );
+      }
+    }
+    
+    // All other lanes: Show actual ATS value
+    return (
+      <span className={`text-xs px-2 py-1 rounded-full border font-medium ${getAtsColor()}`}>
+        ATS {encounter.ats || "—"}
+      </span>
+    );
   };
 
   return (
@@ -237,12 +268,9 @@ export function PatientCard({ encounter }: PatientCardProps) {
         </div>
         <div className="text-right">
           <div className="text-xs font-medium text-gray-900" data-testid={`text-nhi-${encounter.id}`}>{encounter.nhi}</div>
-          <span 
-            className={`text-xs px-2 py-1 rounded-full border font-medium ${getAtsColor()}`}
-            data-testid={`badge-ats-${encounter.id}`}
-          >
-            ATS {encounter.ats || "—"}
-          </span>
+          <div data-testid={`badge-ats-${encounter.id}`}>
+            {renderAtsBadge()}
+          </div>
         </div>
       </div>
       
@@ -283,8 +311,8 @@ export function PatientCard({ encounter }: PatientCardProps) {
 
       {/* Clinical Action Buttons Based on Lane */}
       <div className="flex space-x-2">
-        {/* Set ATS for Waiting/Triage patients */}
-        {(encounter.lane === "waiting" || encounter.lane === "triage") && (
+        {/* ATS controls: Only in Triage for Set ATS, post-triage for Change ATS */}
+        {encounter.lane === "triage" && (
           <Button 
             size="sm" 
             variant="outline"
@@ -293,7 +321,21 @@ export function PatientCard({ encounter }: PatientCardProps) {
             className="text-xs"
             data-testid={`button-set-ats-${encounter.id}`}
           >
-            {isSettingAts ? "Setting..." : "Set ATS"}
+            {isSettingAts ? "Setting..." : encounter.ats ? "Change ATS" : "Set ATS"}
+          </Button>
+        )}
+        
+        {/* Change ATS for post-triage lanes */}
+        {["roomed", "diagnostics", "review"].includes(encounter.lane) && (
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={handleSetAts}
+            disabled={isSettingAts}
+            className="text-xs"
+            data-testid={`button-change-ats-${encounter.id}`}
+          >
+            {isSettingAts ? "Changing..." : "Change ATS"}
           </Button>
         )}
 

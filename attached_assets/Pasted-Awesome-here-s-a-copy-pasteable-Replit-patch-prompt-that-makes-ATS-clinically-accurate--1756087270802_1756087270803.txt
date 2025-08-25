@@ -1,0 +1,384 @@
+Awesome — here’s a **copy‑pasteable Replit patch prompt** that makes ATS clinically accurate:
+
+* **ATS hidden in Waiting** (shows `ATS —`, unless a **provisional** ATS from ambulance).
+* **Set ATS** only in **Triage**.
+* **Change ATS** button available in **all non‑Waiting states** (Triage, Roomed, Diagnostics, Decision) and **every change is audited** (who/when/old→new).
+* Adds a tiny **user selector** so the audit log records the actor.
+* Adds an **audit API** you can query later.
+
+---
+
+## 🔧 Prompt for your AI coder (Ghostwriter/Cursor/etc.)
+
+> Apply the following patches to the ED Flow Agent repo to make ATS UI and auditing clinically correct.
+
+### 1) `server/index.js` — add provisional ATS, audit logging, and improve set‑ATS
+
+```diff
+@@
+ const express = require("express");
+ const cors = require("cors");
+ const { v4: uuid } = require("uuid");
+ const dayjs = require("dayjs");
+ 
+ const PORT = process.env.PORT || 3001;
+ const app = express();
+ app.use(cors());
+ app.use(express.json());
+ 
+ // --- In-memory demo data ---
+ const STATES = ["waiting","triage","roomed","diagnostics","decision","ready","discharged","admitted"];
++// simple audit store: each item = { id, encounterId, action, before, after, actor, role, ts }
++const audit = [];
+ 
+ const encounters = []; // will seed below
+ const sseClients = new Set();
+ 
+ function seedData() {
+   const now = dayjs();
+   const mk = (overrides={}) => ({
+     id: uuid(),
+     patient: { name: overrides.name || "Pat Jones", age: overrides.age || 64, sex: overrides.sex || "F" },
+     nhi: overrides.nhi || "ABC1234",
+     ats: overrides.ats ?? null,
+     complaint: overrides.complaint || "Chest pain",
+     state: overrides.state || "waiting",
+     room: overrides.room || null,
+     ownerRole: overrides.ownerRole || null,
+     createdAt: now.toISOString(),
+     lastUpdated: now.toISOString(),
+     timers: { doorToCT: null },
+-    resultsStatus: overrides.resultsStatus || (overrides.state === "diagnostics" ? "pending" : null),
++    resultsStatus: overrides.resultsStatus || (overrides.state === "diagnostics" ? "pending" : null),
++    // ATS behaviour
++    provisionalAts: overrides.provisionalAts || false,
++    // exception flags
++    triageBypass: overrides.triageBypass || false,
++    isolationRequired: overrides.isolationRequired || false
+   });
+   encounters.push(
+-    mk({ name:"Hemi Tai", age:72, sex:"M", ats:2, complaint:"Weakness L side", state:"waiting", nhi:"ZZZ9991" }),
++    // waiting, no ATS assigned yet
++    mk({ name:"Hemi Tai", age:72, sex:"M", ats:null, complaint:"Weakness L side", state:"waiting", nhi:"ZZZ9991" }),
+     mk({ name:"Mere K", age:28, sex:"F", ats:3, complaint:"Abdo pain", state:"triage", nhi:"ZZZ9992" }),
+     mk({ name:"Alex P", age:54, sex:"M", ats:2, complaint:"SOB", state:"roomed", room:"B3", nhi:"ZZZ9993" }),
+     mk({ name:"Sam R", age:41, sex:"M", ats:4, complaint:"Wrist injury", state:"diagnostics", room:"M2", nhi:"ZZZ9994", resultsStatus:"pending" }),
+     mk({ name:"Ava W", age:63, sex:"F", ats:3, complaint:"Dizzy", state:"decision", room:"A1", nhi:"ZZZ9995" })
+   );
+ }
+ seedData();
+ 
+ // optional site config for demo
+ const siteConfig = { triageInRoom: false };
+ app.get("/api/config", (req,res)=>res.json(siteConfig));
+ 
+@@
+ app.get("/api/encounters", (req, res) => {
+   res.json({ data: encounters });
+ });
+ 
++// audit fetch (optionally filter by encounterId)
++app.get("/api/audit", (req, res) => {
++  const { encounterId } = req.query || {};
++  if (encounterId) {
++    return res.json({ data: audit.filter(a => a.encounterId === encounterId) });
++  }
++  res.json({ data: audit.slice(-200) }); // last 200 entries
++});
++
+ // Set ATS (1–5) with audit
+ app.post("/api/actions/set-ats", (req, res) => {
+-  const { id, ats } = req.body || {};
++  const { id, ats, actorName, actorRole } = req.body || {};
+   if (!id) return res.status(400).json({ ok:false, error:"id required" });
+   const n = Number(ats);
+   if (![1,2,3,4,5].includes(n)) {
+     return res.status(400).json({ ok:false, error:"ats must be 1..5" });
+   }
+-  const out = updateEncounter(id, { ats: n });
++  const idx = encounters.findIndex(e => e.id === id);
++  if (idx === -1) return res.status(404).json({ ok:false, error:"encounter not found" });
++  const before = { ats: encounters[idx].ats, provisionalAts: encounters[idx].provisionalAts };
++  // setting ATS removes provisional flag
++  const out = updateEncounter(id, { ats: n, provisionalAts: false });
++  // write audit entry
++  audit.push({
++    id: uuid(),
++    encounterId: id,
++    action: "set-ats",
++    before,
++    after: { ats: n, provisionalAts: false },
++    actor: actorName || "unknown",
++    role: actorRole || null,
++    ts: dayjs().toISOString()
++  });
+   if (!out) return res.status(404).json({ ok:false, error:"encounter not found" });
+   return res.json({ ok:true, data: out });
+ });
+ 
+@@
+ // stroke scenario: set triageBypass so Assign Room appears in Waiting for this case
+ app.post("/api/scenario/stroke", (req, res) => {
+   const e = {
+     id: uuid(),
+     patient: { name: "Pre-alert Stroke", age: 72, sex: "M" },
+     nhi: "STROKE1",
+-    ats: 2,
++    ats: 2,
+     complaint: "Unilateral weakness",
+-    state: "waiting",
++    state: "waiting",
+     room: null,
+     ownerRole: "physician",
+     createdAt: dayjs().toISOString(),
+     lastUpdated: dayjs().toISOString(),
+     timers: { doorToCT: dayjs().toISOString() },
+-    triageBypass: true
++    triageBypass: true,
++    provisionalAts: true // ambulance-provided provisional ATS
+   };
+   encounters.push(e);
+   broadcast("encounter:new", e);
+   res.json({ ok: true });
+ });
+ 
+@@
+ // --- Actions ---
+ app.post("/api/actions/results-complete", (req, res) => {
+   const { id } = req.body || {};
+   if (!id) return res.status(400).json({ ok:false, error:"id required" });
+   const out = updateEncounter(id, { resultsStatus: "complete" });
+   if (!out) return res.status(404).json({ ok:false, error:"encounter not found" });
+   return res.json({ ok: true, data: out });
+ });
+```
+
+> (No change needed to `start-triage`, `assign-room`, etc., unless your file differs — keep them as before.)
+
+---
+
+### 2) `client/src/store.js` — pass actor to set‑ATS and add simple “user” state
+
+```diff
+ import { create } from "zustand";
+ 
+ const api = {
+   list: async () => (await fetch("/api/encounters")).json(),
+   startTriage: async (id) => (await fetch("/api/actions/start-triage",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})).json(),
+   assignRoom: async (id, room) => (await fetch("/api/actions/assign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
+   markReady: async (id, disposition) => (await fetch("/api/actions/mark-ready",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,disposition})})).json(),
+   scenario: async (name) => (await fetch(`/api/scenario/${name}`,{method:"POST"})).json(),
+   reassignRoom: async (id, room) => (await fetch("/api/actions/reassign-room",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,room})})).json(),
+-  setAts: async (id, ats) => (await fetch("/api/actions/set-ats",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id,ats})})).json(),
++  setAts: async (id, ats, actor) => (await fetch("/api/actions/set-ats",{
++    method:"POST",
++    headers:{'Content-Type':'application/json'},
++    body:JSON.stringify({id,ats, actorName: actor?.name, actorRole: actor?.role})
++  })).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+   encounters: [],
+   loading: false,
++  user: { name: "Dr. Wilson", role: "md" }, // simple demo user (change via UI)
++  setUser(u){ set({ user: u }); },
+   async load() {
+     set({ loading: true });
+     const { data } = await api.list();
+     set({ encounters: data, loading: false });
+     get().listen();
+   },
+   listen() {
+     const es = new EventSource("/api/events");
+     es.addEventListener("encounter:new", (e) => {
+       const enc = JSON.parse(e.data);
+       set(s => ({ encounters: [enc, ...s.encounters] }));
+     });
+     es.addEventListener("encounter:update", (e) => {
+       const enc = JSON.parse(e.data);
+       set(s => ({ encounters: s.encounters.map(x => x.id===enc.id? enc : x) }));
+     });
+     es.onerror = () => { setTimeout(()=>get().listen(), 2000); };
+   },
+   async startTriage(id) { await api.startTriage(id); },
+   async assignRoom(id, room) { await api.assignRoom(id, room); },
+   async markReady(id, disposition) { await api.markReady(id, disposition); },
+   async markResultsComplete(id) { await fetch("/api/actions/results-complete",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); },
+   async reassignRoom(id, room) { await api.reassignRoom(id, room); },
+-  async setAts(id, ats) { await api.setAts(id, ats); },
++  async setAts(id, ats) {
++    const actor = get().user;
++    await api.setAts(id, ats, actor);
++  },
+   async trigger(name) { await api.scenario(name); }
+ }));
+```
+
+---
+
+### 3) `client/src/App.jsx` — render ATS correctly by lane, add Set/Change ATS buttons, and a tiny user selector
+
+```diff
+ import { useEffect, useMemo, useState } from "react";
+ import { useED } from "./store";
+ 
+@@
+ function Card({ enc }) {
+   const atsColor =
+     enc.ats <= 2 ? "bg-red-100 text-red-700" :
+     enc.ats === 3 ? "bg-amber-100 text-amber-700" :
+     "bg-emerald-100 text-emerald-700";
+ 
+   return (
+     <div className="bg-white rounded-xl shadow p-3 mb-3 border">
+       <div className="flex items-center justify-between">
+         <div className="font-semibold">
+           {enc.patient.name} <span className="text-xs text-gray-500">({enc.patient.age}/{enc.patient.sex})</span>
+         </div>
+-        <span className={`text-xs px-2 py-0.5 rounded-full ${atsColor}`}>ATS {enc.ats ?? "—"}</span>
++        {/* ATS badge logic:
++           - Waiting: show ATS — unless provisionalAts=true (then show 'ATS n (prov.)' with dashed border)
++           - Other lanes: show ATS value; never show '—' after triage */}
++        {enc.state === "waiting" ? (
++          enc.provisionalAts && enc.ats
++            ? <span className={`text-xs px-2 py-0.5 rounded-full border border-dashed ${atsColor}`}>ATS {enc.ats} (prov.)</span>
++            : <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">ATS —</span>
++        ) : (
++          <span className={`text-xs px-2 py-0.5 rounded-full ${atsColor}`}>ATS {enc.ats ?? "—"}</span>
++        )}
+       </div>
+       <div className="text-sm text-gray-600">{enc.complaint}</div>
+       <div className="mt-2 text-xs text-gray-500 flex gap-3">
+         <span>NHI: {enc.nhi}</span>
+         <span>Room: {enc.room || '—'}</span>
+       </div>
+       <div className="mt-2 flex flex-wrap gap-2">
+-        {/* Waiting/Triage → Set ATS helper (prototype) */}
+-        {(enc.state === "waiting" || enc.state === "triage") && (
+-          <button
+-            className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded border"
+-            onClick={()=>window.setAts(enc.id)}
+-            title="Set ATS (1–5)"
+-          >
+-            Set ATS
+-          </button>
+-        )}
++        {/* ATS controls:
++           - Waiting: no Set ATS (we don't triage in waiting)
++           - Triage: Set ATS (or Change ATS if already set)
++           - Post-triage lanes: Change ATS (audited) */}
++        {enc.state === "triage" && (
++          <button className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded border" onClick={()=>window.setAts(enc.id)} title="Set/Change ATS (1–5)">
++            {enc.ats ? "Change ATS" : "Set ATS"}
++          </button>
++        )}
++        {["roomed","diagnostics","decision"].includes(enc.state) && (
++          <button className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded border" onClick={()=>window.setAts(enc.id)} title="Change ATS (audited)">
++            Change ATS
++          </button>
++        )}
+ 
+         {/* Waiting → Start Triage by default */}
+         {enc.state === "waiting" && !((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
+           <button className="text-xs px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>window.triage(enc.id)}>
+             Start Triage
+           </button>
+         )}
+         {/* Waiting → Assign Room only if exceptions apply */}
+         {enc.state === "waiting" && ((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
+           <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
+             Assign Room
+           </button>
+         )}
+@@
+       </div>
+     </div>
+   );
+ }
+ 
+-export default function App() {
+-  const { encounters, load } = useED();
++function UserPicker() {
++  const { user, setUser } = useED();
++  const opts = [
++    { name:"Nurse J. Smith", role:"rn" },
++    { name:"Dr. Wilson", role:"md" },
++    { name:"Charge Nurse", role:"charge" },
++    { name:"Bed Manager", role:"bedmgr" }
++  ];
++  return (
++    <select
++      className="text-sm border rounded px-2 py-1"
++      value={`${user.role}|${user.name}`}
++      onChange={e=>{
++        const [role, ...rest] = e.target.value.split("|");
++        const name = rest.join("|");
++        setUser({ name, role });
++      }}>
++      {opts.map(o => <option key={o.role} value={`${o.role}|${o.name}`}>{o.name} ({o.role})</option>)}
++    </select>
++  );
++}
++
++export default function App() {
++  const { encounters, load } = useED();
+   useEffect(()=>{ load(); }, []);
+ 
+   // Expose quick actions for demo buttons inside cards
+   const { startTriage, assignRoom, markReady, markResultsComplete, reassignRoom, setAts } = useED();
+   useEffect(()=>{
+     fetch("/api/config").then(r=>r.json()).then(cfg => { window.__siteConfig = cfg });
+     window.assign = (id) => assignRoom(id, "T1");
+     window.triage = (id) => startTriage(id);
+     window.ready = (id) => markReady(id, "discharge");
+     window.results = (id) => markResultsComplete(id);
+     window.reassign = (id) => reassignRoom(id);
+     window.setAts = (id) => {
+       const v = prompt("Enter ATS (1–5):","");
+       const n = Number(v);
+       if ([1,2,3,4,5].includes(n)) setAts(id, n);
+       else alert("ATS must be 1–5");
+     };
+   }, [assignRoom, markReady, markResultsComplete, reassignRoom, setAts]);
+ 
+   const byLane = useMemo(() => {
+     const g = Object.fromEntries(LANES.map(l => [l.key, []]));
+     for (const e of encounters) g[e.state]?.push(e);
+     return g;
+   }, [encounters]);
+ 
+   return (
+     <div className="min-h-screen bg-gray-100">
+       <header className="px-5 py-4 border-b bg-white flex items-center justify-between">
+-        <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
+-        <Toolbar />
++        <div className="flex items-center gap-4">
++          <h1 className="text-xl font-bold">ED Flow Dashboard</h1>
++          <UserPicker />
++        </div>
++        <Toolbar />
+       </header>
+       <main className="overflow-x-auto flex gap-4 p-4">
+         {LANES.map(l => <Lane key={l.key} laneKey={l.key} title={l.title} items={byLane[l.key] || []} />)}
+       </main>
+     </div>
+   );
+ }
+```
+
+---
+
+## ✅ Acceptance checklist
+
+* **Waiting lane:** ATS shows as **“ATS —”** (grey). If you trigger **Stroke** scenario, you’ll see **“ATS 2 (prov.)”** with a dashed border.
+* **Triage lane:** **Set ATS** (or **Change ATS** if already set) button appears; setting a value writes an **audit** entry.
+* **Roomed / Diagnostics / Decision:** **Change ATS** button appears; changes are **audited** (old→new, who, when).
+* **Audit API:** `GET /api/audit?encounterId=<id>` returns audit trail.
+* **Actor selection:** dropdown in the header sets the current user; ATS changes record that name/role.
+
+Run:
+
+* Dev: `npm run dev`
+* Single port: `npm run build && npm start`
+
+If you want, I can add a tiny **Audit Drawer** UI that shows the ATS change history when you click a card — handy for demos with Dr Dar.

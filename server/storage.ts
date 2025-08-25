@@ -1,4 +1,4 @@
-import { type Encounter, type InsertEncounter, type UpdateEncounter, type Lane } from "@shared/schema";
+import { type Encounter, type InsertEncounter, type UpdateEncounter, type Lane, type AuditEntry, type InsertAuditEntry } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -13,13 +13,19 @@ export interface IStorage {
   // Bulk operations for scenarios
   createMultipleEncounters(encounters: InsertEncounter[]): Promise<Encounter[]>;
   moveEncountersToLane(encounterIds: string[], lane: Lane): Promise<Encounter[]>;
+  
+  // Audit trail
+  getAuditEntries(encounterId?: string): Promise<AuditEntry[]>;
+  createAuditEntry(entry: InsertAuditEntry): Promise<AuditEntry>;
 }
 
 export class MemStorage implements IStorage {
   private encounters: Map<string, Encounter>;
+  private auditEntries: Map<string, AuditEntry>;
 
   constructor() {
     this.encounters = new Map();
+    this.auditEntries = new Map();
     this.initializeTestData();
   }
 
@@ -52,6 +58,7 @@ export class MemStorage implements IStorage {
       resultsStatus: insertEncounter.resultsStatus || null,
       triageBypass: insertEncounter.triageBypass || "false",
       isolationRequired: insertEncounter.isolationRequired || "false",
+      provisionalAts: insertEncounter.provisionalAts || "false",
       arrivalTime: now,
       lastUpdated: now,
     };
@@ -101,7 +108,7 @@ export class MemStorage implements IStorage {
         age: 45,
         sex: "F",
         nhi: "ABC1234",
-        ats: 3,
+        ats: null, // No ATS set yet in waiting
         complaint: "Chest pain, onset 2hrs",
         lane: "waiting"
       },
@@ -110,7 +117,7 @@ export class MemStorage implements IStorage {
         age: 28,
         sex: "M",
         nhi: "DEF5678",
-        ats: 4,
+        ats: null, // No ATS set yet in waiting
         complaint: "Ankle sprain, twisted playing football",
         lane: "waiting"
       },
@@ -186,11 +193,36 @@ export class MemStorage implements IStorage {
         resultsStatus: encounter.lane === "diagnostics" ? "pending" : null,
         triageBypass: encounter.triageBypass || "false",
         isolationRequired: encounter.isolationRequired || "false",
+        provisionalAts: encounter.provisionalAts || "false",
         arrivalTime,
         lastUpdated: arrivalTime,
       };
       this.encounters.set(id, fullEncounter);
     });
+  }
+
+  async getAuditEntries(encounterId?: string): Promise<AuditEntry[]> {
+    const entries = Array.from(this.auditEntries.values()).sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    if (encounterId) {
+      return entries.filter(entry => entry.encounterId === encounterId);
+    }
+    
+    return entries.slice(0, 200); // Last 200 entries
+  }
+
+  async createAuditEntry(entry: InsertAuditEntry): Promise<AuditEntry> {
+    const id = randomUUID();
+    const now = new Date();
+    const auditEntry: AuditEntry = {
+      ...entry,
+      id,
+      timestamp: now,
+    };
+    this.auditEntries.set(id, auditEntry);
+    return auditEntry;
   }
 }
 
