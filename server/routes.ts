@@ -104,6 +104,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Save triage (vitals/pain/notes + optional ATS)
+  app.post("/api/triage/save", async (req, res) => {
+    try {
+      const body = req.body || {};
+      const { id, vitals = {}, pain = null, notes = "", ats, actorName, actorRole } = body;
+      
+      if (!id) {
+        return res.status(400).json({ message: "Encounter ID required" });
+      }
+
+      const encounter = await storage.getEncounter(id);
+      if (!encounter) {
+        return res.status(404).json({ message: "Encounter not found" });
+      }
+
+      // Create update object with triage data
+      const updateData: any = {
+        triageCompleted: "true",
+        triagePain: pain !== null ? Number(pain) : null,
+        triageNotes: String(notes || ""),
+        triageHr: vitals.hr ? Number(vitals.hr) : null,
+        triageRr: vitals.rr ? Number(vitals.rr) : null,
+        triageBpSys: vitals.bpSys ? Number(vitals.bpSys) : null,
+        triageBpDia: vitals.bpDia ? Number(vitals.bpDia) : null,
+        triageSpo2: vitals.spo2 ? Number(vitals.spo2) : null,
+        triageTemp: vitals.temp ? Math.round(Number(vitals.temp) * 10) : null, // Store as integer * 10
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Move waiting → triage on save
+      if (encounter.lane === "waiting") {
+        updateData.lane = "triage";
+      }
+
+      // Optional ATS update
+      if (ats && [1, 2, 3, 4, 5].includes(Number(ats))) {
+        updateData.ats = Number(ats);
+        updateData.provisionalAts = "false";
+
+        // Audit ATS change
+        await storage.createAuditEntry({
+          encounterId: id,
+          action: "set-ats",
+          beforeValue: JSON.stringify({ ats: encounter.ats }),
+          afterValue: JSON.stringify({ ats: Number(ats) }),
+          actorName: actorName || "Unknown",
+          actorRole: actorRole || null
+        });
+      }
+
+      const updatedEncounter = await storage.updateEncounter(id, updateData);
+
+      // Audit triage save
+      await storage.createAuditEntry({
+        encounterId: id,
+        action: "triage.save",
+        beforeValue: JSON.stringify({
+          completed: encounter.triageCompleted,
+          pain: encounter.triagePain,
+          notes: encounter.triageNotes,
+          vitals: {
+            hr: encounter.triageHr,
+            rr: encounter.triageRr,
+            bpSys: encounter.triageBpSys,
+            bpDia: encounter.triageBpDia,
+            spo2: encounter.triageSpo2,
+            temp: encounter.triageTemp ? encounter.triageTemp / 10 : null
+          }
+        }),
+        afterValue: JSON.stringify({
+          completed: true,
+          pain: updateData.triagePain,
+          notes: updateData.triageNotes,
+          vitals: {
+            hr: updateData.triageHr,
+            rr: updateData.triageRr,
+            bpSys: updateData.triageBpSys,
+            bpDia: updateData.triageBpDia,
+            spo2: updateData.triageSpo2,
+            temp: updateData.triageTemp ? updateData.triageTemp / 10 : null
+          }
+        }),
+        actorName: actorName || "Unknown",
+        actorRole: actorRole || null
+      });
+
+      broadcastSSE("encounter:updated", updatedEncounter);
+      
+      res.json({ 
+        message: "Triage saved successfully", 
+        encounter: updatedEncounter 
+      });
+    } catch (error) {
+      console.error("Failed to save triage:", error);
+      res.status(500).json({ message: "Failed to save triage" });
+    }
+  });
+
   // Get encounters by lane
   app.get("/api/encounters/lane/:lane", async (req, res) => {
     try {

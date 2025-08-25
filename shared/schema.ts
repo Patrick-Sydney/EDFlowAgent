@@ -19,6 +19,16 @@ export const encounters = pgTable("encounters", {
   triageBypass: varchar("triage_bypass", { length: 10 }).default("false"), // "true" | "false" for critical cases
   isolationRequired: varchar("isolation_required", { length: 10 }).default("false"), // "true" | "false" for isolation needs
   provisionalAts: varchar("provisional_ats", { length: 10 }).default("false"), // "true" | "false" for ambulance-provided ATS
+  // Triage fields
+  triageCompleted: varchar("triage_completed", { length: 10 }).default("false"), // "true" | "false"
+  triagePain: integer("triage_pain"), // 0-10 pain scale
+  triageNotes: text("triage_notes").default(""),
+  triageHr: integer("triage_hr"), // heart rate (bpm)
+  triageRr: integer("triage_rr"), // respiratory rate (/min)
+  triageBpSys: integer("triage_bp_sys"), // systolic BP
+  triageBpDia: integer("triage_bp_dia"), // diastolic BP
+  triageSpo2: integer("triage_spo2"), // oxygen saturation (%)
+  triageTemp: integer("triage_temp"), // temperature (°C * 10 for decimal precision)
   arrivalTime: timestamp("arrival_time").notNull().defaultNow(),
   lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });

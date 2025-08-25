@@ -10,6 +10,10 @@ interface DashboardState {
   user: { name: string; role: string };
   roleView: string;
   
+  // Triage widget UI state
+  triageOpen: boolean;
+  triageEncounter: Encounter | null;
+  
   // Actions
   setEncounters: (encounters: Encounter[]) => void;
   addEncounter: (encounter: Encounter) => void;
@@ -19,6 +23,11 @@ interface DashboardState {
   setRoleView: (roleView: string) => void;
   resetDemo: () => Promise<void>;
   registerPatient: (payload: any) => Promise<void>;
+  
+  // Triage actions
+  openTriage: (encounter: Encounter) => void;
+  closeTriage: () => void;
+  saveTriage: (payload: any) => Promise<any>;
   
   // Selectors
   getEncountersByLane: (lane: Lane) => Encounter[];
@@ -42,6 +51,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   // Actor used for audit trails. No UI picker now.
   user: { name: "Demo User", role: "demo" },
   roleView: "full",
+  
+  // Triage widget UI state
+  triageOpen: false,
+  triageEncounter: null,
 
   setEncounters: (encounters) => {
     const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
@@ -107,6 +120,27 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to register patient:', error);
+      throw error;
+    }
+  },
+
+  // Triage actions
+  openTriage: (encounter) => set({ triageOpen: true, triageEncounter: encounter }),
+  
+  closeTriage: () => set({ triageOpen: false, triageEncounter: null }),
+  
+  saveTriage: async (payload) => {
+    try {
+      const { user } = get();
+      const response = await apiRequest('POST', '/api/triage/save', {
+        ...payload,
+        actorName: user.name,
+        actorRole: user.role
+      });
+      // No need to set state here; SSE update will refresh encounter
+      return response;
+    } catch (error) {
+      console.error('Failed to save triage:', error);
       throw error;
     }
   },

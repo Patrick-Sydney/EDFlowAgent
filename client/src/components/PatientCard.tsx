@@ -5,6 +5,7 @@ import { Bed, Check, Stethoscope } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDashboardStore } from "@/stores/dashboardStore";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,6 @@ export function PatientCard({ encounter }: PatientCardProps) {
   const [showRoomDialog, setShowRoomDialog] = useState(false);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [isMarkingResultsComplete, setIsMarkingResultsComplete] = useState(false);
-  const [isStartingTriage, setIsStartingTriage] = useState(false);
   const [siteConfig, setSiteConfig] = useState<any>(null);
   const [isSettingAts, setIsSettingAts] = useState(false);
   const [user, setUser] = useState({ name: "Dr. Wilson", role: "md" });
@@ -144,27 +144,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
     }
   };
 
-  const handleStartTriage = async () => {
-    setIsStartingTriage(true);
-    try {
-      await apiRequest('POST', '/api/actions/start-triage', {
-        id: encounter.id
-      });
-      
-      toast({
-        title: "Triage Started",
-        description: "Patient moved to triage",
-      });
-    } catch (error) {
-      toast({
-        title: "Error", 
-        description: "Failed to start triage",
-        variant: "destructive",
-      });
-    } finally {
-      setIsStartingTriage(false);
-    }
-  };
+  const openTriage = useDashboardStore((state) => state.openTriage);
 
   const handleSetAts = async () => {
     const atsValue = prompt("Enter ATS (1-5):", encounter.ats?.toString() || "3");
@@ -344,13 +324,13 @@ export function PatientCard({ encounter }: PatientCardProps) {
          !((encounter.triageBypass === "true" || encounter.isolationRequired === "true") || siteConfig?.triageInRoom) && (
           <Button 
             size="sm" 
-            onClick={handleStartTriage}
-            disabled={isStartingTriage}
+            onClick={() => openTriage(encounter)}
+            disabled={false}
             className="flex-1 bg-sky-600 hover:bg-sky-700 text-white"
             data-testid={`button-start-triage-${encounter.id}`}
           >
             <Stethoscope className="w-3 h-3 mr-1" />
-            {isStartingTriage ? "Starting..." : "Start Triage"}
+            Start Triage
           </Button>
         )}
 
@@ -406,19 +386,30 @@ export function PatientCard({ encounter }: PatientCardProps) {
           </Dialog>
         )}
 
-        {/* Triage → Assign Room */}
+        {/* Triage → Open Triage & Assign Room */}
         {encounter.lane === "triage" && (
-          <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
-            <DialogTrigger asChild>
-              <Button 
-                size="sm" 
-                className="flex-1 bg-medical-blue hover:bg-blue-700 text-white"
-                data-testid={`button-assign-room-${encounter.id}`}
-              >
-                <Bed className="w-3 h-3 mr-1" />
-                Assign Room
-              </Button>
-            </DialogTrigger>
+          <>
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => openTriage(encounter)}
+              className="text-xs"
+              data-testid={`button-open-triage-${encounter.id}`}
+            >
+              <Stethoscope className="w-3 h-3 mr-1" />
+              Open Triage
+            </Button>
+            <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
+              <DialogTrigger asChild>
+                <Button 
+                  size="sm" 
+                  className="flex-1 bg-medical-blue hover:bg-blue-700 text-white"
+                  data-testid={`button-assign-room-${encounter.id}`}
+                >
+                  <Bed className="w-3 h-3 mr-1" />
+                  Assign Room
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Assign Room - {encounter.name}</DialogTitle>
@@ -455,6 +446,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
               </div>
             </DialogContent>
           </Dialog>
+          </>
         )}
 
         {/* Roomed → Mark Ready */}

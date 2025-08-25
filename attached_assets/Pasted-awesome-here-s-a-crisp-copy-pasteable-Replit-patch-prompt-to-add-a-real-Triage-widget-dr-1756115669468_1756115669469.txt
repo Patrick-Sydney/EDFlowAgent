@@ -1,0 +1,364 @@
+awesome — here’s a crisp, copy‑pasteable **Replit patch prompt** to add a real **Triage widget** (drawer) that nurses use to record vitals, assign ATS (audited), and complete triage. it works from **Waiting** (opens triage & moves to `triage`) and from **Triage** (continue/edit).
+
+---
+
+# Prompt: Add a Triage widget (drawer) for Waiting/Triage
+
+Apply the following changes to the ED Flow Agent repo.
+
+## 1) Backend — `server/index.js`
+
+Add triage fields to encounters and a save endpoint. Write an audit entry for triage completion. If a patient is still in `waiting`, saving triage should move them to `triage`.
+
+```diff
+@@
+ // simple audit store: each item = { id, encounterId, action, before, after, actor, role, ts }
+ const audit = [];
+@@
+   const mk = (overrides={}) => ({
+@@
+     timers: { doorToCT: null },
+     resultsStatus: overrides.resultsStatus || (overrides.state === "diagnostics" ? "pending" : null),
+     // ATS behaviour
+     provisionalAts: overrides.provisionalAts || false,
+     // exception flags
+     triageBypass: overrides.triageBypass || false,
+     isolationRequired: overrides.isolationRequired || false,
++    // triage fields
++    triage: {
++      completed: overrides.triage?.completed || false,
++      pain: overrides.triage?.pain ?? null,                 // 0..10
++      notes: overrides.triage?.notes || "",
++      vitals: {
++        hr: overrides.triage?.vitals?.hr ?? null,           // bpm
++        rr: overrides.triage?.vitals?.rr ?? null,           // /min
++        bpSys: overrides.triage?.vitals?.bpSys ?? null,
++        bpDia: overrides.triage?.vitals?.bpDia ?? null,
++        spo2: overrides.triage?.vitals?.spo2 ?? null,       // %
++        temp: overrides.triage?.vitals?.temp ?? null        // °C
++      }
++    }
+   });
+@@
+ app.get("/api/encounters", (req, res) => {
+   res.json({ data: encounters });
+ });
+ 
++// Save triage (vitals/pain/notes [+ optional ATS])
++// Body: { id, vitals:{hr,rr,bpSys,bpDia,spo2,temp}, pain, notes, ats?, actorName?, actorRole? }
++app.post("/api/triage/save", (req, res) => {
++  const b = req.body || {};
++  const { id, vitals={}, pain=null, notes="" } = b;
++  if (!id) return res.status(400).json({ ok:false, error:"id required" });
++  const ix = encounters.findIndex(e=>e.id===id);
++  if (ix === -1) return res.status(404).json({ ok:false, error:"encounter not found" });
++
++  const before = JSON.parse(JSON.stringify(encounters[ix].triage || {}));
++  const now = dayjs().toISOString();
++
++  // update triage block
++  const triagePatch = {
++    completed: true,
++    pain: (pain ?? null),
++    notes: String(notes || ""),
++    vitals: {
++      hr: vitals.hr ?? null,
++      rr: vitals.rr ?? null,
++      bpSys: vitals.bpSys ?? null,
++      bpDia: vitals.bpDia ?? null,
++      spo2: vitals.spo2 ?? null,
++      temp: vitals.temp ?? null
++    }
++  };
++
++  // move waiting → triage on save
++  const statePatch = encounters[ix].state === "waiting" ? { state: "triage" } : {};
++
++  const out = updateEncounter(id, {
++    triage: triagePatch,
++    ...statePatch,
++    lastUpdated: now
++  });
++
++  // Optional: if ATS provided, reuse existing endpoint logic by calling updateEncounter directly (no validation here)
++  if (b.ats && [1,2,3,4,5].includes(Number(b.ats))) {
++    updateEncounter(id, { ats: Number(b.ats), provisionalAts: false });
++    audit.push({
++      id: uuid(), encounterId: id, action: "set-ats",
++      before: { ats: encounters[ix].ats }, after: { ats: Number(b.ats) },
++      actor: b.actorName || "unknown", role: b.actorRole || null, ts: now
++    });
++  }
++
++  // audit triage save
++  audit.push({
++    id: uuid(), encounterId: id, action: "triage.save",
++    before, after: triagePatch,
++    actor: b.actorName || "unknown", role: b.actorRole || null, ts: now
++  });
++
++  return res.json({ ok:true, data: out });
++});
+```
+
+---
+
+## 2) Frontend store — `client/src/store.js`
+
+Add state for opening the triage drawer and an action to save triage. Include actor in payload.
+
+```diff
+ const api = {
+   list: async () => (await fetch("/api/encounters")).json(),
+@@
+   setAts: async (id, ats, actor) => (await fetch("/api/actions/set-ats",{
+     method:"POST",
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id,ats, actorName: actor?.name, actorRole: actor?.role})
+   })).json(),
++  triageSave: async (payload, actor) => (await fetch("/api/triage/save",{
++    method:"POST",
++    headers:{'Content-Type':'application/json'},
++    body:JSON.stringify({ ...payload, actorName: actor?.name, actorRole: actor?.role })
++  })).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+@@
+   roleView: "full",
+@@
+   async trigger(name) { await api.scenario(name); },
++  // triage widget UI state
++  triageOpen: false,
++  triageEncounter: null,
++  openTriage(enc){ set({ triageOpen:true, triageEncounter: enc }); },
++  closeTriage(){ set({ triageOpen:false, triageEncounter: null }); },
++  async saveTriage({ id, vitals, pain, notes, ats }) {
++    const actor = get().user;
++    const res = await api.triageSave({ id, vitals, pain, notes, ats }, actor);
++    // no need to set state here; SSE update will refresh encounter
++    return res;
++  }
+ }));
+```
+
+---
+
+## 3) Triage UI — `client/src/components/TriageDrawer.jsx`
+
+A simple slide‑over drawer with vitals, pain, notes, ATS, and risk hints (sepsis/stroke) evaluated client‑side.
+
+```jsx
+import { useEffect, useMemo, useState } from "react";
+import { useED } from "../store";
+
+export default function TriageDrawer() {
+  const { triageOpen, triageEncounter, closeTriage, saveTriage } = useED();
+  const enc = triageEncounter;
+
+  const [form, setForm] = useState({
+    hr: "", rr: "", bpSys: "", bpDia: "", spo2: "", temp: "",
+    pain: "", notes: "", ats: ""
+  });
+
+  useEffect(()=>{
+    if (!enc) return;
+    const t = enc.triage || {};
+    setForm({
+      hr: t?.vitals?.hr ?? "",
+      rr: t?.vitals?.rr ?? "",
+      bpSys: t?.vitals?.bpSys ?? "",
+      bpDia: t?.vitals?.bpDia ?? "",
+      spo2: t?.vitals?.spo2 ?? "",
+      temp: t?.vitals?.temp ?? "",
+      pain: t?.pain ?? "",
+      notes: t?.notes ?? "",
+      ats: enc.ats ?? ""
+    });
+  }, [enc]);
+
+  const on = (k,v) => setForm(s => ({ ...s, [k]: v }));
+
+  const risk = useMemo(()=>{
+    const hr = Number(form.hr), rr = Number(form.rr), temp = Number(form.temp), spo2 = Number(form.spo2);
+    const sepsis = (temp>=38 || temp<=35) && (hr>90) && (rr>20);
+    const hypox = spo2 && spo2<92;
+    const stroke = /weak|speech|face|FAST|arm|droop/i.test(enc?.complaint||"");
+    return { sepsis, hypox, stroke };
+  }, [form, enc]);
+
+  if (!triageOpen || !enc) return null;
+
+  const save = async (e) => {
+    e.preventDefault();
+    const payload = {
+      id: enc.id,
+      vitals: {
+        hr: numOrNull(form.hr), rr: numOrNull(form.rr),
+        bpSys: numOrNull(form.bpSys), bpDia: numOrNull(form.bpDia),
+        spo2: numOrNull(form.spo2), temp: numOrNull(form.temp)
+      },
+      pain: numOrNull(form.pain),
+      notes: form.notes,
+      ats: form.ats ? Number(form.ats) : undefined
+    };
+    const res = await saveTriage(payload);
+    if (!res?.ok) alert(res?.error || "Failed to save triage");
+    closeTriage();
+  };
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/30" onClick={closeTriage}/>
+      <div className="absolute top-0 right-0 h-full w-full max-w-md bg-white shadow-xl p-4 overflow-y-auto">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-lg">Triage — {enc.patient?.name}</h3>
+          <button className="text-sm px-2 py-1 border rounded" onClick={closeTriage}>Close</button>
+        </div>
+
+        <form onSubmit={save} className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="HR (bpm)" val={form.hr} onChange={v=>on("hr", v)} />
+            <Field label="RR (/min)" val={form.rr} onChange={v=>on("rr", v)} />
+            <Field label="Temp (°C)" val={form.temp} onChange={v=>on("temp", v)} />
+            <Field label="SpO₂ (%)" val={form.spo2} onChange={v=>on("spo2", v)} />
+            <Field label="BP Sys" val={form.bpSys} onChange={v=>on("bpSys", v)} />
+            <Field label="BP Dia" val={form.bpDia} onChange={v=>on("bpDia", v)} />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Pain 0–10" val={form.pain} onChange={v=>on("pain", v)} />
+            <div className="col-span-2">
+              <label className="text-sm">Notes</label>
+              <textarea className="mt-1 w-full border rounded px-2 py-1 h-20"
+                        value={form.notes} onChange={e=>on("notes", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="text-sm">ATS</label>
+            <select className="border rounded px-2 py-1"
+                    value={form.ats || ""}
+                    onChange={e=>on("ats", e.target.value)}>
+              <option value="">—</option>
+              <option value="1">1 (Immediate)</option>
+              <option value="2">2 (Very urgent)</option>
+              <option value="3">3 (Urgent)</option>
+              <option value="4">4 (Semi-urgent)</option>
+              <option value="5">5 (Non-urgent)</option>
+            </select>
+            {enc.provisionalAts && <span className="text-xs text-gray-500">(replaces provisional)</span>}
+          </div>
+
+          {/* Risk hints */}
+          <div className="flex flex-wrap gap-2 text-xs">
+            {risk.sepsis && <Badge text="Sepsis risk" />}
+            {risk.hypox && <Badge text="Hypoxia risk" />}
+            {risk.stroke && <Badge text="Stroke pathway" />}
+          </div>
+
+          <div className="pt-2 flex gap-2">
+            <button type="submit" className="px-3 py-2 bg-emerald-600 text-white rounded">Save triage</button>
+            <button type="button" className="px-3 py-2 border rounded" onClick={closeTriage}>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, val, onChange }) {
+  return (
+    <label className="text-sm">
+      {label}
+      <input className="mt-1 w-full border rounded px-2 py-1"
+             value={val ?? ""} onChange={e=>onChange(e.target.value)} />
+    </label>
+  );
+}
+function Badge({ text }) {
+  return <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{text}</span>;
+}
+function numOrNull(v){ const n=Number(v); return Number.isFinite(n)? n : null; }
+```
+
+---
+
+## 4) Wire it into cards — `client/src/App.jsx`
+
+* **Waiting:** “Start Triage” now opens the drawer (doesn’t immediately call start API; save will move state).
+* **Triage:** show “Open Triage”.
+
+```diff
+ import TriageDrawer from "./components/TriageDrawer.jsx";
+@@
+ export default function App() {
+-  const { encounters, load, roleView } = useED();
++  const { encounters, load, roleView, openTriage } = useED();
+@@
+       <main className="overflow-x-auto flex flex-col gap-4 p-4">
++        <TriageDrawer />
+         {roleView === "reception" && (
+           <div className="w-full flex justify-start">
+             <RegisterWidget />
+           </div>
+         )}
+```
+
+In the `Card` component’s buttons block, replace the Waiting/Triage triage handlers:
+
+```diff
+-        {/* Waiting → Start Triage by default */}
+-        {enc.state === "waiting" && !((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
+-          <button className="text-xs px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>window.triage(enc.id)}>
+-            Start Triage
+-          </button>
+-        )}
++        {/* Waiting → Start Triage opens drawer; save moves to triage */}
++        {enc.state === "waiting" && !((enc.triageBypass || enc.isolationRequired) || window.__siteConfig?.triageInRoom) && (
++          <button className="text-xs px-2 py-1 bg-sky-600 text-white rounded" onClick={()=>useED.getState().openTriage(enc)}>
++            Start Triage
++          </button>
++        )}
+@@
+-        {/* Triage → Assign Room */}
++        {/* Triage → Open triage & Assign Room */}
+         {enc.state === "triage" && (
+-          <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
+-            Assign Room
+-          </button>
++          <>
++            <button className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded border" onClick={()=>useED.getState().openTriage(enc)}>
++              Open Triage
++            </button>
++            <button className="text-xs px-2 py-1 bg-blue-600 text-white rounded" onClick={()=>window.assign(enc.id)}>
++              Assign Room
++            </button>
++          </>
+         )}
+```
+
+*(Leave your other buttons as previously fixed.)*
+
+---
+
+## ✅ Acceptance (what to test)
+
+1. **Waiting → Start Triage** opens the drawer. Enter vitals/pain/notes, pick an ATS, **Save**:
+
+   * Patient moves to **Triage** (if they were Waiting).
+   * Card shows ATS badge (provisional flag removed if present).
+   * An **audit** entry appears for `triage.save` (and `set-ats` if ATS set).
+
+2. **Triage → Open Triage** lets you edit/update; **Save** keeps them in Triage and updates vitals/notes.
+
+3. **Risk hints** (Sepsis/Hypoxia/Stroke) appear contextually when values/complaint match.
+
+4. Nothing breaks on **Reset Demo**; the drawer closes and the board reseeds cleanly.
+
+---
+
+If you want, next we can:
+
+* add a **“Assign Room from drawer”** checkbox that calls assign-room after saving, or
+* surface the **ATS/audit history** in the drawer (simple list via `/api/audit?encounterId=…`).

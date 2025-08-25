@@ -7,6 +7,7 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { sseManager } from "@/lib/sse";
 import { type Encounter, LANES } from "@shared/schema";
 import RegisterWidget from "@/components/RegisterWidget";
+import TriageDrawer from "@/components/TriageDrawer";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView } = useDashboardStore();
@@ -109,6 +110,9 @@ export default function Dashboard() {
             <RegisterWidget />
           </div>
         )}
+        
+        {/* Triage Drawer */}
+        <TriageDrawer />
         
         {/* Patient Flow Lanes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
