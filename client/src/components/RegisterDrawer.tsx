@@ -143,50 +143,24 @@ export default function RegisterDrawer() {
                     />
                   </label>
                   {/* Age — VitalButton style matching Triage */}
-                  <div className="text-sm">
-                    <span className="block mb-1">Age</span>
-                    <VitalButton 
-                      label="Age" 
-                      unit=" years" 
-                      value={form.age} 
-                      onChange={(v) => onChange("age", v)} 
-                      min={0} 
-                      max={120} 
-                      maxLen={3}
-                    />
-                  </div>
-                  {/* Sex — M / F toggle buttons */}
-                  <div className="text-sm">
-                    <span>Sex</span>
-                    <div className="mt-1 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        aria-pressed={form.sex === "F"}
-                        onClick={() => onChange("sex", "F")}
-                        className={`px-3 py-3 rounded-xl border text-base min-h-[44px] ${
-                          form.sex === "F" 
-                            ? "bg-blue-600 text-white border-blue-600" 
-                            : "bg-white"
-                        }`}
-                        data-testid="button-sex-f"
-                      >
-                        F
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={form.sex === "M"}
-                        onClick={() => onChange("sex", "M")}
-                        className={`px-3 py-3 rounded-xl border text-base min-h-[44px] ${
-                          form.sex === "M" 
-                            ? "bg-blue-600 text-white border-blue-600" 
-                            : "bg-white"
-                        }`}
-                        data-testid="button-sex-m"
-                      >
-                        M
-                      </button>
-                    </div>
-                  </div>
+                  <VitalButton 
+                    label="Age" 
+                    unit=" years" 
+                    value={form.age} 
+                    onChange={(v) => onChange("age", v)} 
+                    min={0} 
+                    max={120} 
+                    maxLen={3}
+                  />
+                  {/* Sex — Button style matching VitalButton */}
+                  <button
+                    type="button"
+                    onClick={() => onChange("sex", form.sex === "F" ? "M" : "F")}
+                    className="px-4 py-3 rounded-xl border text-sm font-medium w-full min-h-[44px] bg-blue-50 border-blue-300 text-blue-700"
+                    data-testid="button-sex-toggle"
+                  >
+                    Sex: {form.sex}
+                  </button>
                   <label className="text-sm col-span-2">
                     NHI (optional)
                     <input 
