@@ -16,11 +16,8 @@ interface PatientCardProps {
 
 export function PatientCard({ encounter }: PatientCardProps) {
   const { toast } = useToast();
-  const [isAssigningRoom, setIsAssigningRoom] = useState(false);
   const [isMarkingReady, setIsMarkingReady] = useState(false);
-  const [roomNumber, setRoomNumber] = useState("");
   const [disposition, setDisposition] = useState("");
-  const [showRoomDialog, setShowRoomDialog] = useState(false);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [isMarkingResultsComplete, setIsMarkingResultsComplete] = useState(false);
   const [siteConfig, setSiteConfig] = useState<any>(null);
@@ -52,40 +49,6 @@ export function PatientCard({ encounter }: PatientCardProps) {
     return "bg-yellow-100 text-yellow-800";
   };
 
-  const handleAssignRoom = async () => {
-    if (!roomNumber.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a room number.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsAssigningRoom(true);
-    try {
-      await apiRequest('POST', '/api/actions/assign-room', {
-        id: encounter.id,
-        room: roomNumber.trim()
-      });
-      
-      toast({
-        title: "Room Assigned",
-        description: `Patient assigned to ${roomNumber}`,
-      });
-      
-      setShowRoomDialog(false);
-      setRoomNumber("");
-    } catch (error) {
-      toast({
-        title: "Error", 
-        description: "Failed to assign room",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAssigningRoom(false);
-    }
-  };
 
   const handleMarkReady = async () => {
     if (!disposition.trim()) {
@@ -144,7 +107,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
     }
   };
 
-  const openTriage = useDashboardStore((state) => state.openTriage);
+  const { openTriage, openRoom } = useDashboardStore();
 
   const handleSetAts = async () => {
     const atsValue = prompt("Enter ATS (1-5):", encounter.ats?.toString() || "3");
@@ -334,52 +297,14 @@ export function PatientCard({ encounter }: PatientCardProps) {
         {/* Waiting → Assign Room (only for exceptions) */}
         {encounter.lane === "waiting" && 
          ((encounter.triageBypass === "true" || encounter.isolationRequired === "true") || siteConfig?.triageInRoom) && (
-          <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
-            <DialogTrigger asChild>
-              <Button 
-                className="flex-1 bg-medical-blue hover:bg-blue-700 text-white text-sm px-3 py-3 min-h-[44px]"
-                data-testid={`button-assign-room-${encounter.id}`}
-              >
-                <Bed className="w-3 h-3 mr-1" />
-                Assign Room
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Assign Room - {encounter.name}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="room">Room Number</Label>
-                  <Input
-                    id="room"
-                    value={roomNumber}
-                    onChange={(e) => setRoomNumber(e.target.value)}
-                    placeholder="e.g., Room 8"
-                    data-testid="input-room-number"
-                  />
-                </div>
-                <div className="flex space-x-2">
-                  <Button 
-                    onClick={handleAssignRoom}
-                    disabled={isAssigningRoom}
-                    className="flex-1"
-                    data-testid="button-confirm-assign-room"
-                  >
-                    {isAssigningRoom ? "Assigning..." : "Assign"}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowRoomDialog(false)}
-                    className="flex-1"
-                    data-testid="button-cancel-assign-room"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button 
+            onClick={() => openRoom(encounter)}
+            className="flex-1 bg-medical-blue hover:bg-blue-700 text-white text-sm px-3 py-3 min-h-[44px]"
+            data-testid={`button-assign-room-${encounter.id}`}
+          >
+            <Bed className="w-3 h-3 mr-1" />
+            Assign Room
+          </Button>
         )}
 
         {/* Triage → Open Triage & Assign Room */}
@@ -395,59 +320,32 @@ export function PatientCard({ encounter }: PatientCardProps) {
               <Stethoscope className="w-3 h-3 mr-1" />
               Open Triage
             </Button>
-            <Dialog open={showRoomDialog} onOpenChange={setShowRoomDialog}>
-              <DialogTrigger asChild>
-                <Button 
-                  size="sm" 
-                  className="flex-1 bg-medical-blue hover:bg-blue-700 text-white"
-                  data-testid={`button-assign-room-${encounter.id}`}
-                >
-                  <Bed className="w-3 h-3 mr-1" />
-                  Assign Room
-                </Button>
-              </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Assign Room - {encounter.name}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="room">Room Number</Label>
-                  <Input
-                    id="room"
-                    value={roomNumber}
-                    onChange={(e) => setRoomNumber(e.target.value)}
-                    placeholder="e.g., Room 8"
-                    data-testid="input-room-number"
-                  />
-                </div>
-                <div className="flex space-x-2">
-                  <Button 
-                    onClick={handleAssignRoom}
-                    disabled={isAssigningRoom}
-                    className="flex-1"
-                    data-testid="button-confirm-assign-room"
-                  >
-                    {isAssigningRoom ? "Assigning..." : "Assign"}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowRoomDialog(false)}
-                    className="flex-1"
-                    data-testid="button-cancel-assign-room"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+            <Button 
+              onClick={() => openRoom(encounter)}
+              size="sm" 
+              className="flex-1 bg-medical-blue hover:bg-blue-700 text-white"
+              data-testid={`button-assign-room-${encounter.id}`}
+            >
+              <Bed className="w-3 h-3 mr-1" />
+              Assign Room
+            </Button>
           </>
         )}
 
-        {/* Roomed → Mark Ready */}
+        {/* Roomed → Change Room / Mark Ready */}
         {encounter.lane === "roomed" && (
-          <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
+          <>
+            <Button 
+              onClick={() => openRoom(encounter)}
+              size="sm"
+              variant="outline"
+              className="text-xs"
+              data-testid={`button-reassign-room-${encounter.id}`}
+            >
+              <Bed className="w-3 h-3 mr-1" />
+              Change Room
+            </Button>
+            <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
             <DialogTrigger asChild>
               <Button 
                 size="sm" 
@@ -494,6 +392,7 @@ export function PatientCard({ encounter }: PatientCardProps) {
               </div>
             </DialogContent>
           </Dialog>
+          </>
         )}
 
         {/* Diagnostics → Mark Results Complete or Mark Ready if complete */}

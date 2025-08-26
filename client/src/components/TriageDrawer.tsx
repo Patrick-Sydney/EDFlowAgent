@@ -14,7 +14,7 @@ import { Segmented, Chips } from "./ui/Segmented";
 import { haptic, once } from "@/utils/touch";
 
 export default function TriageDrawer() {
-  const { triageOpen, triageEncounter, closeTriage, saveTriage } = useDashboardStore();
+  const { triageOpen, triageEncounter, closeTriage, saveTriage, openRoom } = useDashboardStore();
   const { toast } = useToast();
   const enc = triageEncounter;
 
@@ -175,33 +175,8 @@ export default function TriageDrawer() {
     const result = await handleSave();
     if (!result?.ok) return;
     
-    try {
-      // Try to assign room via global window.assign function
-      if (typeof (window as any).assign === 'function') {
-        await (window as any).assign(enc.id);
-        toast({
-          title: "Success",
-          description: `${enc.name} triaged and assigned to room`
-        });
-        closeTriage();
-      } else {
-        console.warn("No assign function found.");
-        toast({
-          title: "Room assignment not available",
-          description: "Please assign room manually from the patient card",
-          variant: "destructive"
-        });
-        closeTriage();
-      }
-    } catch (err) {
-      console.error(err);
-      toast({
-        title: "Could not assign room",
-        description: "Triage saved. Please try room assignment from the card.",
-        variant: "destructive"
-      });
-      closeTriage();
-    }
+    // Directly open room management drawer
+    openRoom(enc);
   };
 
   return (

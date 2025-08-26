@@ -38,6 +38,23 @@ function broadcastSSE(event: string, data: any) {
   });
 }
 
+// Treatment Spaces (ED) - FHIR mapping notes:
+// - TreatmentSpace → FHIR Location (status, physicalType, type, name/id)
+// - Encounter.roomId → FHIR Encounter.location.location (Reference(Location))
+// - Cleaning/blocked can map to Location.status + operationalStatus extension
+const spaces = [
+  { id:"Resus-1", zone:"A", type:"resus", monitored:true, oxygen:true, negativePressure:true, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
+  { id:"A-03", zone:"A", type:"cubicle", monitored:true, oxygen:true, negativePressure:false, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
+  { id:"A-07", zone:"A", type:"cubicle", monitored:false, oxygen:true, negativePressure:false, status:"cleaning", cleanEta:12, assignedEncounterId:null, notes:null },
+  { id:"Chair-5", zone:"FT", type:"chair", monitored:false, oxygen:false, negativePressure:false, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
+  { id:"ISO-2", zone:"B", type:"isolation", monitored:true, oxygen:true, negativePressure:true, status:"blocked", cleanEta:null, assignedEncounterId:null, notes:"Facilities" },
+];
+
+// Helper: find space
+function getSpace(spaceId: string) { 
+  return spaces.find(s => s.id === spaceId); 
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get site configuration
@@ -718,6 +735,201 @@ export async function registerRoutes(app: Express): Promise<Server> {
         issue: [{ severity: "error", code: "exception", details: { text: "Internal server error" } }]
       });
     }
+  });
+
+  // List spaces
+  app.get("/api/spaces", (req, res) => res.json({ ok: true, data: spaces }));
+
+  // Assign space (Waiting/Triage → Roomed)
+  app.post("/api/spaces/assign", async (req, res) => {
+    const { encounterId, spaceId, reason, actorName, actorRole } = req.body || {};
+    const encounter = await storage.getEncounter(encounterId);
+    if (!encounter) return res.status(404).json({ ok: false, error: "Encounter not found" });
+    const space = getSpace(spaceId);
+    if (!space) return res.status(404).json({ ok: false, error: "Space not found" });
+    if (space.status !== "available") return res.status(409).json({ ok: false, error: `Space ${space.id} is ${space.status}` });
+
+    // Suitability (MVP): isolation & acuity hint via ATS
+    const needsIso = encounter.isolationRequired === "true";
+    const acuity = Number(encounter.ats || 3);
+    const isoOk = !needsIso || space.negativePressure || space.type === "isolation";
+    const acuOk = (acuity <= 2) ? (space.type === "resus" || space.monitored) : true;
+    const safe = isoOk && acuOk;
+
+    // Assign
+    space.status = "occupied";
+    space.assignedEncounterId = encounter.id;
+    const before = { state: encounter.lane, roomId: encounter.room || null };
+    const now = new Date();
+    
+    const updatedEncounter = await storage.updateEncounter({
+      id: encounter.id,
+      lane: "roomed",
+      room: space.id,
+      lastUpdated: now
+    });
+
+    await storage.createAuditEntry({
+      ts: now.toISOString(),
+      actor: actorName || "unknown",
+      role: actorRole || null,
+      action: before.roomId ? "space.reassign" : "space.assign",
+      encounterId: encounter.id,
+      spaceId: space.id,
+      reason: reason || null,
+      before,
+      after: { state: "roomed", roomId: space.id },
+      safe,
+      checks: { isoOk, acuOk }
+    });
+
+    broadcastSSE('encounterUpdated', updatedEncounter);
+    res.json({ ok: true, data: { encounterId: encounter.id, space, safe, checks: { isoOk, acuOk } } });
+  });
+
+  // Reassign space (Roomed → another space) — reason required
+  app.post("/api/spaces/reassign", async (req, res) => {
+    const { encounterId, toSpaceId, reason, actorName, actorRole } = req.body || {};
+    if (!reason) return res.status(400).json({ ok: false, error: "Reason required for reassign" });
+    const encounter = await storage.getEncounter(encounterId);
+    if (!encounter) return res.status(404).json({ ok: false, error: "Encounter not found" });
+    const fromId = encounter.room;
+    const from = fromId ? getSpace(fromId) : null;
+    const to = getSpace(toSpaceId);
+    if (!to) return res.status(404).json({ ok: false, error: "Target space not found" });
+    if (to.status !== "available") return res.status(409).json({ ok: false, error: `Target ${to.id} is ${to.status}` });
+
+    // Free old
+    if (from) { 
+      from.status = "cleaning"; 
+      from.cleanEta = 10; 
+      from.assignedEncounterId = null;
+    }
+    // Occupy new
+    to.status = "occupied"; 
+    to.assignedEncounterId = encounter.id;
+
+    const now = new Date();
+    await storage.createAuditEntry({
+      ts: now.toISOString(),
+      actor: actorName || "unknown",
+      role: actorRole || null,
+      action: "space.reassign",
+      encounterId,
+      spaceId: to.id,
+      reason,
+      before: { from: fromId },
+      after: { to: to.id }
+    });
+
+    const updatedEncounter = await storage.updateEncounter({
+      id: encounter.id,
+      room: to.id,
+      lastUpdated: now
+    });
+
+    broadcastSSE('encounterUpdated', updatedEncounter);
+    res.json({ ok: true, data: { encounterId, from: fromId, to: to.id } });
+  });
+
+  // Release space (on discharge/admit transfer)
+  app.post("/api/spaces/release", async (req, res) => {
+    const { encounterId, makeCleaning = true, actorName, actorRole } = req.body || {};
+    const encounter = await storage.getEncounter(encounterId);
+    if (!encounter) return res.status(404).json({ ok: false, error: "Encounter not found" });
+    const space = encounter.room ? getSpace(encounter.room) : null;
+    if (space) {
+      space.assignedEncounterId = null;
+      space.status = makeCleaning ? "cleaning" : "available";
+      space.cleanEta = makeCleaning ? 10 : null;
+    }
+    const now = new Date();
+    await storage.createAuditEntry({
+      ts: now.toISOString(),
+      actor: actorName || "unknown",
+      role: actorRole || null,
+      action: "space.release",
+      encounterId,
+      spaceId: space?.id || null
+    });
+
+    const updatedEncounter = await storage.updateEncounter({
+      id: encounter.id,
+      room: null,
+      lastUpdated: now
+    });
+
+    broadcastSSE('encounterUpdated', updatedEncounter);
+    res.json({ ok: true, data: { encounterId, spaceId: space?.id || null } });
+  });
+
+  // Cleaning/ready/block controls
+  app.post("/api/spaces/clean/request", async (req, res) => {
+    const { spaceId } = req.body || {};
+    const space = getSpace(spaceId);
+    if (!space) return res.status(404).json({ ok: false, error: "Space not found" });
+    if (space.status === "occupied") return res.status(400).json({ ok: false, error: "Occupied" });
+    space.status = "cleaning"; 
+    space.cleanEta = space.cleanEta || 12;
+    
+    await storage.createAuditEntry({
+      ts: new Date().toISOString(),
+      action: "space.clean.request",
+      spaceId
+    });
+    
+    res.json({ ok: true, data: space });
+  });
+
+  app.post("/api/spaces/clean/ready", async (req, res) => {
+    const { spaceId } = req.body || {};
+    const space = getSpace(spaceId);
+    if (!space) return res.status(404).json({ ok: false, error: "Space not found" });
+    if (space.status === "occupied") return res.status(400).json({ ok: false, error: "Occupied" });
+    space.status = "available"; 
+    space.cleanEta = null;
+    
+    await storage.createAuditEntry({
+      ts: new Date().toISOString(),
+      action: "space.clean.ready",
+      spaceId
+    });
+    
+    res.json({ ok: true, data: space });
+  });
+
+  app.post("/api/spaces/block", async (req, res) => {
+    const { spaceId, reason } = req.body || {};
+    const space = getSpace(spaceId);
+    if (!space) return res.status(404).json({ ok: false, error: "Space not found" });
+    space.status = "blocked"; 
+    space.notes = reason || "Blocked";
+    
+    await storage.createAuditEntry({
+      ts: new Date().toISOString(),
+      action: "space.block",
+      spaceId,
+      reason: space.notes
+    });
+    
+    res.json({ ok: true, data: space });
+  });
+
+  app.post("/api/spaces/unblock", async (req, res) => {
+    const { spaceId } = req.body || {};
+    const space = getSpace(spaceId);
+    if (!space) return res.status(404).json({ ok: false, error: "Space not found" });
+    space.status = "available"; 
+    space.notes = null; 
+    space.cleanEta = null;
+    
+    await storage.createAuditEntry({
+      ts: new Date().toISOString(),
+      action: "space.unblock",
+      spaceId
+    });
+    
+    res.json({ ok: true, data: space });
   });
 
   // SSE endpoint for real-time updates

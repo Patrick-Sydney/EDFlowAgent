@@ -1,0 +1,468 @@
+awesome — here’s a **drop-in patch** to add **ED Room (Treatment Space) Management** with a touch-first drawer, plus a tiny server + store layer. I’ve annotated the server model with **FHIR mappings** so you’re future-ready (Location / Encounter.location).
+
+---
+
+# 1) Server — Treatment Spaces + endpoints (FHIR-aware)
+
+**File: `server/index.js`**
+*Add near your other in-memory seeds:*
+
+```js
+// ---- Treatment Spaces (ED) ----------------------------------------------
+// FHIR mapping notes:
+// - TreatmentSpace → FHIR Location (status, physicalType, type, name/id)
+// - Encounter.roomId → FHIR Encounter.location.location (Reference(Location))
+// - Cleaning/blocked can map to Location.status + operationalStatus extension
+const spaces = [
+  // id, zone, type, monitored, oxygen, negativePressure, status, cleanEta
+  { id:"Resus-1", zone:"A", type:"resus",    monitored:true,  oxygen:true,  negativePressure:true,  status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
+  { id:"A-03",    zone:"A", type:"cubicle",  monitored:true,  oxygen:true,  negativePressure:false, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
+  { id:"A-07",    zone:"A", type:"cubicle",  monitored:false, oxygen:true,  negativePressure:false, status:"cleaning",  cleanEta:12,   assignedEncounterId:null, notes:null },
+  { id:"Chair-5", zone:"FT",type:"chair",    monitored:false, oxygen:false, negativePressure:false, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
+  { id:"ISO-2",   zone:"B", type:"isolation",monitored:true,  oxygen:true,  negativePressure:true,  status:"blocked",  cleanEta:null, assignedEncounterId:null, notes:"Facilities" },
+];
+
+// Helper: find space
+function getSpace(spaceId){ return spaces.find(s => s.id === spaceId); }
+```
+
+*Add endpoints (below your other routes):*
+
+```js
+// List spaces
+app.get("/api/spaces", (req,res)=> res.json({ ok:true, data: spaces }));
+
+// Assign space (Waiting/Triage → Roomed)
+app.post("/api/spaces/assign", (req,res)=>{
+  const { encounterId, spaceId, reason, actorName, actorRole } = req.body || {};
+  const enc = encounters.find(e=>e.id===encounterId);
+  if (!enc) return res.status(404).json({ ok:false, error:"Encounter not found" });
+  const sp = getSpace(spaceId);
+  if (!sp) return res.status(404).json({ ok:false, error:"Space not found" });
+  if (sp.status !== "available") return res.status(409).json({ ok:false, error:`Space ${sp.id} is ${sp.status}` });
+
+  // Suitability (MVP): isolation & acuity hint via ATS
+  const needsIso = !!enc.isolationRequired;
+  const acuity = Number(enc.ats || enc.triage?.ats || 3);
+  const isoOk = !needsIso || sp.negativePressure || sp.type === "isolation";
+  const acuOk = (acuity <= 2) ? (sp.type === "resus" || sp.monitored) : true;
+  const safe = isoOk && acuOk;
+
+  // Assign
+  sp.status = "occupied";
+  sp.assignedEncounterId = enc.id;
+  const before = { state: enc.state, roomId: enc.roomId || null };
+  const now = dayjs().toISOString();
+  updateEncounter(enc.id, {
+    state: "roomed",
+    roomId: sp.id,               // FHIR Encounter.location.location.reference → Location/{sp.id}
+    lastUpdated: now
+  });
+
+  audit.push({
+    id: uuid(), ts: now, actor: actorName || "unknown", role: actorRole || null,
+    action: before.roomId ? "space.reassign" : "space.assign",
+    encounterId: enc.id, spaceId: sp.id, reason: reason || null,
+    before, after: { state:"roomed", roomId: sp.id }, safe, checks:{ isoOk, acuOk }
+  });
+
+  res.json({ ok:true, data:{ encounterId: enc.id, space: sp, safe, checks:{ isoOk, acuOk } }});
+});
+
+// Reassign space (Roomed → another space) — reason required
+app.post("/api/spaces/reassign", (req,res)=>{
+  const { encounterId, toSpaceId, reason, actorName, actorRole } = req.body || {};
+  if (!reason) return res.status(400).json({ ok:false, error:"Reason required for reassign" });
+  const enc = encounters.find(e=>e.id===encounterId);
+  if (!enc) return res.status(404).json({ ok:false, error:"Encounter not found" });
+  const fromId = enc.roomId;
+  const from = fromId ? getSpace(fromId) : null;
+  const to = getSpace(toSpaceId);
+  if (!to) return res.status(404).json({ ok:false, error:"Target space not found" });
+  if (to.status !== "available") return res.status(409).json({ ok:false, error:`Target ${to.id} is ${to.status}` });
+
+  // free old
+  if (from) { from.status = "cleaning"; from.cleanEta = 10; from.assignedEncounterId = null; } // simple turnover
+  // occupy new
+  to.status = "occupied"; to.assignedEncounterId = enc.id;
+
+  const now = dayjs().toISOString();
+  audit.push({ id: uuid(), ts: now, actor: actorName||"unknown", role: actorRole||null,
+    action:"space.reassign", encounterId, spaceId: to.id, reason, before:{ from: fromId }, after:{ to: to.id } });
+
+  updateEncounter(enc.id, { roomId: to.id, lastUpdated: now });
+  res.json({ ok:true, data:{ encounterId, from: fromId, to: to.id }});
+});
+
+// Release space (on discharge/admit transfer)
+app.post("/api/spaces/release", (req,res)=>{
+  const { encounterId, makeCleaning=true, actorName, actorRole } = req.body || {};
+  const enc = encounters.find(e=>e.id===encounterId);
+  if (!enc) return res.status(404).json({ ok:false, error:"Encounter not found" });
+  const sp = enc.roomId ? getSpace(enc.roomId) : null;
+  if (sp) {
+    sp.assignedEncounterId = null;
+    sp.status = makeCleaning ? "cleaning" : "available";
+    sp.cleanEta = makeCleaning ? 10 : null;
+  }
+  const now = dayjs().toISOString();
+  audit.push({ id: uuid(), ts: now, actor: actorName||"unknown", role: actorRole||null,
+    action:"space.release", encounterId, spaceId: sp?.id || null });
+
+  updateEncounter(enc.id, { roomId: null, lastUpdated: now });
+  res.json({ ok:true, data:{ encounterId, spaceId: sp?.id || null }});
+});
+
+// Cleaning/ready/block controls
+app.post("/api/spaces/clean/request",(req,res)=>{
+  const { spaceId } = req.body || {};
+  const sp = getSpace(spaceId);
+  if (!sp) return res.status(404).json({ ok:false, error:"Space not found" });
+  if (sp.status === "occupied") return res.status(400).json({ ok:false, error:"Occupied" });
+  sp.status = "cleaning"; sp.cleanEta = sp.cleanEta || 12;
+  audit.push({ id: uuid(), ts: dayjs().toISOString(), action:"space.clean.request", spaceId });
+  res.json({ ok:true, data: sp });
+});
+app.post("/api/spaces/clean/ready",(req,res)=>{
+  const { spaceId } = req.body || {};
+  const sp = getSpace(spaceId);
+  if (!sp) return res.status(404).json({ ok:false, error:"Space not found" });
+  if (sp.status === "occupied") return res.status(400).json({ ok:false, error:"Occupied" });
+  sp.status = "available"; sp.cleanEta = null;
+  audit.push({ id: uuid(), ts: dayjs().toISOString(), action:"space.clean.ready", spaceId });
+  res.json({ ok:true, data: sp });
+});
+app.post("/api/spaces/block",(req,res)=>{
+  const { spaceId, reason } = req.body || {};
+  const sp = getSpace(spaceId);
+  if (!sp) return res.status(404).json({ ok:false, error:"Space not found" });
+  sp.status = "blocked"; sp.notes = reason || "Blocked";
+  audit.push({ id: uuid(), ts: dayjs().toISOString(), action:"space.block", spaceId, reason: sp.notes });
+  res.json({ ok:true, data: sp });
+});
+app.post("/api/spaces/unblock",(req,res)=>{
+  const { spaceId } = req.body || {};
+  const sp = getSpace(spaceId);
+  if (!sp) return res.status(404).json({ ok:false, error:"Space not found" });
+  sp.status = "available"; sp.notes = null; sp.cleanEta = null;
+  audit.push({ id: uuid(), ts: dayjs().toISOString(), action:"space.unblock", spaceId });
+  res.json({ ok:true, data: sp });
+});
+```
+
+---
+
+# 2) Store — state, APIs, and drawer controls
+
+**File: `client/src/store.js`**
+
+```diff
+ const api = {
+   // ...existing
++  spacesList: async () => (await fetch("/api/spaces")).json(),
++  spaceAssign: async (payload, actor) =>
++    (await fetch("/api/spaces/assign",{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ ...payload, actorName: actor?.name, actorRole: actor?.role }) })).json(),
++  spaceReassign: async (payload, actor) =>
++    (await fetch("/api/spaces/reassign",{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ ...payload, actorName: actor?.name, actorRole: actor?.role }) })).json(),
++  spaceRelease: async (payload, actor) =>
++    (await fetch("/api/spaces/release",{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ ...payload, actorName: actor?.name, actorRole: actor?.role }) })).json(),
++  spaceCleanReq: async (spaceId) => (await fetch("/api/spaces/clean/request",{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ spaceId }) })).json(),
++  spaceCleanReady: async (spaceId) => (await fetch("/api/spaces/clean/ready",{ method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ spaceId }) })).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+   // ...existing
++  spaces: [],
++  async loadSpaces(){ const r = await api.spacesList(); if (r?.ok) set({ spaces: r.data }); return r; },
++  async assignSpace(encounterId, spaceId, reason){
++    const actor = get().user; const r = await api.spaceAssign({ encounterId, spaceId, reason }, actor); return r;
++  },
++  async reassignSpace(encounterId, toSpaceId, reason){
++    const actor = get().user; const r = await api.spaceReassign({ encounterId, toSpaceId, reason }, actor); return r;
++  },
++  async releaseSpace(encounterId, makeCleaning=true){
++    const actor = get().user; const r = await api.spaceRelease({ encounterId, makeCleaning }, actor); return r;
++  },
++  async markSpaceClean(spaceId){ return await api.spaceCleanReq(spaceId); },
++  async markSpaceReady(spaceId){ return await api.spaceCleanReady(spaceId); },
++
++  // Drawer UI state
++  roomOpen:false, roomEncounter:null,
++  openRoom(enc){ set({ roomOpen:true, roomEncounter: enc }); get().loadSpaces(); },
++  closeRoom(){ set({ roomOpen:false, roomEncounter: null }); },
+ }));
+```
+
+---
+
+# 3) UI — Room (Treatment Space) Management Drawer (touch-first)
+
+**File: `client/src/components/RoomManagementDrawer.jsx`**
+
+```jsx
+import { useEffect, useMemo, useState } from "react";
+import { useED } from "../store";
+import TButton from "./ui/TButton";
+
+const STATUS = {
+  available: { txt:"Available", cls:"bg-emerald-100 text-emerald-700" },
+  cleaning:  { txt:"Cleaning",  cls:"bg-amber-100 text-amber-700" },
+  occupied:  { txt:"Occupied",  cls:"bg-rose-100 text-rose-700" },
+  blocked:   { txt:"Blocked",   cls:"bg-gray-200 text-gray-700" },
+  outofservice: { txt:"Out of service", cls:"bg-gray-200 text-gray-700" }
+};
+
+export default function RoomManagementDrawer(){
+  const { roomOpen, roomEncounter: enc, spaces, loadSpaces, closeRoom, assignSpace, reassignSpace, markSpaceClean } = useED();
+  const [filters, setFilters] = useState({ zone:null, type:null, attrMon:null, attrIso:null });
+  const [selected, setSelected] = useState(null);
+  const [reason, setReason] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(()=>{ if(roomOpen){ setSelected(null); setReason(""); loadSpaces(); }}, [roomOpen]);
+
+  const needsIso = !!enc?.isolationRequired;
+  const acuity = Number(enc?.ats || enc?.triage?.ats || 3); // ATS 1–5 → hint monitored/resus
+  const needsMon = acuity <= 2;
+
+  const filtered = useMemo(()=>{
+    return spaces.filter(s=>{
+      if (filters.zone && s.zone !== filters.zone) return false;
+      if (filters.type && s.type !== filters.type) return false;
+      if (filters.attrMon === true && !s.monitored) return false;
+      if (filters.attrIso === true && !(s.negativePressure || s.type==="isolation")) return false;
+      return true;
+    });
+  }, [spaces, filters]);
+
+  if (!roomOpen || !enc) return null;
+
+  const check = (s)=>{
+    if (!s) return { isoOk:true, monOk:true, safe:true };
+    const isoOk = !needsIso || s.negativePressure || s.type==="isolation";
+    const monOk = !needsMon || s.monitored || s.type==="resus";
+    return { isoOk, monOk, safe: isoOk && monOk };
+  };
+  const checks = check(selected);
+
+  const isReassign = !!enc.roomId; // if already roomed
+  const confirm = async ()=>{
+    if (!selected) return;
+    setPending(true);
+    try{
+      const r = isReassign
+        ? await reassignSpace(enc.id, selected.id, reason || "Reassign")
+        : await assignSpace(enc.id, selected.id, reason || null);
+      if (!r?.ok) { alert(r?.error || "Failed"); return; }
+      closeRoom();
+    } finally { setPending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/30" onClick={closeRoom}/>
+      <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-base sm:text-lg">
+              {isReassign ? "Reassign Treatment Space" : "Assign Treatment Space"} — {enc.patient?.name}
+            </h3>
+            <TButton className="border bg-white" onClick={closeRoom}>Close</TButton>
+          </div>
+          <div className="mt-1 text-xs text-gray-600">
+            {enc.patient?.age}{enc.patient?.sex && enc.patient?.sex.toUpperCase()} • ATS {enc.ats || "—"} •
+            {needsIso ? " Needs isolation" : " No isolation"} • {needsMon ? "Monitored preferred" : "Standard ok"}
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="px-4 pt-3">
+          <div className="text-sm mb-1">Filter</div>
+          <div className="flex flex-wrap gap-2">
+            {["A","B","C","FT","Paeds"].map(z=>(
+              <Chip key={z} on={filters.zone===z} label={`Zone ${z}`} onClick={()=>setFilters(f=>({...f, zone:f.zone===z?null:z}))}/>
+            ))}
+            <div className="w-px h-6 bg-gray-200 mx-1" />
+            {["resus","cubicle","chair","corridor","isolation","peds","procedure"].map(t=>(
+              <Chip key={t} on={filters.type===t} label={cap(t)} onClick={()=>setFilters(f=>({...f, type:f.type===t?null:t}))}/>
+            ))}
+            <div className="w-px h-6 bg-gray-200 mx-1" />
+            <Chip on={filters.attrMon===true} label="Monitored" onClick={()=>setFilters(f=>({...f, attrMon:f.attrMon===true?null:true}))}/>
+            <Chip on={filters.attrIso===true} label="Isolation" onClick={()=>setFilters(f=>({...f, attrIso:f.attrIso===true?null:true}))}/>
+          </div>
+        </div>
+
+        {/* Space grid */}
+        <div className="p-4 flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {filtered.map(s=>{
+              const sel = selected?.id === s.id;
+              const badge = STATUS[s.status] || STATUS.available;
+              const { isoOk, monOk } = check(s);
+              return (
+                <button key={s.id}
+                        onClick={()=> s.status==="available" && setSelected(s)}
+                        className={`text-left rounded-xl border p-3 active:scale-[0.99] ${sel?"border-blue-600 ring-2 ring-blue-100":"border-gray-200 bg-white"} ${s.status!=="available"?"opacity-90":""}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{s.id} — {cap(s.type)}{s.zone ? ` (${s.zone})` : ""}</div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${badge.cls}`}>
+                      {badge.txt}{s.cleanEta?` (${s.cleanEta}m)`:""}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 flex flex-wrap gap-2">
+                    {s.oxygen && <span>🫁 O₂</span>}
+                    {s.monitored && <span>📈 Mon</span>}
+                    {s.negativePressure && <span>🦠 Neg-pressure</span>}
+                    {s.notes && <span>• {s.notes}</span>}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <Badge ok={isoOk} text={isoOk?"ISO OK":"Needs ISO"} />
+                    <Badge ok={monOk} text={monOk?"Mon OK":"Mon needed"} />
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    {s.status==="available" && <span className="text-xs text-gray-500">Tap to select</span>}
+                    {s.status==="cleaning" && (
+                      <span className="text-xs text-gray-500">Cleaning ETA {s.cleanEta}m</span>
+                    )}
+                    {s.status!=="occupied" && s.status!=="available" && (
+                      <button type="button" onClick={(e)=>{ e.stopPropagation(); markSpaceClean(s.id); }}
+                              className="ml-auto px-2 py-1 rounded border text-xs">Queue clean</button>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div className="px-4 pb-2">
+          <div className="rounded-xl border p-3 bg-gray-50">
+            <div className="text-sm font-medium mb-1">Assignment Preview</div>
+            {selected ? (
+              <>
+                <div className="text-sm">{enc.patient?.name} → <b>{selected.id}</b> ({cap(selected.type)}{selected.zone?`, Zone ${selected.zone}`:""})</div>
+                {!checks.safe && (
+                  <>
+                    <div className="mt-2 text-xs text-amber-700">
+                      ⚠️ Mismatch — {checks.monOk ? "" : "monitoring "} {(!checks.monOk && !checks.isoOk) ? "& " : ""}{checks.isoOk ? "" : "isolation"}.
+                      Please provide a reason to override.
+                    </div>
+                    <input className="mt-2 w-full border rounded px-3 py-2 text-sm"
+                           placeholder="Reason (required for override or reassign)" value={reason} onChange={e=>setReason(e.target.value)} />
+                  </>
+                )}
+                {isReassign && checks.safe && (
+                  <input className="mt-2 w-full border rounded px-3 py-2 text-sm"
+                         placeholder="Reason (required for reassign)" value={reason} onChange={e=>setReason(e.target.value)} />
+                )}
+              </>
+            ) : (
+              <div className="text-sm text-gray-500">Select a space above.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+          <TButton className="border bg-white" onClick={closeRoom}>Cancel</TButton>
+          <TButton
+            className="bg-emerald-600 text-white flex-1"
+            disabled={!selected || pending || (!checks.safe && !reason) || (isReassign && !reason)}
+            onClick={confirm}
+            title={!selected ? "Select a space" : (!checks.safe && !reason) ? "Enter reason" : (isReassign && !reason) ? "Enter reason" : "Confirm"}
+          >
+            {pending ? (isReassign ? "Reassigning…" : "Assigning…") : (isReassign ? "Confirm Reassign" : "Confirm Assign")}
+          </TButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Chip({ label, on, onClick }) {
+  return (
+    <button type="button" onClick={onClick}
+            className={`px-3 py-2 rounded-full border text-sm ${on?"bg-blue-600 text-white border-blue-600":"bg-white"}`}>
+      {label}
+    </button>
+  );
+}
+function Badge({ ok, text }) {
+  return <span className={`px-2 py-0.5 rounded-full text-xs ${ok?"bg-emerald-100 text-emerald-700":"bg-rose-100 text-rose-700"}`}>{text}</span>;
+}
+function cap(s){ return (s||"").slice(0,1).toUpperCase()+ (s||"").slice(1); }
+```
+
+---
+
+# 4) Wire into the board (show buttons on cards)
+
+**File: `client/src/App.jsx`** (or wherever your Card actions are rendered)
+
+* Mount the drawer once near `<main>`:
+
+```diff
++import RoomManagementDrawer from "./components/RoomManagementDrawer.jsx";
+@@
+-  <main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
++  <main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
++    <RoomManagementDrawer />
+     <div className="flex gap-4 overflow-x-auto sm:overflow-x-auto">
+```
+
+* In each **card** actions block:
+
+```diff
+// In TRIAGE lane cards:
+{enc.state === "triage" && (
+  <>
+    <button className="text-sm px-3 py-3 rounded-xl border" onClick={()=>useED.getState().openTriage(enc)}>Open Triage</button>
+    <button className="text-sm px-3 py-3 rounded-xl bg-blue-600 text-white"
+            onClick={()=>useED.getState().openRoom(enc)}>
+      Assign Space
+    </button>
+  </>
+)}
+
+// In ROOMED lane cards:
+{enc.state === "roomed" && (
+  <button className="text-sm px-3 py-3 rounded-xl bg-indigo-600 text-white"
+          onClick={()=>useED.getState().openRoom(enc)}>
+    Reassign Space
+  </button>
+)}
+```
+
+---
+
+## ✅ What to test
+
+* **Triage → Assign Space**: opens drawer, filters work, select available space, confirm → patient moves to **Roomed**, space shows **occupied**.
+* **Roomed → Reassign**: requires **reason**; old space flips to **cleaning**; new space occupied.
+* **Queue clean** turns a non-occupied space to **cleaning (ETA)**.
+* **Reset Demo** still works; spaces state initializes cleanly.
+
+---
+
+## 🧩 FHIR alignment (kept in mind throughout)
+
+* **TreatmentSpace** ⟷ **FHIR Location**
+
+  * `Location.id = space.id`
+  * `Location.name/description` from `id/notes`
+  * `Location.status` from `status` (with extensions for cleaning/blocked if needed)
+  * `Location.physicalType` (e.g., `ro`=Room, `bd`=Bed, `st`=Street → for corridor), or `type` coding
+
+* **Encounter.roomId** ⟷ **Encounter.location\[x]**
+
+  * `Encounter.location.location = Reference(Location/{space.id})`
+  * `Encounter.location.status = active` while roomed
+  * `period` start/end timestamps on assign/release
+
+These notes are in comments where relevant so future EHR/FHIR integration is straightforward.
+
+---
+
+If you want next, I can add a tiny **“Space summary bar”** (available / cleaning / occupied counts by zone & type) at the top of **Charge view** to help with quick orchestration.

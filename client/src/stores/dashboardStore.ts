@@ -2,6 +2,19 @@ import { create } from 'zustand';
 import { type Encounter, type Lane } from '@shared/schema';
 import { apiRequest } from '@/lib/queryClient';
 
+interface TreatmentSpace {
+  id: string;
+  zone: string;
+  type: string;
+  monitored: boolean;
+  oxygen: boolean;
+  negativePressure: boolean;
+  status: string;
+  cleanEta: number | null;
+  assignedEncounterId: string | null;
+  notes: string | null;
+}
+
 interface DashboardState {
   encounters: Encounter[];
   isConnected: boolean;
@@ -16,6 +29,11 @@ interface DashboardState {
   
   // Reception drawer state
   registerOpen: boolean;
+  
+  // Room management state
+  spaces: TreatmentSpace[];
+  roomOpen: boolean;
+  roomEncounter: Encounter | null;
   
   // Actions
   setEncounters: (encounters: Encounter[]) => void;
@@ -35,6 +53,16 @@ interface DashboardState {
   // Registration actions
   openRegister: () => void;
   closeRegister: () => void;
+  
+  // Room management actions
+  loadSpaces: () => Promise<any>;
+  assignSpace: (encounterId: string, spaceId: string, reason?: string) => Promise<any>;
+  reassignSpace: (encounterId: string, toSpaceId: string, reason: string) => Promise<any>;
+  releaseSpace: (encounterId: string, makeCleaning?: boolean) => Promise<any>;
+  markSpaceClean: (spaceId: string) => Promise<any>;
+  markSpaceReady: (spaceId: string) => Promise<any>;
+  openRoom: (encounter: Encounter) => void;
+  closeRoom: () => void;
   
   // Selectors
   getEncountersByLane: (lane: Lane) => Encounter[];
@@ -65,6 +93,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   
   // Reception drawer state  
   registerOpen: false,
+  
+  // Room management state
+  spaces: [],
+  roomOpen: false,
+  roomEncounter: null,
 
   setEncounters: (encounters) => {
     const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
@@ -200,5 +233,107 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     });
 
     return stats;
-  }
+  },
+
+  // Room management actions
+  loadSpaces: async () => {
+    try {
+      const response = await fetch('/api/spaces');
+      const result = await response.json();
+      if (result?.ok) {
+        set({ spaces: result.data });
+      }
+      return result;
+    } catch (error) {
+      console.error('Failed to load spaces:', error);
+      return { ok: false, error: 'Failed to load spaces' };
+    }
+  },
+
+  assignSpace: async (encounterId: string, spaceId: string, reason?: string) => {
+    try {
+      const { user } = get();
+      const response = await apiRequest('POST', '/api/spaces/assign', {
+        encounterId,
+        spaceId,
+        reason,
+        actorName: user.name,
+        actorRole: user.role
+      });
+      // Refresh spaces after assignment
+      get().loadSpaces();
+      return response;
+    } catch (error) {
+      console.error('Failed to assign space:', error);
+      throw error;
+    }
+  },
+
+  reassignSpace: async (encounterId: string, toSpaceId: string, reason: string) => {
+    try {
+      const { user } = get();
+      const response = await apiRequest('POST', '/api/spaces/reassign', {
+        encounterId,
+        toSpaceId,
+        reason,
+        actorName: user.name,
+        actorRole: user.role
+      });
+      // Refresh spaces after reassignment
+      get().loadSpaces();
+      return response;
+    } catch (error) {
+      console.error('Failed to reassign space:', error);
+      throw error;
+    }
+  },
+
+  releaseSpace: async (encounterId: string, makeCleaning: boolean = true) => {
+    try {
+      const { user } = get();
+      const response = await apiRequest('POST', '/api/spaces/release', {
+        encounterId,
+        makeCleaning,
+        actorName: user.name,
+        actorRole: user.role
+      });
+      // Refresh spaces after release
+      get().loadSpaces();
+      return response;
+    } catch (error) {
+      console.error('Failed to release space:', error);
+      throw error;
+    }
+  },
+
+  markSpaceClean: async (spaceId: string) => {
+    try {
+      const response = await apiRequest('POST', '/api/spaces/clean/request', { spaceId });
+      // Refresh spaces after marking clean
+      get().loadSpaces();
+      return response;
+    } catch (error) {
+      console.error('Failed to mark space clean:', error);
+      throw error;
+    }
+  },
+
+  markSpaceReady: async (spaceId: string) => {
+    try {
+      const response = await apiRequest('POST', '/api/spaces/clean/ready', { spaceId });
+      // Refresh spaces after marking ready
+      get().loadSpaces();
+      return response;
+    } catch (error) {
+      console.error('Failed to mark space ready:', error);
+      throw error;
+    }
+  },
+
+  openRoom: (encounter: Encounter) => {
+    set({ roomOpen: true, roomEncounter: encounter });
+    get().loadSpaces();
+  },
+
+  closeRoom: () => set({ roomOpen: false, roomEncounter: null })
 }));

@@ -8,6 +8,7 @@ import { sseManager } from "@/lib/sse";
 import { type Encounter, LANES } from "@shared/schema";
 import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
+import RoomManagementDrawer from "@/components/RoomManagementDrawer";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
@@ -108,6 +109,9 @@ export default function Dashboard() {
         
         {/* Triage Drawer */}
         <TriageDrawer />
+        
+        {/* Room Management Drawer */}
+        <RoomManagementDrawer />
         
         {/* Patient Flow Lanes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
