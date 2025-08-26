@@ -1,0 +1,383 @@
+Awesome — here’s a clean, drop-in **Reception View** that’s admin-only (no Triage, no Assign Space), with:
+
+* a full **Waiting lane** (editable demographics + wristband/label reprint),
+* **read-only summaries** for Triage / Roomed / Ready / Discharged,
+* a small **Edit Demographics drawer** matching your other drawer widths.
+
+I’ve included minimal server + store wiring. Paste these in Replit.
+
+---
+
+## 1) Server: endpoint to update demographics
+
+**`server/index.js`** – add below your other routes
+
+```js
+// Update demographics (Reception)
+app.post("/api/encounters/demographics", (req, res) => {
+  const { id, name, nhi, sex, age } = req.body || {};
+  const enc = encounters.find(e => e.id === id);
+  if (!enc) return res.status(404).json({ ok:false, error:"Encounter not found" });
+
+  const before = JSON.parse(JSON.stringify(enc.patient || {}));
+  enc.patient = enc.patient || {};
+  if (name !== undefined) enc.patient.name = name;
+  if (nhi !== undefined) enc.patient.nhi = nhi;
+  if (sex !== undefined) enc.patient.sex = sex;       // 'm' | 'f'
+  if (age !== undefined) enc.patient.age = Number(age);
+
+  const now = dayjs().toISOString();
+  enc.lastUpdated = now;
+
+  audit.push({
+    id: uuid(), ts: now, action: "reception.demographics.update",
+    encounterId: enc.id, before, after: enc.patient
+  });
+
+  res.json({ ok:true, data: { id: enc.id, patient: enc.patient } });
+});
+```
+
+---
+
+## 2) Store: client wiring for Reception actions
+
+**`client/src/store.js`**
+
+```diff
+ const api = {
+   // ...existing
++  demoReprint: async ({ id, type }) => ({ ok:true, data:{ id, type } }),
++  updateDemographics: async (payload) =>
++    (await fetch("/api/encounters/demographics", {
++      method:"POST",
++      headers:{ "Content-Type":"application/json" },
++      body: JSON.stringify(payload)
++    })).json(),
+ };
+
+ export const useED = create((set, get) => ({
+   // ...existing
++  async reprintWristband(id){
++    const r = await api.demoReprint({ id, type:"wristband" });
++    // (optionally push toast)
++    return r;
++  },
++  async reprintLabels(id){
++    const r = await api.demoReprint({ id, type:"labels" });
++    return r;
++  },
++  async saveDemographics({ id, name, nhi, sex, age }){
++    const r = await api.updateDemographics({ id, name, nhi, sex, age });
++    if (r?.ok) {
++      // optimistic update locally
++      set(state => ({
++        encounters: state.encounters.map(e =>
++          e.id === id ? { ...e, patient: { ...(e.patient||{}), ...r.data.patient } } : e
++        )
++      }));
++    }
++    return r;
++  },
+ }));
+```
+
+---
+
+## 3) Reception Edit drawer (demographics)
+
+**`client/src/components/ReceptionEditDrawer.jsx`**
+
+```jsx
+import { useEffect, useState } from "react";
+import { useED } from "../store";
+import TButton from "./ui/TButton";
+import NumberPad from "./ui/NumberPad";
+
+export default function ReceptionEditDrawer({ open, encounter, onClose }){
+  const { saveDemographics } = useED();
+  const [form, setForm] = useState({ name:"", nhi:"", sex:"", age:"" });
+  const [activePad, setActivePad] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  useEffect(()=>{
+    if (open && encounter) {
+      setForm({
+        name: encounter.patient?.name || "",
+        nhi: encounter.patient?.nhi || "",
+        sex: (encounter.patient?.sex || "").toLowerCase(), // 'm'|'f'
+        age: encounter.patient?.age ?? ""
+      });
+      setActivePad(false);
+    }
+  }, [open, encounter]);
+
+  const on = (k,v)=> setForm(s=>({ ...s, [k]: v }));
+
+  const submit = async () => {
+    if (!encounter) return;
+    setPending(true);
+    const r = await saveDemographics({
+      id: encounter.id,
+      name: form.name,
+      nhi: form.nhi,
+      sex: form.sex,
+      age: form.age
+    });
+    setPending(false);
+    if (!r?.ok) return alert(r?.error || "Failed to save");
+    onClose?.();
+  };
+
+  if (!open || !encounter) return null;
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose}/>
+      <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-base sm:text-lg">Edit Demographics — {encounter.patient?.name || "Patient"}</h3>
+            <TButton className="border bg-white" onClick={onClose}>Close</TButton>
+          </div>
+          <div className="mt-1 text-xs text-gray-600">Reception • Admin only</div>
+        </div>
+
+        {/* Form */}
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <label className="text-sm block">Full name
+                <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                  value={form.name} onChange={e=>on("name", e.target.value)} />
+              </label>
+              <label className="text-sm block">NHI
+                <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                  value={form.nhi} onChange={e=>on("nhi", e.target.value)} />
+              </label>
+            </div>
+            <div className="space-y-6">
+              <div className="text-sm">Sex</div>
+              <div className="flex gap-2">
+                <button type="button"
+                  className={`px-4 py-3 rounded-xl border ${form.sex==="m"?"bg-blue-50 border-blue-300 text-blue-700":"bg-gray-50 border-gray-200"}`}
+                  onClick={()=>on("sex","m")}
+                >M</button>
+                <button type="button"
+                  className={`px-4 py-3 rounded-xl border ${form.sex==="f"?"bg-blue-50 border-blue-300 text-blue-700":"bg-gray-50 border-gray-200"}`}
+                  onClick={()=>on("sex","f")}
+                >F</button>
+              </div>
+
+              <div className="text-sm">
+                Age
+                <div className="mt-1">
+                  <button
+                    type="button"
+                    className={`px-4 py-3 rounded-xl border w-full text-left ${form.age!==""?"bg-blue-50 border-blue-300 text-blue-700":"bg-gray-50 border-gray-200 text-gray-500"}`}
+                    onClick={()=> setActivePad(!activePad)}
+                  >
+                    {form.age!=="" ? `Age: ${form.age}` : "Set Age"}
+                  </button>
+                  {activePad && (
+                    <NumberPad
+                      value={form.age}
+                      onChange={(v)=> on("age", v)}
+                      onClose={()=> setActivePad(false)}
+                      maxLen={3}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+          <TButton className="border bg-white" onClick={onClose} disabled={pending}>Cancel</TButton>
+          <TButton className="bg-blue-600 text-white flex-1" onClick={submit} disabled={pending}>
+            {pending ? "Saving…" : "Save changes"}
+          </TButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## 4) Reception View (read-only lanes, full Waiting)
+
+**`client/src/components/ReceptionView.jsx`**
+
+```jsx
+import { useMemo, useState } from "react";
+import { useED } from "../store";
+import TButton from "./ui/TButton";
+import ReceptionEditDrawer from "./ReceptionEditDrawer";
+
+const LANE_ORDER = ["waiting","triage","roomed","ready","discharged"];
+const LANE_TITLES = {
+  waiting: "Waiting",
+  triage: "Triage",
+  roomed: "Roomed",
+  ready: "Ready",
+  discharged: "Discharged",
+};
+
+export default function ReceptionView(){
+  const { encounters, openRegister, reprintWristband, reprintLabels } = useED();
+  const byLane = useMemo(()=>{
+    const m = { waiting:[], triage:[], roomed:[], ready:[], discharged:[] };
+    for (const e of encounters) { if (m[e.state]) m[e.state].push(e); }
+    return m;
+  }, [encounters]);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editEnc, setEditEnc] = useState(null);
+
+  const openEdit = (enc) => { setEditEnc(enc); setEditOpen(true); };
+  const closeEdit = () => { setEditOpen(false); setEditEnc(null); };
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      {/* Top bar */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Reception View</h2>
+        <TButton className="bg-blue-600 text-white" onClick={openRegister}>Register Patient</TButton>
+      </div>
+
+      {/* Waiting lane - detailed cards */}
+      <LaneWaiting
+        items={byLane.waiting}
+        onEdit={openEdit}
+        onWrist={(id)=> reprintWristband(id)}
+        onLabels={(id)=> reprintLabels(id)}
+      />
+
+      {/* Read-only summaries */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        {LANE_ORDER.filter(k => k!=="waiting").map(k=>(
+          <ReadOnlyLane key={k} title={LANE_TITLES[k]} items={byLane[k]} />
+        ))}
+      </div>
+
+      <ReceptionEditDrawer open={editOpen} encounter={editEnc} onClose={closeEdit} />
+    </div>
+  );
+}
+
+function LaneWaiting({ items, onEdit, onWrist, onLabels }){
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold">Waiting ({items.length})</h3>
+      </div>
+      <div className="flex flex-col gap-3">
+        {items.map(enc => (
+          <div key={enc.id} className="rounded-xl border bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="font-medium">{enc.patient?.name || "Patient"}</div>
+                <span className="text-xs text-gray-500">{enc.patient?.age}{(enc.patient?.sex||"").toUpperCase()}</span>
+                <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                  ATS {enc.ats || "—"}
+                </span>
+              </div>
+              <div className="text-xs text-gray-500">Arrived: {enc.arrivalTime?.slice(11,16) || "—"}</div>
+            </div>
+
+            <div className="mt-1 text-sm text-gray-700">
+              Complaint: {enc.complaint || enc.triage?.complaintText || "—"}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <TButton className="border bg-white" onClick={()=> onEdit(enc)}>Edit demographics</TButton>
+              <TButton className="border bg-white" onClick={()=> onWrist(enc.id)}>Reprint wristband</TButton>
+              <TButton className="border bg-white" onClick={()=> onLabels(enc.id)}>Reprint labels</TButton>
+            </div>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <div className="rounded-xl border bg-white p-6 text-gray-500 text-sm">
+            No patients waiting. Register a new arrival to begin.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReadOnlyLane({ title, items }){
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border bg-white">
+      <div className="flex items-center justify-between p-3">
+        <div className="font-semibold">{title}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">{items.length}</span>
+          <TButton className="border bg-white" onClick={()=> setOpen(o=>!o)}>{open ? "Hide" : "View"}</TButton>
+        </div>
+      </div>
+      {open && (
+        <div className="px-3 pb-3">
+          <ul className="divide-y">
+            {items.map(e=>(
+              <li key={e.id} className="py-2 text-sm flex items-center justify-between">
+                <span className="truncate">
+                  {e.patient?.name || e.id}
+                  {e.ats && <span className="ml-2 text-xs text-gray-500">ATS {e.ats}</span>}
+                  {e.roomId && <span className="ml-2 text-xs text-gray-500">• {e.roomId}</span>}
+                </span>
+                {/* read-only; no buttons */}
+              </li>
+            ))}
+            {items.length===0 && <li className="py-2 text-sm text-gray-500">None</li>}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 5) Mount Reception View for the “reception” role
+
+**`client/src/App.jsx`** (or your main layout)
+
+```diff
++import ReceptionView from "./components/ReceptionView";
+@@
+-  <main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
++  <main className="overflow-x-auto flex gap-4 p-4 flex-col sm:flex-row">
++    {roleView === "reception" ? (
++      <div className="w-full"><ReceptionView /></div>
++    ) : (
+       <>
+         {/* existing Board / lanes for RN/Charge/etc */}
+         {/* <RoomManagementDrawer /> <TriageDrawer /> etc… */}
+       </>
++    )}
+   </main>
+```
+
+*(If your app currently always renders the full board, wrap that board in the `else` branch as shown.)*
+
+---
+
+### What this gives you right now
+
+* **Reception** only sees:
+
+  * **Waiting** lane (full cards) with **Edit/Reprint** admin actions,
+  * compact, **read-only** summaries of the other lanes,
+  * the **Register Patient** button.
+* They **cannot** triage, assign spaces, or progress patients.
+* Edit drawer matches the **Triage/Room** drawer width & style for consistency.
+
+If you want Reception to also **flag “Ambulance arrival”** or **notify Charge** about specific patients, I can add a tiny “Notify Charge” chip to the Waiting card — say the word and I’ll patch it in.

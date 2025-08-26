@@ -72,6 +72,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update demographics (Reception)
+  app.post("/api/encounters/demographics", async (req, res) => {
+    try {
+      const { id, name, nhi, sex, age } = req.body || {};
+      const encounters = await storage.getEncounters();
+      const enc = encounters.find(e => e.id === id);
+      
+      if (!enc) {
+        return res.status(404).json({ ok: false, error: "Encounter not found" });
+      }
+
+      const before = { name: enc.name, nhi: enc.nhi, sex: enc.sex, age: enc.age };
+      
+      // Update demographics
+      if (name !== undefined) enc.name = name;
+      if (nhi !== undefined) enc.nhi = nhi;
+      if (sex !== undefined) enc.sex = sex;
+      if (age !== undefined) enc.age = Number(age) || null;
+
+      enc.lastUpdated = new Date().toISOString();
+
+      // Save the updated encounter
+      await storage.updateEncounter(enc);
+
+      // Broadcast the update
+      broadcastSSE("encounter_updated", enc);
+
+      res.json({ 
+        ok: true, 
+        data: { 
+          id: enc.id, 
+          patient: { name: enc.name, nhi: enc.nhi, sex: enc.sex, age: enc.age } 
+        } 
+      });
+    } catch (error) {
+      console.error("Error updating demographics:", error);
+      res.status(500).json({ ok: false, error: "Failed to update demographics" });
+    }
+  });
+
   // Get audit entries
   app.get("/api/audit", async (req, res) => {
     try {

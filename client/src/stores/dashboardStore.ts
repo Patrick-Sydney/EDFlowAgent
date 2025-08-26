@@ -162,6 +162,44 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }
   },
 
+  // Reception methods
+  saveDemographics: async (payload: { id: string; name: string; nhi: string; sex: string; age: string }) => {
+    try {
+      const response = await fetch("/api/encounters/demographics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      
+      if (result?.ok) {
+        // Update will come via SSE, but we can optimistically update
+        set(state => ({
+          encounters: state.encounters.map(e =>
+            e.id === payload.id 
+              ? { ...e, name: payload.name, nhi: payload.nhi, sex: payload.sex, age: Number(payload.age) || null }
+              : e
+          )
+        }));
+      }
+      
+      return result;
+    } catch (error) {
+      console.error("Error saving demographics:", error);
+      return { ok: false, error: "Failed to save demographics" };
+    }
+  },
+
+  reprintWristband: async (id: string) => {
+    // Demo implementation - in real system would call printer API
+    return { ok: true, data: { id, type: "wristband" } };
+  },
+
+  reprintLabels: async (id: string) => {
+    // Demo implementation - in real system would call printer API  
+    return { ok: true, data: { id, type: "labels" } };
+  },
+
   registerPatient: async (payload) => {
     try {
       const response = await apiRequest('POST', '/api/register', payload);
