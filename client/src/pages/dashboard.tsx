@@ -9,6 +9,7 @@ import { type Encounter, LANES } from "@shared/schema";
 import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
 import RoomManagementDrawer from "@/components/RoomManagementDrawer";
+import SpaceSummaryBar from "@/components/SpaceSummaryBar";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
@@ -103,6 +104,9 @@ export default function Dashboard() {
       
       <main className="p-6">
         <StatsBar />
+        
+        {/* Treatment Spaces Summary - only for Charge Nurse view */}
+        {roleView === "charge" && <SpaceSummaryBar />}
         
         {/* Left-side Register drawer (Reception) */}
         <RegisterDrawer />
