@@ -1,0 +1,133 @@
+Awesome — here’s a tight, drop-in patch to switch **Triage vitals** to the new **stat-as-button** UX.
+
+---
+
+## 1) Add a reusable inline number pad (if you don’t already have it)
+
+**`client/src/components/ui/NumberPad.jsx`**
+
+```jsx
+import { useEffect, useState } from "react";
+
+export default function NumberPad({ value, onChange, onClose, allowDecimal=false, maxLen=4, confirmLabel="Confirm" }) {
+  const [local, setLocal] = useState(value?.toString() ?? "");
+  useEffect(()=>{ setLocal(value?.toString() ?? ""); }, [value]);
+
+  const tap = (ch) => {
+    if (ch === "." && (!allowDecimal || local.includes("."))) return;
+    const next = (local + ch).slice(0, maxLen);
+    setLocal(next);
+  };
+  const back = () => setLocal(s => s.slice(0, -1));
+  const clear = () => setLocal("");
+  const confirm = () => { onChange(local); onClose?.(); };
+
+  return (
+    <div className="mt-2 border rounded-lg bg-white shadow-md p-2 grid grid-cols-3 gap-2">
+      {[1,2,3,4,5,6,7,8,9].map(n=>(
+        <button key={n} type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap(String(n))}>{n}</button>
+      ))}
+      {allowDecimal ? (
+        <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap(".")}>.</button>
+      ) : <span />}
+      <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap("0")}>0</button>
+      <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={back}>⌫</button>
+
+      <button type="button" className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded" onClick={confirm}>{confirmLabel}</button>
+      <button type="button" className="px-3 py-2 bg-rose-100 text-rose-700 rounded" onClick={clear}>Clear</button>
+    </div>
+  );
+}
+```
+
+---
+
+## 2) Add the stat-as-button vital control
+
+**`client/src/components/VitalButton.jsx`**
+
+```jsx
+import { useState } from "react";
+import NumberPad from "./ui/NumberPad";
+
+export default function VitalButton({ label, unit="", value, onChange, allowDecimal=false, maxLen=4 }) {
+  const [open, setOpen] = useState(false);
+  const hasVal = value !== undefined && value !== null && value !== "";
+
+  return (
+    <div className="flex flex-col items-stretch">
+      <button
+        type="button"
+        onClick={()=> setOpen(o=>!o)}
+        className={`px-4 py-3 rounded-xl border text-sm font-medium w-full
+          ${hasVal ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-gray-50 border-gray-200 text-gray-500"}`}
+      >
+        {hasVal ? `${label}: ${value}${unit}` : label}
+      </button>
+      {open && (
+        <NumberPad
+          value={value}
+          allowDecimal={allowDecimal}
+          maxLen={maxLen}
+          onChange={(val)=> onChange(val)}
+          onClose={()=> setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## 3) Wire into the Triage drawer (replace old inputs)
+
+**Edit:** `client/src/components/TriageDrawer.jsx`
+
+```diff
+-import NumberField from "./ui/NumberField";
++import VitalButton from "./VitalButton";
+@@
+   const enc = triageEncounter;
+@@
+-        {/* Vitals section (old inputs) */}
+-        <div>
+-          <h4 className="font-semibold mb-2">Vitals</h4>
+-          <div className="grid grid-cols-2 gap-3">
+-            <NumberField label="HR (bpm)" value={form.hr} onChange={v=>on("hr", v)} min={0} max={250} />
+-            <NumberField label="RR (br/min)" value={form.rr} onChange={v=>on("rr", v)} min={0} max={80} />
+-            <NumberField label="BP Sys (mmHg)" value={form.bpSys} onChange={v=>on("bpSys", v)} min={40} max={260} />
+-            <NumberField label="BP Dia (mmHg)" value={form.bpDia} onChange={v=>on("bpDia", v)} min={20} max={200} />
+-            <NumberField label="SpO₂ (%)" value={form.spo2} onChange={v=>on("spo2", v)} min={50} max={100} />
+-            <NumberField label="Temp (°C)" value={form.temp} onChange={v=>on("temp", v)} min={30} max={43} step={0.1} />
+-            <NumberField label="Pain (0–10)" value={form.pain} onChange={v=>on("pain", v)} min={0} max={10} />
+-          </div>
+-        </div>
++        {/* Vitals — stat-as-button UX */}
++        <div>
++          <h4 className="font-semibold mb-2">Vitals</h4>
++          <div className="grid grid-cols-2 gap-3">
++            <VitalButton label="HR (bpm)"   unit=""     value={form.hr}    onChange={(v)=>on("hr", v)} />
++            <VitalButton label="RR (/min)"  unit=""     value={form.rr}    onChange={(v)=>on("rr", v)} />
++            <VitalButton label="BP Sys"     unit=" mmHg" value={form.bpSys} onChange={(v)=>on("bpSys", v)} />
++            <VitalButton label="BP Dia"     unit=" mmHg" value={form.bpDia} onChange={(v)=>on("bpDia", v)} />
++            <VitalButton label="SpO₂"       unit=" %"   value={form.spo2}  onChange={(v)=>on("spo2", v)} />
++            <VitalButton label="Temp"       unit=" °C"  value={form.temp}  onChange={(v)=>on("temp", v)} allowDecimal maxLen={5} />
++            <VitalButton label="Pain"       unit="/10"  value={form.pain}  onChange={(v)=>on("pain", v)} maxLen={2} />
++          </div>
++        </div>
+```
+
+> No changes needed to your **save** handler: it can keep converting with `numOrNull()` before sending to the API.
+
+---
+
+## ✅ Quick test
+
+1. Open **Triage** → Vitals show as rounded **buttons** (grey when empty).
+2. Tap a vital (e.g., **Temp**) → inline **NumberPad** opens directly below it.
+3. Enter value → **Confirm** → the button now reads e.g. **“Temp: 37.2 °C”** (blue).
+4. Repeat for others; only **one pad** is open at a time per vital.
+5. **Save triage** works as before.
+
+Want range guards (e.g., Temp 30–43, HR 20–220) with a tiny warning chip if outside? I can add lightweight validation without slowing the flow.
