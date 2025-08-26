@@ -10,6 +10,7 @@ import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
 import RoomManagementDrawer from "@/components/RoomManagementDrawer";
 import SpaceSummaryBar from "@/components/SpaceSummaryBar";
+import ReceptionView from "@/components/ReceptionView";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
@@ -94,6 +95,22 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-red-600 mb-4">Connection Error</h1>
           <p className="text-gray-600">Failed to load dashboard data. Please refresh the page.</p>
         </div>
+      </div>
+    );
+  }
+
+  // Reception view gets its own layout
+  if (roleView === "reception") {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Header />
+        <main className="flex-1">
+          <ReceptionView />
+        </main>
+        {/* Drawers */}
+        <RegisterDrawer />
+        <TriageDrawer />
+        <RoomManagementDrawer />
       </div>
     );
   }
