@@ -9,7 +9,7 @@ const STATUS = {
 };
 
 export default function SpaceSummaryBar() {
-  const { spaces, loadSpaces } = useDashboardStore();
+  const { spaces, loadSpaces, setSpaceFilterPreset } = useDashboardStore();
 
   useEffect(() => { 
     loadSpaces(); 
@@ -34,12 +34,14 @@ export default function SpaceSummaryBar() {
       <div className="flex flex-wrap items-center gap-3 mb-2">
         <h3 className="font-semibold text-sm sm:text-base">Treatment Spaces</h3>
         {Object.entries(counts.byStatus).map(([k, v]) => (
-          <span 
-            key={k} 
-            className={`px-2 py-0.5 rounded-full text-xs ${STATUS[k as keyof typeof STATUS].cls}`}
+          <button
+            key={k}
+            className={`px-2 py-0.5 rounded-full text-xs ${STATUS[k as keyof typeof STATUS].cls} hover:opacity-80 transition-opacity`}
+            onClick={() => setSpaceFilterPreset({ status: k })}
+            title={`Show ${STATUS[k as keyof typeof STATUS].txt}`}
           >
             {STATUS[k as keyof typeof STATUS].txt}: {v}
-          </span>
+          </button>
         ))}
       </div>
       <div className="flex flex-wrap gap-3 text-xs">
@@ -47,12 +49,14 @@ export default function SpaceSummaryBar() {
           <div key={zone} className="flex items-center gap-1">
             <span className="font-medium">Zone {zone}:</span>
             {Object.entries(vals).map(([k, v]) => v > 0 && (
-              <span 
-                key={k} 
-                className={`px-1.5 py-0.5 rounded-full ${STATUS[k as keyof typeof STATUS].cls}`}
+              <button
+                key={k}
+                className={`px-1.5 py-0.5 rounded-full ${STATUS[k as keyof typeof STATUS].cls} hover:opacity-80 transition-opacity`}
+                onClick={() => setSpaceFilterPreset({ zone, status: k })}
+                title={`Zone ${zone} • ${STATUS[k as keyof typeof STATUS].txt}`}
               >
                 {v}
-              </span>
+              </button>
             ))}
           </div>
         ))}

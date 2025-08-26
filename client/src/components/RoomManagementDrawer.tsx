@@ -36,7 +36,9 @@ export default function RoomManagementDrawer() {
     assignSpace, 
     reassignSpace,
     markSpaceClean,
-    markSpaceReady
+    markSpaceReady,
+    spaceFilterPreset,
+    clearSpaceFilterPreset
   } = useDashboardStore();
   
   const [filters, setFilters] = useState<{
@@ -44,19 +46,31 @@ export default function RoomManagementDrawer() {
     type: string | null;
     attrMon: boolean | null;
     attrIso: boolean | null;
-  }>({ zone: null, type: null, attrMon: null, attrIso: null });
+    status: string | null;
+  }>({ zone: null, type: null, attrMon: null, attrIso: null, status: null });
   
   const [selected, setSelected] = useState<any>(null);
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
 
+  // On open: reset local UI, load spaces, and apply any preset once
   useEffect(() => { 
     if (roomOpen) { 
       setSelected(null); 
       setReason(""); 
-      loadSpaces(); 
+      loadSpaces();
+      if (spaceFilterPreset) {
+        setFilters(f => ({ ...f, ...spaceFilterPreset }));
+      }
     }
-  }, [roomOpen, loadSpaces]);
+  }, [roomOpen, loadSpaces, spaceFilterPreset]);
+
+  // If drawer is already open and preset changes (user taps the bar), apply it live
+  useEffect(() => {
+    if (roomOpen && spaceFilterPreset) {
+      setFilters(f => ({ ...f, ...spaceFilterPreset }));
+    }
+  }, [spaceFilterPreset, roomOpen]);
 
   const needsIso = enc?.isolationRequired === "true";
   const acuity = Number(enc?.ats || 3);
@@ -64,6 +78,7 @@ export default function RoomManagementDrawer() {
 
   const filtered = useMemo(() => {
     return spaces.filter(s => {
+      if (filters.status && s.status !== filters.status) return false;
       if (filters.zone && s.zone !== filters.zone) return false;
       if (filters.type && s.type !== filters.type) return false;
       if (filters.attrMon === true && !s.monitored) return false;
@@ -158,7 +173,37 @@ export default function RoomManagementDrawer() {
 
           {/* Filters */}
           <section>
-            <h4 className="font-semibold mb-2">Filter Spaces</h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-semibold">Filter Spaces</h4>
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-full border text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  setFilters({ zone: null, type: null, attrMon: null, attrIso: null, status: null });
+                  clearSpaceFilterPreset();
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+            
+            {/* Status chips (tap from Summary Bar sets this too) */}
+            <div className="text-sm mb-3">
+              <div className="mb-1">Status</div>
+              <Chips
+                values={filters.status ? [filters.status] : []}
+                onToggle={(val, on) => {
+                  setFilters(f => ({ ...f, status: on ? val : null }));
+                }}
+                options={[
+                  { value: "available", label: "Available" },
+                  { value: "cleaning", label: "Cleaning" },
+                  { value: "occupied", label: "Occupied" },
+                  { value: "blocked", label: "Blocked" }
+                ]}
+              />
+            </div>
+            
             <div className="grid lg:grid-cols-2 gap-3">
               <div className="text-sm">
                 <div className="mb-1">Zone</div>
@@ -199,7 +244,7 @@ export default function RoomManagementDrawer() {
           {/* Space Grid */}
           <section>
             <h4 className="font-semibold mb-2">
-              Available Spaces ({filtered.filter(s => s.status === "available").length})
+              Filtered Spaces ({filtered.length}) - Available: {filtered.filter(s => s.status === "available").length}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {filtered.map(space => {

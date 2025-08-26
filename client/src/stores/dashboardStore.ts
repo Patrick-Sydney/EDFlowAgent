@@ -35,6 +35,11 @@ interface DashboardState {
   roomOpen: boolean;
   roomEncounter: Encounter | null;
   
+  // Shared preset for RoomManagementDrawer filters
+  spaceFilterPreset: any;
+  setSpaceFilterPreset: (preset: any) => void;
+  clearSpaceFilterPreset: () => void;
+  
   // Actions
   setEncounters: (encounters: Encounter[]) => void;
   addEncounter: (encounter: Encounter) => void;
@@ -98,6 +103,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   spaces: [],
   roomOpen: false,
   roomEncounter: null,
+  
+  // Shared preset for RoomManagementDrawer filters
+  spaceFilterPreset: null,
 
   setEncounters: (encounters) => {
     const list = Array.isArray(encounters) ? encounters : Object.values(encounters ?? {});
@@ -335,5 +343,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     get().loadSpaces();
   },
 
-  closeRoom: () => set({ roomOpen: false, roomEncounter: null })
+  closeRoom: () => set({ roomOpen: false, roomEncounter: null }),
+  
+  // Space filter preset actions
+  setSpaceFilterPreset: (preset) => set({ spaceFilterPreset: preset }),
+  clearSpaceFilterPreset: () => set({ spaceFilterPreset: null }),
 }));
