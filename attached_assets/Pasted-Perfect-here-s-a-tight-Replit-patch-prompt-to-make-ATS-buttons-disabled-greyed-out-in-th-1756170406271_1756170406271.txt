@@ -1,0 +1,128 @@
+Perfect — here’s a tight **Replit patch prompt** to make **ATS buttons disabled (greyed out)** in the **Register Patient** drawer **unless** “Provisional ATS from ambulance” is checked. When the checkbox is turned **off**, we also **clear** any previously chosen ATS.
+
+---
+
+# Patch: Grey-out ATS buttons unless “Provisional ATS from ambulance” is selected
+
+**File:** `client/src/components/RegisterDrawer.jsx`
+
+```diff
+@@
+-  const on = (k, v) => setForm(s => ({ ...s, [k]: v }));
+-  const toggle = (k) => setForm(s => ({ ...s, [k]: !s[k] }));
++  const on = (k, v) => setForm(s => ({ ...s, [k]: v }));
++  const toggle = (k) => setForm(s => ({ ...s, [k]: !s[k] }));
++  // Special toggle for provisionalAts: when turning OFF, clear ATS value
++  const toggleProvisionalAts = () =>
++    setForm(s => {
++      const next = !s.provisionalAts;
++      return { ...s, provisionalAts: next, ats: next ? s.ats : "" };
++    });
+@@
+-              <label className="flex items-center gap-2 py-2 touch-target">
+-                <input type="checkbox" className="w-5 h-5"
+-                       checked={form.provisionalAts} onChange={()=>toggle("provisionalAts")} />
+-                <span>Provisional ATS from ambulance</span>
+-              </label>
++              <label className="flex items-center gap-2 py-2 touch-target">
++                <input
++                  type="checkbox"
++                  className="w-5 h-5"
++                  checked={form.provisionalAts}
++                  onChange={toggleProvisionalAts}
++                />
++                <span>Provisional ATS from ambulance</span>
++              </label>
+@@
+-              {/* ATS — 1..5 buttons */}
+-              <div className="flex items-center gap-2 py-2">
+-                <span className="text-sm mr-1">ATS</span>
+-                <div className="grid grid-cols-5 gap-2">
+-                  {[1,2,3,4,5].map(n=>(
+-                    <button
+-                      key={n}
+-                      type="button"
+-                      aria-pressed={String(form.ats) === String(n)}
+-                      onClick={()=>on("ats", String(n))}
+-                      className={`px-3 py-3 rounded-xl border text-base min-w-[48px]
+-                        ${String(form.ats)===String(n) ? "bg-emerald-600 text-white border-emerald-600" : "bg-white"}`}
+-                    >
+-                      {n}
+-                    </button>
+-                  ))}
+-                </div>
+-                <button
+-                  type="button"
+-                  className="ml-2 px-3 py-3 rounded-xl border text-base"
+-                  onClick={()=>on("ats","")}
+-                  title="Clear ATS"
+-                >
+-                  Clear
+-                </button>
+-              </div>
++              {/* ATS — 1..5 buttons (disabled unless provisionalAts checked) */}
++              <div className="flex flex-col gap-1 py-2">
++                <div className="flex items-center gap-2">
++                  <span className="text-sm mr-1">ATS</span>
++                  {!form.provisionalAts && (
++                    <span className="text-xs text-gray-500">(enable “Provisional ATS from ambulance” to set)</span>
++                  )}
++                </div>
++                <div className="flex items-center gap-2">
++                  <div className="grid grid-cols-5 gap-2">
++                    {[1,2,3,4,5].map(n=>{
++                      const selected = String(form.ats) === String(n);
++                      const disabled = !form.provisionalAts;
++                      return (
++                        <button
++                          key={n}
++                          type="button"
++                          aria-pressed={selected}
++                          aria-disabled={disabled}
++                          disabled={disabled}
++                          onClick={()=>{ if (!disabled) on("ats", String(n)); }}
++                          className={`px-3 py-3 rounded-xl border text-base min-w-[48px] transition
++                            ${disabled ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
++                                       : selected ? "bg-emerald-600 text-white border-emerald-600"
++                                                  : "bg-white hover:bg-gray-50"}`}
++                        >
++                          {n}
++                        </button>
++                      );
++                    })}
++                  </div>
++                  <button
++                    type="button"
++                    aria-disabled={!form.provisionalAts}
++                    disabled={!form.provisionalAts}
++                    className={`ml-2 px-3 py-3 rounded-xl border text-base transition
++                      ${!form.provisionalAts ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
++                                              : "bg-white hover:bg-gray-50"}`}
++                    onClick={()=>{ if (form.provisionalAts) on("ats",""); }}
++                    title="Clear ATS"
++                  >
++                    Clear
++                  </button>
++                </div>
++              </div>
+```
+
+No server changes required — your `/api/register` already treats ATS as optional and uses `provisionalAts` to indicate a pre-hospital triage.
+
+---
+
+## ✅ What to test
+
+1. Open **Reception → Register Patient** drawer.
+2. **Provisional ATS** unchecked (default):
+
+   * ATS **1–5 buttons** and **Clear** appear **greyed out** and **unclickable**.
+3. Tick **Provisional ATS from ambulance**:
+
+   * ATS buttons become **active**; you can select 1–5 (selected fills emerald).
+4. Untick **Provisional ATS** again:
+
+   * ATS value is **cleared** and buttons go back to **disabled**.
+5. Submit → patient is created in **Waiting**; if a provisional ATS was set, the card shows **“ATS n (prov.)”** badge as before.
+
+Want the same gating in **Triage** (i.e., ATS always enabled there, since formal ATS is assigned in triage)? If so, we’ll leave Triaged ATS editable and audited, which matches clinical reality.

@@ -34,6 +34,14 @@ export default function RegisterDrawer() {
     setForm(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
   };
 
+  // Special toggle for provisionalAts: when turning OFF, clear ATS value
+  const toggleProvisionalAts = () => {
+    setForm(prev => {
+      const next = !prev.provisionalAts;
+      return { ...prev, provisionalAts: next, ats: next ? prev.ats : "" };
+    });
+  };
+
   if (!registerOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -249,41 +257,59 @@ export default function RegisterDrawer() {
                   type="checkbox" 
                   className="w-5 h-5"
                   checked={form.provisionalAts} 
-                  onChange={() => toggle("provisionalAts")} 
+                  onChange={toggleProvisionalAts} 
                   data-testid="checkbox-provisional-ats"
                 />
                 <span>Provisional ATS from ambulance</span>
               </label>
-              {/* ATS — 1..5 buttons */}
-              <div className="flex items-center gap-2 py-2">
-                <span className="text-sm mr-1">ATS</span>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map(n => (
-                    <button
-                      key={n}
-                      type="button"
-                      aria-pressed={String(form.ats) === String(n)}
-                      onClick={() => onChange("ats", String(n))}
-                      className={`px-3 py-3 rounded-xl border text-base min-w-[48px] min-h-[44px] ${
-                        String(form.ats) === String(n) 
-                          ? "bg-emerald-600 text-white border-emerald-600" 
-                          : "bg-white"
-                      }`}
-                      data-testid={`button-ats-${n}`}
-                    >
-                      {n}
-                    </button>
-                  ))}
+              {/* ATS — 1..5 buttons (disabled unless provisionalAts checked) */}
+              <div className="flex flex-col gap-1 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm mr-1">ATS</span>
+                  {!form.provisionalAts && (
+                    <span className="text-xs text-gray-500">(enable "Provisional ATS from ambulance" to set)</span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  className="ml-2 px-3 py-3 rounded-xl border text-base min-h-[44px]"
-                  onClick={() => onChange("ats", "")}
-                  title="Clear ATS"
-                  data-testid="button-clear-ats"
-                >
-                  Clear
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="grid grid-cols-5 gap-2">
+                    {[1, 2, 3, 4, 5].map(n => {
+                      const selected = String(form.ats) === String(n);
+                      const disabled = !form.provisionalAts;
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          aria-pressed={selected}
+                          aria-disabled={disabled}
+                          disabled={disabled}
+                          onClick={() => { if (!disabled) onChange("ats", String(n)); }}
+                          className={`px-3 py-3 rounded-xl border text-base min-w-[48px] min-h-[44px] transition ${
+                            disabled ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                     : selected ? "bg-emerald-600 text-white border-emerald-600"
+                                                : "bg-white hover:bg-gray-50"
+                          }`}
+                          data-testid={`button-ats-${n}`}
+                        >
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    aria-disabled={!form.provisionalAts}
+                    disabled={!form.provisionalAts}
+                    className={`ml-2 px-3 py-3 rounded-xl border text-base min-h-[44px] transition ${
+                      !form.provisionalAts ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                           : "bg-white hover:bg-gray-50"
+                    }`}
+                    onClick={() => { if (form.provisionalAts) onChange("ats", ""); }}
+                    title="Clear ATS"
+                    data-testid="button-clear-ats"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
             </div>
           </div>
