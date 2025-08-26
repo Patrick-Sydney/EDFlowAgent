@@ -102,18 +102,6 @@ export function Header() {
           {/* Control Actions */}
           <div className="flex items-center space-x-3 flex-wrap justify-end">
             <RoleViewPicker />
-            {/* Reception-only: quick register button */}
-            {roleView === "reception" && (
-              <button
-                onClick={openRegister}
-                className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors flex items-center space-x-2"
-                title="Register incoming patient"
-                data-testid="button-open-register"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Register Patient</span>
-              </button>
-            )}
           </div>
 
           {/* Real-time Status */}
