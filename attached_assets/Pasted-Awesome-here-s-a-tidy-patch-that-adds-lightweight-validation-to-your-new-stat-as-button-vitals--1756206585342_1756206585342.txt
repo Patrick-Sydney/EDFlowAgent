@@ -1,0 +1,213 @@
+Awesome—here’s a tidy patch that adds **lightweight validation** to your new stat-as-button vitals. It:
+
+* enforces sensible min/max ranges per vital
+* shows an inline **red helper message** under the pad if out of range
+* **disables Confirm** until the input is valid
+* highlights the vital button **red** when the current value is out of range
+
+---
+
+## 1) Upgrade the inline number pad to support validation
+
+**`client/src/components/ui/NumberPad.jsx`**
+
+```diff
+-import { useEffect, useState } from "react";
+-
+-export default function NumberPad({ value, onChange, onClose, allowDecimal=false, maxLen=4, confirmLabel="Confirm" }) {
++import { useEffect, useState, useMemo } from "react";
++
++export default function NumberPad({
++  value,
++  onChange,
++  onClose,
++  allowDecimal=false,
++  maxLen=4,
++  confirmLabel="Confirm",
++  validator // optional: (stringVal)=> ({ ok:boolean, message?:string })
++}) {
+   const [local, setLocal] = useState(value?.toString() ?? "");
+   useEffect(()=>{ setLocal(value?.toString() ?? ""); }, [value]);
+ 
+   const tap = (ch) => {
+     if (ch === "." && (!allowDecimal || local.includes("."))) return;
+     const next = (local + ch).slice(0, maxLen);
+     setLocal(next);
+   };
+   const back = () => setLocal(s => s.slice(0, -1));
+   const clear = () => setLocal("");
+-  const confirm = () => { onChange(local); onClose?.(); };
++  const vres = useMemo(()=> validator ? validator(local) : { ok:true }, [local, validator]);
++  const confirm = () => {
++    if (vres?.ok) { onChange(local); onClose?.(); }
++  };
+ 
+   return (
+     <div className="mt-2 border rounded-lg bg-white shadow-md p-2 grid grid-cols-3 gap-2">
+       {[1,2,3,4,5,6,7,8,9].map(n=>(
+         <button key={n} type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap(String(n))}>{n}</button>
+       ))}
+       {allowDecimal ? (
+         <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap(".")}>.</button>
+       ) : <span />}
+       <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap("0")}>0</button>
+       <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={back}>⌫</button>
+ 
+-      <button type="button" className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded" onClick={confirm}>{confirmLabel}</button>
++      <button
++        type="button"
++        className={`col-span-2 px-3 py-2 rounded ${vres?.ok ? "bg-blue-600 text-white" : "bg-blue-300 text-white cursor-not-allowed"}`}
++        onClick={confirm}
++        disabled={!vres?.ok}
++      >
++        {confirmLabel}
++      </button>
+       <button type="button" className="px-3 py-2 bg-rose-100 text-rose-700 rounded" onClick={clear}>Clear</button>
++      {!vres?.ok && vres?.message && (
++        <div className="col-span-3 text-xs text-rose-700 mt-1">{vres.message}</div>
++      )}
+     </div>
+   );
+ }
+```
+
+---
+
+## 2) Add min/max-aware validation & red/ok styling to VitalButton
+
+**`client/src/components/VitalButton.jsx`**
+
+```diff
+-import { useState } from "react";
++import { useMemo, useState } from "react";
+ import NumberPad from "./ui/NumberPad";
+ 
+-export default function VitalButton({ label, unit="", value, onChange, allowDecimal=false, maxLen=4 }) {
++export default function VitalButton({
++  label,
++  unit = "",
++  value,
++  onChange,
++  allowDecimal = false,
++  maxLen = 4,
++  min = -Infinity,
++  max = Infinity
++}) {
+   const [open, setOpen] = useState(false);
+   const hasVal = value !== undefined && value !== null && value !== "";
++  const numVal = useMemo(()=> {
++    const n = Number(value);
++    return Number.isFinite(n) ? n : null;
++  }, [value]);
++  const inRange = numVal === null ? true : (numVal >= min && numVal <= max);
+ 
+   return (
+     <div className="flex flex-col items-stretch">
+       <button
+         type="button"
+         onClick={()=> setOpen(o=>!o)}
+-        className={`px-4 py-3 rounded-xl border text-sm font-medium w-full
+-          ${hasVal ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-gray-50 border-gray-200 text-gray-500"}`}
++        className={`px-4 py-3 rounded-xl border text-sm font-medium w-full
++          ${hasVal
++            ? (inRange ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-rose-50 border-rose-300 text-rose-700")
++            : "bg-gray-50 border-gray-200 text-gray-500"}`}
+         >
+         {hasVal ? `${label}: ${value}${unit}` : label}
+       </button>
+       {open && (
+         <NumberPad
+           value={value}
+           allowDecimal={allowDecimal}
+           maxLen={maxLen}
+           onChange={(val)=> onChange(val)}
+           onClose={()=> setOpen(false)}
++          validator={(str)=>{
++            if (str === "" || str === ".") return { ok:false, message:"Enter a number" };
++            const n = Number(str);
++            if (!Number.isFinite(n)) return { ok:false, message:"Invalid number" };
++            if (n < min) return { ok:false, message:`Must be ≥ ${min}${unit}` };
++            if (n > max) return { ok:false, message:`Must be ≤ ${max}${unit}` };
++            return { ok:true };
++          }}
+         />
+       )}
+     </div>
+   );
+}
+```
+
+---
+
+## 3) Apply sensible ranges when instantiating vitals in Triage
+
+**`client/src/components/TriageDrawer.jsx`** (where you render the vitals grid)
+
+```diff
+ import VitalButton from "./VitalButton";
+@@
+-  <div className="grid grid-cols-2 gap-3">
+-    <VitalButton label="HR (bpm)"   unit=""     value={form.hr}    onChange={(v)=>on("hr", v)} />
+-    <VitalButton label="RR (/min)"  unit=""     value={form.rr}    onChange={(v)=>on("rr", v)} />
+-    <VitalButton label="BP Sys"     unit=" mmHg" value={form.bpSys} onChange={(v)=>on("bpSys", v)} />
+-    <VitalButton label="BP Dia"     unit=" mmHg" value={form.bpDia} onChange={(v)=>on("bpDia", v)} />
+-    <VitalButton label="SpO₂"       unit=" %"   value={form.spo2}  onChange={(v)=>on("spo2", v)} />
+-    <VitalButton label="Temp"       unit=" °C"  value={form.temp}  onChange={(v)=>on("temp", v)} allowDecimal maxLen={5} />
+-    <VitalButton label="Pain"       unit="/10"  value={form.pain}  onChange={(v)=>on("pain", v)} maxLen={2} />
+-  </div>
++  <div className="grid grid-cols-2 gap-3">
++    <VitalButton label="HR (bpm)"   value={form.hr}    onChange={(v)=>on("hr", v)}         min={20}  max={220} />
++    <VitalButton label="RR (/min)"  value={form.rr}    onChange={(v)=>on("rr", v)}         min={6}   max={60} />
++    <VitalButton label="BP Sys"     unit=" mmHg" value={form.bpSys} onChange={(v)=>on("bpSys", v)}   min={60}  max={260} />
++    <VitalButton label="BP Dia"     unit=" mmHg" value={form.bpDia} onChange={(v)=>on("bpDia", v)}   min={30}  max={150} />
++    <VitalButton label="SpO₂"       unit=" %"   value={form.spo2}  onChange={(v)=>on("spo2", v)}    min={50}  max={100} />
++    <VitalButton label="Temp"       unit=" °C"  value={form.temp}  onChange={(v)=>on("temp", v)}    allowDecimal maxLen={5} min={30} max={43} />
++    <VitalButton label="Pain"       unit="/10"  value={form.pain}  onChange={(v)=>on("pain", v)}    min={0}    max={10} maxLen={2} />
++  </div>
+```
+
+> These ranges are practical defaults; tweak to your clinical policy if needed.
+
+---
+
+## 4) (Optional) Block save on any invalid vital
+
+If you want to **prevent Save Triage** when any set vital is out of range, compute a flag and disable the Save buttons.
+
+In `TriageDrawer.jsx` (compute before the footer):
+
+```diff
++  const vitalsInvalid =
++    (form.hr && (Number(form.hr) < 20 || Number(form.hr) > 220)) ||
++    (form.rr && (Number(form.rr) < 6 || Number(form.rr) > 60)) ||
++    (form.bpSys && (Number(form.bpSys) < 60 || Number(form.bpSys) > 260)) ||
++    (form.bpDia && (Number(form.bpDia) < 30 || Number(form.bpDia) > 150)) ||
++    (form.spo2 && (Number(form.spo2) < 50 || Number(form.spo2) > 100)) ||
++    (form.temp && (Number(form.temp) < 30 || Number(form.temp) > 43)) ||
++    (form.pain && (Number(form.pain) < 0 || Number(form.pain) > 10));
+```
+
+Then:
+
+```diff
+- <TButton className="bg-emerald-600 text-white flex-1" onClick={save} disabled={submitting}>
++ <TButton className="bg-emerald-600 text-white flex-1" onClick={save} disabled={submitting || vitalsInvalid}>
+    {submitting ? "Saving…" : "Save triage"}
+  </TButton>
+- <TButton className="bg-blue-600 text-white flex-1" onClick={saveAndAssign} disabled={submitting || enc?.room}>
++ <TButton className="bg-blue-600 text-white flex-1" onClick={saveAndAssign} disabled={submitting || enc?.room || vitalsInvalid}>
+    {submitting ? "Working…" : "Save & Assign Room"}
+  </TButton>
+```
+
+(If you prefer to allow saving with warnings, skip this step; the button-level red styling already flags issues.)
+
+---
+
+## ✅ What you’ll see
+
+* When a nurse enters **out-of-range** values, the pad shows a **red helper message** and **Confirm** is disabled.
+* If a value later becomes invalid (e.g., pasted from API), the **vital button turns red** (rose background/border) so it stands out.
+* Everything remains **fast, clean, and touch-first**. Only a single compact button per vital.
+
+Want me to add a tiny **“⚠ Out-of-range”** chip on the card header if any vitals are invalid, to help charge nurses scan quickly?

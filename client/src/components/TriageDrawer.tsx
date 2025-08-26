@@ -298,13 +298,13 @@ export default function TriageDrawer() {
                 <span>Vitals</span>
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <VitalButton label="HR (bpm)" unit="" value={form.hr} onChange={(v) => onChange("hr", v)} />
-                <VitalButton label="RR (/min)" unit="" value={form.rr} onChange={(v) => onChange("rr", v)} />
-                <VitalButton label="BP Sys" unit=" mmHg" value={form.bpSys} onChange={(v) => onChange("bpSys", v)} />
-                <VitalButton label="BP Dia" unit=" mmHg" value={form.bpDia} onChange={(v) => onChange("bpDia", v)} />
-                <VitalButton label="SpO₂" unit=" %" value={form.spo2} onChange={(v) => onChange("spo2", v)} />
-                <VitalButton label="Temp" unit=" °C" value={form.temp} onChange={(v) => onChange("temp", v)} allowDecimal maxLen={5} />
-                <VitalButton label="Pain" unit="/10" value={form.pain} onChange={(v) => onChange("pain", v)} maxLen={2} />
+                <VitalButton label="HR (bpm)" value={form.hr} onChange={(v) => onChange("hr", v)} min={20} max={220} />
+                <VitalButton label="RR (/min)" value={form.rr} onChange={(v) => onChange("rr", v)} min={6} max={60} />
+                <VitalButton label="BP Sys" unit=" mmHg" value={form.bpSys} onChange={(v) => onChange("bpSys", v)} min={60} max={260} />
+                <VitalButton label="BP Dia" unit=" mmHg" value={form.bpDia} onChange={(v) => onChange("bpDia", v)} min={30} max={150} />
+                <VitalButton label="SpO₂" unit=" %" value={form.spo2} onChange={(v) => onChange("spo2", v)} min={50} max={100} />
+                <VitalButton label="Temp" unit=" °C" value={form.temp} onChange={(v) => onChange("temp", v)} allowDecimal maxLen={5} min={30} max={43} />
+                <VitalButton label="Pain" unit="/10" value={form.pain} onChange={(v) => onChange("pain", v)} min={0} max={10} maxLen={2} />
               </div>
             </section>
 

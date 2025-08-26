@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 interface NumberPadProps {
   value?: string | number | null;
@@ -7,6 +7,7 @@ interface NumberPadProps {
   allowDecimal?: boolean;
   maxLen?: number;
   confirmLabel?: string;
+  validator?: (stringVal: string) => { ok: boolean; message?: string };
 }
 
 export default function NumberPad({ 
@@ -15,7 +16,8 @@ export default function NumberPad({
   onClose, 
   allowDecimal = false, 
   maxLen = 4, 
-  confirmLabel = "Confirm" 
+  confirmLabel = "Confirm",
+  validator
 }: NumberPadProps) {
   const [local, setLocal] = useState(value?.toString() ?? "");
   
@@ -31,9 +33,12 @@ export default function NumberPad({
 
   const back = () => setLocal((s) => s.slice(0, -1));
   const clear = () => setLocal("");
-  const confirm = () => { 
-    onChange(local); 
-    onClose?.(); 
+  const vres = useMemo(() => validator ? validator(local) : { ok: true }, [local, validator]);
+  const confirm = () => {
+    if (vres?.ok) { 
+      onChange(local); 
+      onClose?.(); 
+    }
   };
 
   return (
@@ -80,8 +85,11 @@ export default function NumberPad({
 
       <button 
         type="button" 
-        className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded min-h-[44px]" 
+        className={`col-span-2 px-3 py-2 rounded min-h-[44px] ${
+          vres?.ok ? "bg-blue-600 text-white" : "bg-blue-300 text-white cursor-not-allowed"
+        }`}
         onClick={confirm}
+        disabled={!vres?.ok}
         data-testid="button-confirm"
       >
         {confirmLabel}
@@ -94,6 +102,9 @@ export default function NumberPad({
       >
         Clear
       </button>
+      {!vres?.ok && vres?.message && (
+        <div className="col-span-3 text-xs text-rose-700 mt-1">{vres.message}</div>
+      )}
     </div>
   );
 }
