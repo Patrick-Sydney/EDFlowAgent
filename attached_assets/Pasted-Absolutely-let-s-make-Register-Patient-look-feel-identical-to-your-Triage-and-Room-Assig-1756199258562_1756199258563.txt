@@ -1,0 +1,127 @@
+Absolutely — let’s make **Register Patient** look/feel identical to your **Triage** and **Room Assign** drawers.
+
+Below is a tight patch to:
+
+* use the **same right-side responsive width** (`sm:w-[85%] md:w-[75%] lg:w-[720px]`)
+* keep **sticky header/footer** and spacing consistent
+* align **section spacing** and **grid gutters** with the others
+
+---
+
+# Patch: Register drawer width & styling parity
+
+**File:** `client/src/components/RegisterDrawer.jsx`
+
+```diff
+@@
+-    <div className="fixed inset-0 z-40">
+-      <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
+-      {/* RIGHT sheet (mobile: full width, tablet: ~2/3, desktop: fixed) */}
+-      <div
+-        className="absolute top-0 right-0 h-full w-full sm:w-[80%] md:w-[70%] lg:w-[520px]
+-                   bg-white shadow-xl flex flex-col"
+-      >
++    <div className="fixed inset-0 z-40">
++      <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
++      {/* RIGHT sheet — match Triage/Room widths */}
++      <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
+@@
+-        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
++        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+           <div className="flex items-center justify-between">
+             <h3 className="font-semibold text-base sm:text-lg">Register patient</h3>
+             <TButton className="border bg-white" onClick={closeRegister}>Close</TButton>
+           </div>
+           <div className="mt-1 text-xs text-gray-600">Reception • New arrival</div>
+         </div>
+@@
+-        <form
+-          onSubmit={submit}
+-          className="flex-1 overflow-y-auto px-4 py-3 space-y-4"
+-          onKeyDown={(e)=>{ if(e.key==='Enter' && e.target.tagName==='INPUT') e.preventDefault(); }}
+-        >
++        {/* Match spacing with Triage/Room drawers */}
++        <form
++          onSubmit={submit}
++          className="flex-1 overflow-y-auto px-4 py-3"
++          onKeyDown={(e)=>{ if(e.key==='Enter' && e.target.tagName==='INPUT') e.preventDefault(); }}
++        >
++          <div className="grid lg:grid-cols-2 gap-6">
++            <div className="space-y-6">
+               {/* Identity */}
+               <div>
+                 <h4 className="font-semibold mb-2">Patient details</h4>
+-                <div className="grid grid-cols-2 gap-3">
++                <div className="grid grid-cols-2 gap-3">
+                   <label className="text-sm col-span-2">Full name
+                     <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                            value={form.name} onChange={e=>on("name", e.target.value)} required />
+                   </label>
+@@
+                   <label className="text-sm col-span-2">NHI (optional)
+                     <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                            value={form.nhi} onChange={e=>on("nhi", e.target.value)} />
+                   </label>
+                   <label className="text-sm col-span-2">Arrival time (optional ISO)
+                     <input className="mt-1 w-full border rounded px-3 py-3 text-base"
+                            placeholder="2025-08-26T14:30:00"
+                            value={form.arrivalTime} onChange={e=>on("arrivalTime", e.target.value)} />
+                   </label>
+                 </div>
+               </div>
++            </div>
++            <div className="space-y-6">
+               {/* Presenting complaint */}
+               <div>
+                 <h4 className="font-semibold mb-2">Presenting complaint</h4>
+                 <input className="w-full border rounded px-3 py-3 text-base"
+                        value={form.complaint} onChange={e=>on("complaint", e.target.value)} required />
+               </div>
+ 
+               {/* Flags */}
+               <div>
+                 <h4 className="font-semibold mb-2">Flags</h4>
+                 <div className="flex flex-wrap gap-4">
+@@
+                   {/* ATS buttons block remains, now aligned */}
+                 </div>
+               </div>
++            </div>
++          </div>
+         </form>
+@@
+-        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
++        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+           <TButton className="bg-blue-600 text-white flex-1" onClick={submit}>Register</TButton>
+           <TButton className="border bg-white" onClick={closeRegister}>Cancel</TButton>
+         </div>
+       </div>
+     </div>
+```
+
+> This change gives **Register** the **same drawer width** and **two-column layout on large screens** as Triage/Room, while keeping single-column on mobile.
+
+---
+
+## (Optional) Harmonize heading sizes & section titles
+
+If your Triage/Room drawers use consistent typography, ensure Register’s section headings match:
+
+* Section titles: `text-sm font-semibold`
+* Input paddings: `px-3 py-3` for touch targets
+* Grid gaps: `gap-6` at the form level, `gap-3` inside small grids
+
+No code needed if you’re already using those classes (the diff above sets them).
+
+---
+
+## ✅ Acceptance checks
+
+* Open **Reception → Register Patient**:
+
+  * Drawer slides from the **right** with **sm\:w-\[85%] md\:w-\[75%] lg\:w-\[720px]**.
+  * **Sticky header/footer** match Triage/Room drawers.
+  * On **desktop**, Register form uses a **two-column layout**; on **mobile**, it’s single column.
+  * Sex toggle, Age pad, and ATS buttons retain their touch-friendly sizing.
+
+If you spot any tiny spacing mismatches (e.g., different `gap` values) between drawers, tell me which component and I’ll standardize those too.
