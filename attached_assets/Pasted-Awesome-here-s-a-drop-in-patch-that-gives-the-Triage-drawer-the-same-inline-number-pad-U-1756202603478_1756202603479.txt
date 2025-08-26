@@ -1,0 +1,211 @@
+Awesome — here’s a **drop-in patch** that gives the **Triage drawer** the same **inline number-pad UX** you liked in Register, with decimals where appropriate (Temp). It’s touch-first, one pad open at a time, and zero text typing.
+
+---
+
+# 1) New reusable pad
+
+**`client/src/components/ui/NumberPad.jsx`**
+
+```jsx
+import { useState, useEffect } from "react";
+
+export default function NumberPad({ value, onChange, onClose, allowDecimal=false, maxLen=4, confirmLabel="Confirm" }) {
+  const [local, setLocal] = useState(value?.toString() ?? "");
+  useEffect(()=>{ setLocal(value?.toString() ?? ""); }, [value]);
+
+  const tap = (ch) => {
+    if (ch === "." && (!allowDecimal || local.includes("."))) return;
+    const next = (local + ch).slice(0, maxLen);
+    setLocal(next);
+  };
+  const back = () => setLocal((s)=> s.slice(0, -1));
+  const clear = () => setLocal("");
+  const confirm = () => { onChange(local); onClose?.(); };
+
+  return (
+    <div className="mt-2 border rounded-lg bg-white shadow-md p-2 grid grid-cols-3 gap-2">
+      {[1,2,3,4,5,6,7,8,9].map(n=>(
+        <button key={n}
+          type="button"
+          className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200"
+          onClick={()=> tap(String(n))}
+        >{n}</button>
+      ))}
+      {allowDecimal ? (
+        <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap(".")}>.</button>
+      ) : <span />}
+      <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={()=> tap("0")}>0</button>
+      <button type="button" className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200" onClick={back}>⌫</button>
+
+      <button type="button" className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded" onClick={confirm}>{confirmLabel}</button>
+      <button type="button" className="px-3 py-2 bg-rose-100 text-rose-700 rounded" onClick={clear}>Clear</button>
+    </div>
+  );
+}
+```
+
+---
+
+# 2) Convert Triage vitals to inline pads
+
+**`client/src/components/TriageDrawer.jsx`** (patch highlights)
+
+```diff
+-import NumberField from "./ui/NumberField";
++import NumberPad from "./ui/NumberPad";
+@@
+ export default function TriageDrawer() {
+   const { triageOpen, triageEncounter, closeTriage, saveTriage } = useED();
+   const enc = triageEncounter;
++  // Controls which field’s pad is open: "hr"|"rr"|"bpSys"|"bpDia"|"spo2"|"temp"|"pain"|null
++  const [activePad, setActivePad] = useState(null);
+@@
+-  const on = (k,v)=> setForm(s=>({...s,[k]:v}));
++  const on = (k,v)=> setForm(s=>({...s,[k]:v}));
+   const numOrNull = (v)=> {
+     const n = Number(v); return Number.isFinite(n) ? n : null;
+   };
+```
+
+### Replace each vital input block with inline pad UX
+
+**Heart Rate (bpm)**
+
+```diff
+- <NumberField label="HR (bpm)" value={form.hr} onChange={v=>on("hr", v)} min={0} max={250} />
++ <div className="text-sm">
++   HR (bpm)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.hr ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="hr" ? null : "hr")}>Set HR</button>
++   </div>
++   {activePad==="hr" && (
++     <NumberPad value={form.hr} onChange={(val)=> on("hr", val)} onClose={()=> setActivePad(null)} />
++   )}
++ </div>
+```
+
+**Respiratory Rate (breaths/min)**
+
+```diff
+- <NumberField label="RR (br/min)" value={form.rr} onChange={v=>on("rr", v)} min={0} max={80} />
++ <div className="text-sm">
++   RR (br/min)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.rr ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="rr" ? null : "rr")}>Set RR</button>
++   </div>
++   {activePad==="rr" && (
++     <NumberPad value={form.rr} onChange={(val)=> on("rr", val)} onClose={()=> setActivePad(null)} />
++   )}
++ </div>
+```
+
+**Blood Pressure (mmHg) — Systolic & Diastolic**
+
+```diff
+- <NumberField label="BP Sys (mmHg)" value={form.bpSys} onChange={v=>on("bpSys", v)} min={40} max={260} />
+- <NumberField label="BP Dia (mmHg)" value={form.bpDia} onChange={v=>on("bpDia", v)} min={20} max={200} />
++ <div className="text-sm">
++   BP Sys (mmHg)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.bpSys ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="bpSys" ? null : "bpSys")}>Set Sys</button>
++   </div>
++   {activePad==="bpSys" && (
++     <NumberPad value={form.bpSys} onChange={(val)=> on("bpSys", val)} onClose={()=> setActivePad(null)} />
++   )}
++ </div>
++ <div className="text-sm">
++   BP Dia (mmHg)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.bpDia ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="bpDia" ? null : "bpDia")}>Set Dia</button>
++   </div>
++   {activePad==="bpDia" && (
++     <NumberPad value={form.bpDia} onChange={(val)=> on("bpDia", val)} onClose={()=> setActivePad(null)} />
++   )}
++ </div>
+```
+
+**SpO₂ (%)**
+
+```diff
+- <NumberField label="SpO₂ (%)" value={form.spo2} onChange={v=>on("spo2", v)} min={50} max={100} />
++ <div className="text-sm">
++   SpO₂ (%)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.spo2 ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="spo2" ? null : "spo2")}>Set SpO₂</button>
++   </div>
++   {activePad==="spo2" && (
++     <NumberPad value={form.spo2} onChange={(val)=> on("spo2", val)} onClose={()=> setActivePad(null)} />
++   )}
++ </div>
+```
+
+**Temperature (°C) — allow decimal**
+
+```diff
+- <NumberField label="Temp (°C)" value={form.temp} onChange={v=>on("temp", v)} min={30} max={43} step={0.1} />
++ <div className="text-sm">
++   Temp (°C)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.temp ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="temp" ? null : "temp")}>Set Temp</button>
++   </div>
++   {activePad==="temp" && (
++     <NumberPad value={form.temp} onChange={(val)=> on("temp", val)} onClose={()=> setActivePad(null)} allowDecimal maxLen={5} />
++   )}
++ </div>
+```
+
+**Pain (0–10)**
+
+```diff
+- <NumberField label="Pain (0–10)" value={form.pain} onChange={v=>on("pain", v)} min={0} max={10} />
++ <div className="text-sm">
++   Pain (0–10)
++   <div className="flex gap-2 mt-1 items-center">
++     <input className="flex-1 border rounded px-3 py-3 text-base" value={form.pain ?? ""} readOnly />
++     <button type="button" className="px-3 py-2 border rounded bg-gray-50" onClick={()=> setActivePad(activePad==="pain" ? null : "pain")}>Set Pain</button>
++   </div>
++   {activePad==="pain" && (
++     <NumberPad value={form.pain} onChange={(val)=> on("pain", val)} onClose={()=> setActivePad(null)} maxLen={2} />
++   )}
++ </div>
+```
+
+> Keep your **two-column layout**: group vitals in a grid (`grid lg:grid-cols-2 gap-6`) so pads open directly **beneath** each field without shifting other sections too far.
+
+---
+
+# 3) Save payload stays the same
+
+You’re already doing:
+
+```js
+vitals: {
+  hr: numOrNull(form.hr),
+  rr: numOrNull(form.rr),
+  bpSys: numOrNull(form.bpSys),
+  bpDia: numOrNull(form.bpDia),
+  spo2: numOrNull(form.spo2),
+  temp: numOrNull(form.temp)
+},
+pain: numOrNull(form.pain),
+```
+
+No change needed — the pad writes strings; `numOrNull` keeps the API numeric.
+
+---
+
+## ✅ Acceptance checklist
+
+* Tapping **Set HR / RR / Sys / Dia / SpO₂ / Temp / Pain** opens an **inline pad** right below that field.
+* **Only one** pad can be open at a time; confirming closes it.
+* **Temp** allows `.` (decimals); others don’t.
+* Inputs are **read-only** text boxes that reflect the pad entry; no mobile keyboard pops up.
+* Save triage persists the numeric values as before.
+
+If you want range guards (e.g., HR 20–220, Temp 30–43) to **auto-warn and refuse Confirm** when out of range, say the word and I’ll add lightweight validation + toasts.

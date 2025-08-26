@@ -9,7 +9,7 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { useToast } from "@/hooks/use-toast";
 import { X, AlertTriangle, Heart } from "lucide-react";
 import TButton from "./ui/TButton";
-import NumberField from "./ui/NumberField";
+import NumberPad from "./ui/NumberPad";
 import { Segmented, Chips } from "./ui/Segmented";
 import { haptic, once } from "@/utils/touch";
 
@@ -36,6 +36,8 @@ export default function TriageDrawer() {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Controls which field's pad is open: "hr"|"rr"|"bpSys"|"bpDia"|"spo2"|"temp"|"pain"|null
+  const [activePad, setActivePad] = useState<string | null>(null);
 
   useEffect(() => {
     if (!enc) return;
@@ -298,13 +300,76 @@ export default function TriageDrawer() {
                 <span>Vitals</span>
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <NumberField label="HR (bpm)" value={form.hr} onChange={(v) => onChange("hr", v)} min={0} max={220} placeholder="80" />
-                <NumberField label="RR (/min)" value={form.rr} onChange={(v) => onChange("rr", v)} min={0} max={60} placeholder="16" />
-                <NumberField label="Temp (°C)" value={form.temp} onChange={(v) => onChange("temp", v)} min={30} max={43} step={0.1} placeholder="36.5" />
-                <NumberField label="SpO₂ (%)" value={form.spo2} onChange={(v) => onChange("spo2", v)} min={50} max={100} placeholder="98" />
-                <NumberField label="BP Sys" value={form.bpSys} onChange={(v) => onChange("bpSys", v)} min={50} max={260} placeholder="120" />
-                <NumberField label="BP Dia" value={form.bpDia} onChange={(v) => onChange("bpDia", v)} min={30} max={160} placeholder="80" />
-                <NumberField label="Pain 0-10" value={form.pain} onChange={(v) => onChange("pain", v)} min={0} max={10} placeholder="0" />
+                <div className="text-sm">
+                  HR (bpm)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.hr ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "hr" ? null : "hr")}>Set HR</button>
+                  </div>
+                  {activePad === "hr" && (
+                    <NumberPad value={form.hr} onChange={(val) => onChange("hr", val)} onClose={() => setActivePad(null)} />
+                  )}
+                </div>
+                <div className="text-sm">
+                  RR (br/min)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.rr ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "rr" ? null : "rr")}>Set RR</button>
+                  </div>
+                  {activePad === "rr" && (
+                    <NumberPad value={form.rr} onChange={(val) => onChange("rr", val)} onClose={() => setActivePad(null)} />
+                  )}
+                </div>
+                <div className="text-sm">
+                  Temp (°C)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.temp ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "temp" ? null : "temp")}>Set Temp</button>
+                  </div>
+                  {activePad === "temp" && (
+                    <NumberPad value={form.temp} onChange={(val) => onChange("temp", val)} onClose={() => setActivePad(null)} allowDecimal maxLen={5} />
+                  )}
+                </div>
+                <div className="text-sm">
+                  SpO₂ (%)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.spo2 ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "spo2" ? null : "spo2")}>Set SpO₂</button>
+                  </div>
+                  {activePad === "spo2" && (
+                    <NumberPad value={form.spo2} onChange={(val) => onChange("spo2", val)} onClose={() => setActivePad(null)} />
+                  )}
+                </div>
+                <div className="text-sm">
+                  BP Sys (mmHg)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.bpSys ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "bpSys" ? null : "bpSys")}>Set Sys</button>
+                  </div>
+                  {activePad === "bpSys" && (
+                    <NumberPad value={form.bpSys} onChange={(val) => onChange("bpSys", val)} onClose={() => setActivePad(null)} />
+                  )}
+                </div>
+                <div className="text-sm">
+                  BP Dia (mmHg)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.bpDia ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "bpDia" ? null : "bpDia")}>Set Dia</button>
+                  </div>
+                  {activePad === "bpDia" && (
+                    <NumberPad value={form.bpDia} onChange={(val) => onChange("bpDia", val)} onClose={() => setActivePad(null)} />
+                  )}
+                </div>
+                <div className="text-sm">
+                  Pain (0–10)
+                  <div className="flex gap-2 mt-1 items-center">
+                    <input className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]" value={form.pain ?? ""} readOnly />
+                    <button type="button" className="px-3 py-2 border rounded bg-gray-50 min-h-[44px]" onClick={() => setActivePad(activePad === "pain" ? null : "pain")}>Set Pain</button>
+                  </div>
+                  {activePad === "pain" && (
+                    <NumberPad value={form.pain} onChange={(val) => onChange("pain", val)} onClose={() => setActivePad(null)} maxLen={2} />
+                  )}
+                </div>
               </div>
             </section>
 
