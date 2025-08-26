@@ -130,8 +130,7 @@ export default function RegisterDrawer() {
             }
           }}
         >
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
+          <div className="space-y-6">
               {/* Identity */}
               <div>
                 <h4 className="font-semibold mb-2">Patient details</h4>
@@ -217,8 +216,7 @@ export default function RegisterDrawer() {
                   </label>
                 </div>
               </div>
-            </div>
-            <div className="space-y-6">
+
               {/* Presenting complaint */}
               <div>
                 <h4 className="font-semibold mb-2">Presenting complaint</h4>
@@ -316,7 +314,6 @@ export default function RegisterDrawer() {
                   </div>
                 </div>
               </div>
-            </div>
           </div>
         </form>
 
