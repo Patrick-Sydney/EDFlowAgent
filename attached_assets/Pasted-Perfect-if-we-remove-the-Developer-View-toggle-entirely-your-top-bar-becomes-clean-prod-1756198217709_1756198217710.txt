@@ -1,0 +1,72 @@
+Perfect ✅ — if we remove the **Developer View toggle** entirely, your top bar becomes **clean + production-leaning**, while still leaving the **Scenarios dropdown** for demos/testing.
+
+---
+
+# ✨ Final Top Bar Setup (Prototype → Production)
+
+### Left
+
+* **App title / logo**
+* (Optional) *small status badge like “Demo Mode”* if you want to signal you’re in demo/test mode.
+
+### Right
+
+* **Role dropdown** (Reception, RN, Charge, BedMgr if needed later)
+* **Register Patient** button (Reception only)
+* **Scenarios dropdown** (Surge, Stroke, Boarding, Reset)
+* *(No “Developer View” toggle — clutter gone.)*
+
+---
+
+# 🔧 Patch
+
+### 1. Remove Developer View toggle code
+
+Where you had:
+
+```diff
+- <button
+-   onClick={()=> setRoleView(roleView==="developer" ? "charge" : "developer")}
+-   className="px-3 py-2 rounded border text-xs"
+-   title="Toggle Developer View"
+- >
+-   {roleView==="developer" ? "Exit Developer View" : "Developer View"}
+- </button>
+```
+
+👉 **Delete this block** completely.
+
+---
+
+### 2. Keep ScenarioMenu (tidy dropdown)
+
+If you’ve added `ScenarioMenu` already, the top bar code looks like:
+
+```jsx
+<div className="flex items-center gap-2">
+  {/* Role selector here */}
+  {roleView === "reception" && (
+    <button onClick={openRegister} className="px-3 py-2 rounded bg-blue-600 text-white text-sm">
+      Register Patient
+    </button>
+  )}
+  <ScenarioMenu runScenario={(key)=>{
+    if (key==="reset") resetDemo();
+    else runScenario(key);
+  }} />
+</div>
+```
+
+That’s all you need on the right-hand side.
+
+---
+
+# 🚀 Benefits
+
+* **Decluttered header** — only role, Register, and Scenarios remain.
+* **No confusing dev toggle** for clinicians.
+* **Easy transition to production** — you can hide/remove Scenarios entirely with one flag, leaving only ops-critical controls.
+
+---
+
+👉 Do you want me to **sketch what the top bar should look like in production** (Charge view only, no Scenarios either), so you’ve got a clear vision to show Dr Dar / execs of how this scales from demo → live?

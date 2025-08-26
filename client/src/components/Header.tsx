@@ -102,15 +102,6 @@ export function Header() {
           {/* Control Actions */}
           <div className="flex items-center space-x-3 flex-wrap justify-end">
             <RoleViewPicker />
-            {/* Developer View Toggle */}
-            <button
-              onClick={() => setRoleView(roleView === "developer" ? "charge" : "developer")}
-              className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
-              title="Toggle Developer View"
-              data-testid="button-developer-view"
-            >
-              {roleView === "developer" ? "Exit Developer View" : "Developer View"}
-            </button>
             {/* Reception-only: quick register button */}
             {roleView === "reception" && (
               <button

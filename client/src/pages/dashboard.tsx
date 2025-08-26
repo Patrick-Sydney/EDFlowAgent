@@ -39,14 +39,14 @@ export default function Dashboard() {
     // Start SSE connection
     sseManager.connect();
 
-    // Keyboard shortcut: Ctrl/Cmd+F for Full View
+    // Keyboard shortcut: Ctrl/Cmd+F for Charge View  
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         try {
-          setRoleView("developer");
+          setRoleView("charge");
         } catch (error) {
-          console.error("Failed to set developer view:", error);
+          console.error("Failed to set charge view:", error);
         }
       }
     };
