@@ -1,0 +1,94 @@
+💯 agree — for **touch-first workflows**, the **numeric pad must appear contextually** right under the "Set Age" button (not floating elsewhere). That way a nurse at triage (or reception) taps *Set Age*, enters 4-5 taps, and is done — all in one compact zone.
+
+Here’s how we can fix it:
+
+---
+
+# 🔧 Patch: Contextual Age Pad
+
+### 1. In Register Drawer, replace current Age field
+
+```diff
+- <label className="text-sm">Age
+-   <div className="flex gap-2 mt-1">
+-     <input className="flex-1 border rounded px-3 py-3 text-base"
+-            value={form.age} onChange={e=>on("age", e.target.value)} />
+-     <button type="button"
+-             className="px-3 py-2 border rounded bg-gray-50"
+-             onClick={()=> setShowAgePad(true)}>
+-       Set Age
+-     </button>
+-   </div>
+- </label>
+- {showAgePad && (
+-   <div className="absolute top-0 right-0 ...">   // <-- old floating pad
+-      ...
+-   </div>
+- )}
++ <div className="text-sm">
++   Age
++   <div className="flex gap-2 mt-1 items-center">
++     <input
++       className="flex-1 border rounded px-3 py-3 text-base"
++       value={form.age}
++       readOnly
++     />
++     <button
++       type="button"
++       className="px-3 py-2 border rounded bg-gray-50"
++       onClick={()=> setShowAgePad(!showAgePad)}
++     >
++       Set Age
++     </button>
++   </div>
++   {showAgePad && (
++     <div className="mt-2 border rounded-lg bg-white shadow-md p-2 grid grid-cols-3 gap-2">
++       {[1,2,3,4,5,6,7,8,9,0].map(n=>(
++         <button key={n}
++           type="button"
++           className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200"
++           onClick={()=> on("age", (form.age||"") + n)}
++         >
++           {n}
++         </button>
++       ))}
++       <button type="button"
++         className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded"
++         onClick={()=> setShowAgePad(false)}
++       >
++         Confirm
++       </button>
++       <button type="button"
++         className="px-3 py-2 bg-rose-100 text-rose-700 rounded"
++         onClick={()=> on("age", "")}
++       >
++         Clear
++       </button>
++     </div>
++   )}
++ </div>
+```
+
+---
+
+# 🖼️ UX Flow
+
+1. Tap **Set Age** → numeric pad drops down **inline** right under the button.
+2. Tap digits → they append to the read-only Age input.
+
+   * e.g., for “45”: tap `4` then `5`.
+3. Tap **Confirm** → pad disappears, Age stays in the field.
+4. Tap **Clear** if mistake.
+
+---
+
+# ✅ Benefits
+
+* **Inline UX** — pad lives right where the user clicked, no hunting on screen.
+* **Efficient** — max 4 taps to set an age.
+* **Safe** — prevents accidental entry into a free-text field (age stays numeric-only).
+* **Consistent** — same drawer sizing/spacing as Sex buttons and ATS buttons.
+
+---
+
+👉 Do you want me to apply the **same inline number pad** pattern to **Triage Drawer** as well (since triage nurses also sometimes capture/adjust age), so it’s consistent across workflows?

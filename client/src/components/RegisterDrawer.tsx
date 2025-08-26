@@ -3,7 +3,6 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { useToast } from "@/hooks/use-toast";
 import TButton from "@/components/ui/TButton";
 import NumberField from "@/components/ui/NumberField";
-import BackspaceIcon from "@/components/ui/BackspaceIcon";
 
 export default function RegisterDrawer() {
   const { registerOpen, closeRegister, registerPatient } = useDashboardStore();
@@ -24,7 +23,6 @@ export default function RegisterDrawer() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agePadOpen, setAgePadOpen] = useState(false);
-  const [ageBuffer, setAgeBuffer] = useState("");
 
   const onChange = (key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -145,23 +143,73 @@ export default function RegisterDrawer() {
                       data-testid="input-patient-name"
                     />
                   </label>
-                  {/* Age — Set Age button opens quick digit pad */}
+                  {/* Age — Set Age button with inline numeric pad */}
                   <div className="text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Age</span>
-                      {form.age !== "" && <span className="text-xs text-gray-500">Current: {form.age}</span>}
+                    <span>Age</span>
+                    <div className="flex gap-2 mt-1 items-center">
+                      <input
+                        className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]"
+                        value={form.age}
+                        readOnly
+                        placeholder="Tap Set Age"
+                        data-testid="input-age-display"
+                      />
+                      <button
+                        type="button"
+                        className="px-3 py-3 border rounded bg-gray-50 text-base min-h-[44px]"
+                        onClick={() => setAgePadOpen(!agePadOpen)}
+                        data-testid="button-set-age"
+                      >
+                        Set Age
+                      </button>
                     </div>
-                    <button
-                  type="button"
-                  className="mt-1 w-full border rounded-xl px-3 py-3 text-base bg-gray-50 min-h-[44px]"
-                  onClick={() => { 
-                    setAgeBuffer(String(form.age || "")); 
-                    setAgePadOpen(true); 
-                  }}
-                      data-testid="button-set-age"
-                    >
-                      Set Age
-                    </button>
+                    {agePadOpen && (
+                      <div className="mt-2 border rounded-lg bg-white shadow-md p-3 grid grid-cols-3 gap-2">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                          <button
+                            key={n}
+                            type="button"
+                            className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200 min-h-[44px]"
+                            onClick={() => onChange("age", (form.age || "") + String(n))}
+                            data-testid={`digit-${n}`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200 min-h-[44px]"
+                          onClick={() => onChange("age", (form.age || "") + "0")}
+                          data-testid="digit-0"
+                        >
+                          0
+                        </button>
+                        <button
+                          type="button"
+                          className="px-3 py-2 bg-rose-100 text-rose-700 rounded min-h-[44px]"
+                          onClick={() => onChange("age", form.age.slice(0, -1))}
+                          data-testid="button-backspace-age"
+                        >
+                          ⌫
+                        </button>
+                        <button
+                          type="button"
+                          className="px-3 py-2 bg-red-100 text-red-700 rounded min-h-[44px]"
+                          onClick={() => onChange("age", "")}
+                          data-testid="button-clear-age"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded min-h-[44px]"
+                          onClick={() => setAgePadOpen(false)}
+                          data-testid="button-confirm-age"
+                        >
+                          Confirm
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {/* Sex — M / F toggle buttons */}
                   <div className="text-sm">
@@ -337,75 +385,6 @@ export default function RegisterDrawer() {
         </div>
       </div>
 
-      {/* AGE DIGIT PAD (bottom overlay inside drawer area) */}
-      {agePadOpen && (
-        <div className="absolute inset-x-0 bottom-0 z-50">
-          <div className="mx-auto max-w-full sm:max-w-[520px] bg-white border-t shadow-2xl">
-            <div className="px-4 py-2 border-b flex items-center justify-between">
-              <div className="text-sm font-medium">Set Age</div>
-              <div className="text-sm text-gray-500">Current: {ageBuffer || "—"}</div>
-            </div>
-            <div className="p-3 grid grid-cols-3 gap-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => (
-                <button
-                  key={d}
-                  className="px-4 py-4 text-lg rounded-xl border bg-white active:scale-[0.99] min-h-[44px]"
-                  onClick={() => setAgeBuffer(prev => (prev + String(d)).slice(0, 3))}
-                  data-testid={`digit-${d}`}
-                >
-                  {d}
-                </button>
-              ))}
-              <button
-                className="px-4 py-4 text-lg rounded-xl border bg-white active:scale-[0.99] min-h-[44px]"
-                onClick={() => setAgeBuffer(prev => (prev + "0").slice(0, 3))}
-                data-testid="digit-0"
-              >
-                0
-              </button>
-              <button
-                aria-label="Backspace"
-                className="px-4 py-4 text-lg rounded-xl border bg-white active:scale-[0.99] flex items-center justify-center min-h-[44px]"
-                onClick={() => setAgeBuffer(prev => prev.slice(0, -1))}
-                data-testid="button-backspace"
-              >
-                <BackspaceIcon />
-              </button>
-              <button
-                className="px-4 py-4 text-lg rounded-xl border bg-gray-50 active:scale-[0.99] min-h-[44px]"
-                onClick={() => { setAgeBuffer(""); }}
-                data-testid="button-clear-age"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="p-3 border-t flex gap-2">
-              <TButton
-                className="bg-blue-600 hover:bg-blue-700 text-white flex-1 min-h-[44px]"
-                onClick={() => {
-                  const n = Number(ageBuffer);
-                  if (Number.isFinite(n) && n >= 0 && n <= 120) {
-                    onChange("age", String(n));
-                    setAgePadOpen(false);
-                  } else {
-                    alert("Enter a valid age 0–120");
-                  }
-                }}
-                data-testid="button-confirm-age"
-              >
-                Set Age
-              </TButton>
-              <TButton 
-                className="border bg-white min-h-[44px]" 
-                onClick={() => setAgePadOpen(false)}
-                data-testid="button-cancel-age"
-              >
-                Cancel
-              </TButton>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
