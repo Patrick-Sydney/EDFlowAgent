@@ -153,22 +153,33 @@ export default function RegisterDrawer() {
                     max={120} 
                     maxLen={3}
                   />
-                  {/* Sex — Button style matching VitalButton */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextSex = form.sex === "" ? "M" : form.sex === "M" ? "F" : "";
-                      onChange("sex", nextSex);
-                    }}
-                    className={`px-4 py-3 rounded-xl border text-sm font-medium w-full min-h-[44px] ${
-                      form.sex 
-                        ? "bg-blue-50 border-blue-300 text-blue-700" 
-                        : "bg-gray-50 border-gray-200 text-gray-500"
-                    }`}
-                    data-testid="button-sex-toggle"
-                  >
-                    {form.sex ? `Sex: ${form.sex}` : "Sex M/F?"}
-                  </button>
+                  {/* Sex — MALE and FEMALE buttons with single select */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onChange("sex", "M")}
+                      className={`px-4 py-3 rounded-xl border text-sm font-medium min-h-[44px] ${
+                        form.sex === "M" 
+                          ? "bg-blue-50 border-blue-300 text-blue-700" 
+                          : "bg-gray-50 border-gray-200 text-gray-500"
+                      }`}
+                      data-testid="button-sex-male"
+                    >
+                      MALE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChange("sex", "F")}
+                      className={`px-4 py-3 rounded-xl border text-sm font-medium min-h-[44px] ${
+                        form.sex === "F" 
+                          ? "bg-blue-50 border-blue-300 text-blue-700" 
+                          : "bg-gray-50 border-gray-200 text-gray-500"
+                      }`}
+                      data-testid="button-sex-female"
+                    >
+                      FEMALE
+                    </button>
+                  </div>
                   <label className="text-sm col-span-2">
                     NHI (optional)
                     <input 
