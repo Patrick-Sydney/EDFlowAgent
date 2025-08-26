@@ -144,7 +144,7 @@ export default function RegisterDrawer() {
                   </label>
                   {/* Age — VitalButton style matching Triage */}
                   <VitalButton 
-                    label="Age" 
+                    label="Enter Age" 
                     unit=" years" 
                     value={form.age} 
                     onChange={(v) => onChange("age", v)} 
@@ -159,7 +159,7 @@ export default function RegisterDrawer() {
                     className="px-4 py-3 rounded-xl border text-sm font-medium w-full min-h-[44px] bg-blue-50 border-blue-300 text-blue-700"
                     data-testid="button-sex-toggle"
                   >
-                    Sex: {form.sex}
+                    Sex M/F
                   </button>
                   <label className="text-sm col-span-2">
                     NHI (optional)
