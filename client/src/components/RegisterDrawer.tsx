@@ -11,7 +11,7 @@ export default function RegisterDrawer() {
   const [form, setForm] = useState({
     name: "", 
     age: "", 
-    sex: "F",
+    sex: "",
     complaint: "",
     nhi: "",
     isolationRequired: false,
@@ -44,10 +44,10 @@ export default function RegisterDrawer() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!form.name || !form.age || !form.complaint) {
+    if (!form.name || !form.age || !form.sex || !form.complaint) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all required fields (name, age, complaint)",
+        description: "Please fill in all required fields (name, age, sex, complaint)",
         variant: "destructive",
       });
       return;
@@ -80,6 +80,7 @@ export default function RegisterDrawer() {
         ...prev, 
         name: "", 
         age: "", 
+        sex: "",
         complaint: "", 
         nhi: "", 
         ats: "",
@@ -155,11 +156,18 @@ export default function RegisterDrawer() {
                   {/* Sex — Button style matching VitalButton */}
                   <button
                     type="button"
-                    onClick={() => onChange("sex", form.sex === "F" ? "M" : "F")}
-                    className="px-4 py-3 rounded-xl border text-sm font-medium w-full min-h-[44px] bg-blue-50 border-blue-300 text-blue-700"
+                    onClick={() => {
+                      const nextSex = form.sex === "" ? "M" : form.sex === "M" ? "F" : "";
+                      onChange("sex", nextSex);
+                    }}
+                    className={`px-4 py-3 rounded-xl border text-sm font-medium w-full min-h-[44px] ${
+                      form.sex 
+                        ? "bg-blue-50 border-blue-300 text-blue-700" 
+                        : "bg-gray-50 border-gray-200 text-gray-500"
+                    }`}
                     data-testid="button-sex-toggle"
                   >
-                    Sex M/F
+                    {form.sex ? `Sex: ${form.sex}` : "Sex M/F?"}
                   </button>
                   <label className="text-sm col-span-2">
                     NHI (optional)
