@@ -44,9 +44,9 @@ export default function Dashboard() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
         try {
-          setRoleView("full");
+          setRoleView("developer");
         } catch (error) {
-          console.error("Failed to set full view:", error);
+          console.error("Failed to set developer view:", error);
         }
       }
     };
@@ -64,16 +64,16 @@ export default function Dashboard() {
 
   // Role-based lane filtering with safe fallback
   const roleToLanes: Record<string, string[]> = {
-    full: [...LANES],
+    developer: [...LANES], // Developer sees everything
+    charge: ["waiting", "triage", "roomed", "diagnostics", "review", "ready", "discharged"],
     rn: ["waiting", "triage", "roomed"],
     md: ["roomed", "diagnostics", "review"],
-    charge: ["waiting", "triage", "roomed", "diagnostics", "review", "ready", "discharged"],
     bedmgr: ["ready", "discharged"],
     reception: ["waiting", "triage"]
   };
 
   const allLaneKeys = [...LANES];
-  const visibleLanes = roleToLanes[roleView || "full"] || allLaneKeys;
+  const visibleLanes = roleToLanes[roleView || "charge"] || allLaneKeys;
   const filteredLanes = LANES.filter(lane => visibleLanes.includes(lane));
 
   if (isLoading) {
@@ -105,8 +105,8 @@ export default function Dashboard() {
       <main className="p-6">
         <StatsBar />
         
-        {/* Treatment Spaces Summary - only for Charge Nurse view */}
-        {roleView === "charge" && <SpaceSummaryBar />}
+        {/* Treatment Spaces Summary - for Charge Nurse and Developer views */}
+        {(roleView === "charge" || roleView === "developer") && <SpaceSummaryBar />}
         
         {/* Left-side Register drawer (Reception) */}
         <RegisterDrawer />

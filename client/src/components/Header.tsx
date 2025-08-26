@@ -1,26 +1,27 @@
 import { Button } from "@/components/ui/button";
-import { Hospital, Brain, AlertTriangle, Bed, RotateCcw, UserPlus } from "lucide-react";
+import { Hospital, UserPlus } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import ScenarioMenu from "./ScenarioMenu";
 
 function RoleViewPicker() {
   const { roleView, setRoleView } = useDashboardStore();
 
   const roleViewOptions = [
-    { value: "full", label: "Full dashboard" },
+    { value: "charge", label: "Charge view" },
     { value: "rn", label: "RN view" },
     { value: "md", label: "MD view" },
-    { value: "charge", label: "Charge view" },
     { value: "bedmgr", label: "BedMgr view" },
-    { value: "reception", label: "Reception view" }
+    { value: "reception", label: "Reception view" },
+    { value: "developer", label: "Developer view" }
   ];
 
   return (
     <select
       className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
-      value={roleView || "full"}
+      value={roleView || "charge"}
       onChange={(e) => setRoleView(e.target.value)}
       title="Role view (UI filter)"
     >
@@ -101,16 +102,15 @@ export function Header() {
           {/* Control Actions */}
           <div className="flex items-center space-x-3 flex-wrap justify-end">
             <RoleViewPicker />
-            {roleView !== "full" && (
-              <button
-                onClick={() => setRoleView("full")}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
-                title="Show all lanes"
-                data-testid="button-return-full-view"
-              >
-                Return to Full View
-              </button>
-            )}
+            {/* Developer View Toggle */}
+            <button
+              onClick={() => setRoleView(roleView === "developer" ? "charge" : "developer")}
+              className="px-3 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+              title="Toggle Developer View"
+              data-testid="button-developer-view"
+            >
+              {roleView === "developer" ? "Exit Developer View" : "Developer View"}
+            </button>
             {/* Reception-only: quick register button */}
             {roleView === "reception" && (
               <button
@@ -141,52 +141,15 @@ export function Header() {
             </div>
           </div>
 
-          {/* Scenario Controls */}
-          <div className="flex items-center space-x-3">
-            {demoMode && (
-              <>
-                <Button 
-                  onClick={handleResetDemo}
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-300 hover:bg-gray-50"
-                  data-testid="button-reset-demo"
-                >
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Reset Demo
-                </Button>
-                <div className="h-6 border-l border-gray-300 mx-2" />
-              </>
-            )}
-            <span className="text-sm font-medium text-gray-700">Demo Scenarios:</span>
-            <Button 
-              onClick={() => handleScenario('surge')}
-              className="bg-medical-red hover:bg-red-700 text-white"
-              size="sm"
-              data-testid="button-surge-scenario"
-            >
-              <AlertTriangle className="w-4 h-4 mr-2" />
-              Surge
-            </Button>
-            <Button 
-              onClick={() => handleScenario('stroke')}
-              className="bg-medical-amber hover:bg-yellow-600 text-white"
-              size="sm"
-              data-testid="button-stroke-scenario"
-            >
-              <Brain className="w-4 h-4 mr-2" />
-              Stroke
-            </Button>
-            <Button 
-              onClick={() => handleScenario('boarding')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
-              size="sm"
-              data-testid="button-boarding-scenario"
-            >
-              <Bed className="w-4 h-4 mr-2" />
-              Boarding
-            </Button>
-          </div>
+          {/* Demo/Testing Controls */}
+          {demoMode && (
+            <ScenarioMenu 
+              runScenario={(key) => {
+                if (key === "reset") handleResetDemo();
+                else handleScenario(key);
+              }}
+            />
+          )}
         </div>
       </div>
     </header>

@@ -1,0 +1,137 @@
+Got it 👍 — let’s evolve the **top bar** as follows:
+
+* 🔄 **Rename “Full Dashboard / Return to Full View” → “Developer View”** (toggle on/off).
+
+  * In **production**, this won’t exist — but for prototyping, it’s useful for you/Dr Dar to peek behind the curtain.
+  * So it’s now clearly a **dev tool**, not something a Charge Nurse or RN would click.
+
+* 🧪 **Collapse all Demo Scenarios into a single dropdown button**:
+
+  * Button label: **Scenarios** (with flask ⚗️ icon or bolt ⚡).
+  * Dropdown items: Surge, Stroke, Boarding, Reset.
+  * Each item keeps its color + icon (so Surge = red pulse, Stroke = brain, Boarding = bed icon, Reset = refresh arrow).
+  * Cleaner, but you don’t lose the flavor.
+
+---
+
+# ✨ What this achieves
+
+* **Decluttered top bar** — roles, Register, Developer View, and one Scenarios dropdown are all that remain.
+* **Clear separation of concerns** — clinicians see operational tools; developers/testers see dev/demo functions.
+* **Production readiness** — easy to hide Dev/Demo buttons behind a feature flag later.
+
+---
+
+# 🔧 Patch (React/Tailwind)
+
+### 1. Replace “Full View” toggle with “Developer View”
+
+In your top bar component (where `roleView` and toggles live):
+
+```diff
+- <button
+-   onClick={()=> setRoleView("full")}
+-   className="px-3 py-2 rounded border text-xs"
+- >
+-   Full Dashboard
+- </button>
+-
+- {roleView !== "full" && (
+-   <button
+-     onClick={()=> setRoleView("full")}
+-     className="px-3 py-2 rounded border text-xs"
+-   >
+-     Return to Full View
+-   </button>
+- )}
++ <button
++   onClick={()=> setRoleView(roleView==="developer" ? "charge" : "developer")}
++   className="px-3 py-2 rounded border text-xs"
++   title="Toggle Developer View"
++ >
++   {roleView==="developer" ? "Exit Developer View" : "Developer View"}
++ </button>
+```
+
+So now you can flip between **Charge (full clinical view)** and **Developer View**.
+
+---
+
+### 2. Collapse Demo buttons into one dropdown
+
+Create a small `ScenarioMenu` component (e.g., `client/src/components/ScenarioMenu.jsx`):
+
+```jsx
+import { useState } from "react";
+
+export default function ScenarioMenu({ runScenario }) {
+  const [open, setOpen] = useState(false);
+
+  const items = [
+    { key:"surge",    label:"Surge",    icon:"⚡",  cls:"text-red-600" },
+    { key:"stroke",   label:"Stroke",   icon:"🧠", cls:"text-purple-600" },
+    { key:"boarding", label:"Boarding", icon:"🛏️", cls:"text-amber-600" },
+    { key:"reset",    label:"Reset Demo", icon:"🔄", cls:"text-gray-600" },
+  ];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={()=> setOpen(!open)}
+        className="px-3 py-2 rounded border text-xs bg-white"
+      >
+        🧪 Scenarios
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 bg-white border rounded shadow-lg z-50 w-40">
+          {items.map(i=>(
+            <button
+              key={i.key}
+              onClick={()=>{ setOpen(false); runScenario(i.key); }}
+              className={`flex items-center gap-2 w-full text-left px-3 py-2 text-sm hover:bg-gray-100 ${i.cls}`}
+            >
+              <span>{i.icon}</span>
+              {i.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+Then in your **TopBar** component:
+
+```diff
++import ScenarioMenu from "./components/ScenarioMenu";
+
+...
+
+- {/* old demo buttons here */}
+- <button onClick={()=> runScenario("surge")} className="...">Surge</button>
+- <button onClick={()=> runScenario("stroke")} className="...">Stroke</button>
+- <button onClick={()=> runScenario("boarding")} className="...">Boarding</button>
+- <button onClick={()=> resetDemo()} className="...">Reset Demo</button>
++ <ScenarioMenu runScenario={(key)=>{
++     if (key==="reset") resetDemo();
++     else runScenario(key);
++ }} />
+```
+
+---
+
+# ✅ Result
+
+* Top bar has:
+
+  * **Role dropdown**
+  * **Register patient** (Reception only)
+  * **Developer View toggle**
+  * **Scenarios dropdown** (with colors/icons intact)
+* Decluttered, still demo-friendly.
+* Easy to hide Dev/Demo in prod behind a feature flag.
+
+---
+
+👉 Do you want me to also **sketch how this top bar could look in production** (Charge view only, no dev/demo) with **metrics + alerts** so you can show clinicians both “prototype” and “future production” visions side by side?

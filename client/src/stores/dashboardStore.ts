@@ -90,7 +90,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   demoMode: false,
   // Actor used for audit trails. No UI picker now.
   user: { name: "Demo User", role: "demo" },
-  roleView: "full",
+  roleView: "charge",
   
   // Triage widget UI state
   triageOpen: false,
