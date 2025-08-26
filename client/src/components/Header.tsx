@@ -99,7 +99,7 @@ export function Header() {
           </div>
 
           {/* Control Actions */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-wrap justify-end">
             <RoleViewPicker />
             {roleView !== "full" && (
               <button

@@ -1,0 +1,107 @@
+Gotcha — let’s move the **Register Patient** drawer to the **right-hand side** (to match your Triage drawer) and make sure it’s responsive on desktop/tablet/mobile.
+
+Here’s a clean, copy-pasteable **Replit patch prompt**.
+
+---
+
+# Patch: Register Drawer on the **right**, fully responsive
+
+## 1) Update the Register drawer positioning & sizing
+
+**File:** `client/src/components/RegisterDrawer.jsx`
+
+Change the sheet container from left to right and tweak widths for responsiveness.
+
+```diff
+-  if (!registerOpen) return null;
++  if (!registerOpen) return null;
+@@
+-    <div className="fixed inset-0 z-40">
+-      <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
+-      {/* LEFT sheet */}
+-      <div className="absolute top-0 left-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
++    <div className="fixed inset-0 z-40">
++      <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
++      {/* RIGHT sheet (mobile: full width, tablet: ~2/3, desktop: fixed) */}
++      <div
++        className="absolute top-0 right-0 h-full w-full sm:w-[80%] md:w-[70%] lg:w-[520px]
++                   bg-white shadow-xl flex flex-col"
++      >
+```
+
+* **Mobile (<640px)**: full width
+* **Small tablets (≥640px)**: 80% width
+* **Medium tablets (≥768px)**: 70% width
+* **Desktop (≥1024px)**: fixed 520px
+
+You already have sticky header/footer and touch-friendly inputs in this drawer; they’ll adapt automatically.
+
+---
+
+## 2) Match header/footer spacing to Triage drawer (minor)
+
+*(Optional, but keeps both drawers visually aligned)*
+
+```diff
+-        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
++        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+           <div className="flex items-center justify-between">
+             <h3 className="font-semibold text-base sm:text-lg">Register patient</h3>
+-            <TButton className="border bg-white" onClick={closeRegister}>Close</TButton>
++            <TButton className="border bg-white" onClick={closeRegister}>Close</TButton>
+           </div>
+           <div className="mt-1 text-xs text-gray-600">Reception • New arrival</div>
+         </div>
+@@
+-        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
++        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+           <TButton className="bg-blue-600 text-white flex-1" onClick={submit}>Register</TButton>
+           <TButton className="border bg-white" onClick={closeRegister}>Cancel</TButton>
+         </div>
+```
+
+(No visual change here; just ensuring consistency.)
+
+---
+
+## 3) Ensure the Reception button is visible on all form factors
+
+You already added the **Register Patient** button in the header when `roleView === "reception"`. It’s good for desktop/tablet. For small screens, it’s fine as-is, but if you want it to wrap nicely:
+
+**File:** `client/src/App.jsx` (header right controls)
+
+```diff
+-        <div className="flex items-center gap-2">
++        <div className="flex items-center gap-2 flex-wrap justify-end">
+```
+
+That lets the Role View selector and Register button wrap on very narrow tablets/phones.
+
+---
+
+## 4) (Optional) Unify drawer behavior with Triage drawer
+
+If your **Triage drawer** already uses a right-side sheet (`right-0`), nothing to change. If not, mirror the same responsive widths there too for a consistent feel:
+
+**File:** `client/src/components/TriageDrawer.jsx` (container div)
+
+```diff
+-      <div className="absolute top-0 right-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
++      <div className="absolute top-0 right-0 h-full w-full sm:w-[80%] md:w:[70%] lg:w-[520px] bg-white shadow-xl flex flex-col">
+```
+
+*(Note: if you copy that line, ensure `md:w:[70%]` is typed correctly as `md:w-[70%]`.)*
+
+---
+
+## ✅ Acceptance (what to check)
+
+* Switch **Role View → Reception**.
+* Click **Register Patient** → drawer slides in from the **right**.
+* **Mobile**: drawer covers the full screen; easy to use with thumbs.
+* **Tablet**: drawer occupies \~70–80% of width, leaving a sliver of board visible for context.
+* **Desktop**: drawer is a fixed \~520px panel on the right.
+* Registering a patient still creates a **Waiting** card instantly via SSE.
+* **Triage drawer** remains on the right; both drawers feel consistent.
+
+Want me to add a **“Register & Start Triage”** button (that registers, then immediately opens the Triage drawer for that new patient)? That’s handy for on-the-spot nurse handoff on tablets.

@@ -92,8 +92,8 @@ export default function RegisterDrawer() {
   return (
     <div className="fixed inset-0 z-40">
       <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
-      {/* LEFT sheet */}
-      <div className="absolute top-0 left-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
+      {/* RIGHT sheet (mobile: full width, tablet: ~2/3, desktop: fixed) */}
+      <div className="absolute top-0 right-0 h-full w-full sm:w-[80%] md:w-[70%] lg:w-[520px] bg-white shadow-xl flex flex-col">
         {/* Header */}
         <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
           <div className="flex items-center justify-between">
