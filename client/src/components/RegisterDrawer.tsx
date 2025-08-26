@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { useToast } from "@/hooks/use-toast";
 import TButton from "@/components/ui/TButton";
-import NumberField from "@/components/ui/NumberField";
+import VitalButton from "@/components/VitalButton";
 
 export default function RegisterDrawer() {
   const { registerOpen, closeRegister, registerPatient } = useDashboardStore();
@@ -22,7 +22,6 @@ export default function RegisterDrawer() {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [agePadOpen, setAgePadOpen] = useState(false);
 
   const onChange = (key: string, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -143,73 +142,18 @@ export default function RegisterDrawer() {
                       data-testid="input-patient-name"
                     />
                   </label>
-                  {/* Age — Set Age button with inline numeric pad */}
+                  {/* Age — VitalButton style matching Triage */}
                   <div className="text-sm">
-                    <span>Age</span>
-                    <div className="flex gap-2 mt-1 items-center">
-                      <input
-                        className="flex-1 border rounded px-3 py-3 text-base min-h-[44px]"
-                        value={form.age}
-                        readOnly
-                        placeholder="Tap Set Age"
-                        data-testid="input-age-display"
-                      />
-                      <button
-                        type="button"
-                        className="px-3 py-3 border rounded bg-gray-50 text-base min-h-[44px]"
-                        onClick={() => setAgePadOpen(!agePadOpen)}
-                        data-testid="button-set-age"
-                      >
-                        Set Age
-                      </button>
-                    </div>
-                    {agePadOpen && (
-                      <div className="mt-2 border rounded-lg bg-white shadow-md p-3 grid grid-cols-3 gap-2">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-                          <button
-                            key={n}
-                            type="button"
-                            className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200 min-h-[44px]"
-                            onClick={() => onChange("age", (form.age || "") + String(n))}
-                            data-testid={`digit-${n}`}
-                          >
-                            {n}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          className="px-4 py-3 rounded bg-gray-100 text-lg active:bg-gray-200 min-h-[44px]"
-                          onClick={() => onChange("age", (form.age || "") + "0")}
-                          data-testid="digit-0"
-                        >
-                          0
-                        </button>
-                        <button
-                          type="button"
-                          className="px-3 py-2 bg-rose-100 text-rose-700 rounded min-h-[44px]"
-                          onClick={() => onChange("age", form.age.slice(0, -1))}
-                          data-testid="button-backspace-age"
-                        >
-                          ⌫
-                        </button>
-                        <button
-                          type="button"
-                          className="px-3 py-2 bg-red-100 text-red-700 rounded min-h-[44px]"
-                          onClick={() => onChange("age", "")}
-                          data-testid="button-clear-age"
-                        >
-                          Clear
-                        </button>
-                        <button
-                          type="button"
-                          className="col-span-2 px-3 py-2 bg-blue-600 text-white rounded min-h-[44px]"
-                          onClick={() => setAgePadOpen(false)}
-                          data-testid="button-confirm-age"
-                        >
-                          Confirm
-                        </button>
-                      </div>
-                    )}
+                    <span className="block mb-1">Age</span>
+                    <VitalButton 
+                      label="Age" 
+                      unit=" years" 
+                      value={form.age} 
+                      onChange={(v) => onChange("age", v)} 
+                      min={0} 
+                      max={120} 
+                      maxLen={3}
+                    />
                   </div>
                   {/* Sex — M / F toggle buttons */}
                   <div className="text-sm">
