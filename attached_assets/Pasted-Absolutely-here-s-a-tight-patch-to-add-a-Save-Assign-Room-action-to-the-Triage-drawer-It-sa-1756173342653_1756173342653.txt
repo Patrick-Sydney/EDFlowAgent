@@ -1,0 +1,171 @@
+Absolutely — here’s a tight patch to add a **Save & Assign Room** action to the Triage drawer. It saves the triage form first, then assigns a room in one tap (with loading/disable states and sensible fallbacks).
+
+---
+
+# Patch: Add **Save & Assign Room** to Triage drawer
+
+## 1) `client/src/components/TriageDrawer.jsx`
+
+Add a pending flag, a helper that calls assign-room after save, and the new button in the sticky footer.
+
+```diff
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { useED } from "../store";
+ import TButton from "./ui/TButton";
+ import NumberField from "./ui/NumberField";
+ import { Segmented, Chips } from "./ui/Segmented";
+@@
+-  const { triageOpen, triageEncounter, closeTriage, saveTriage } = useED();
++  const { triageOpen, triageEncounter, closeTriage, saveTriage } = useED();
+   const enc = triageEncounter;
++  const [submitting, setSubmitting] = useState(false);
+
+@@
+   const save = async (e) => {
+-    e.preventDefault();
+-    const payload = {
++    if (e?.preventDefault) e.preventDefault();
++    const payload = {
+       id: enc.id,
+       vitals: {
+         hr: numOrNull(form.hr), rr: numOrNull(form.rr),
+         bpSys: numOrNull(form.bpSys), bpDia: numOrNull(form.bpDia),
+         spo2: numOrNull(form.spo2), temp: numOrNull(form.temp)
+       },
+       pain: numOrNull(form.pain),
+       notes: form.notes,
+       ats: form.ats ? Number(form.ats) : undefined,
+-    };
+-    const res = await saveTriage(payload);
+-    if (!res?.ok) alert(res?.error || "Failed to save triage");
+-    closeTriage();
++      // include the v2 extras if present in your component state
++      modeOfArrival: form.modeOfArrival,
++      complaintText: form.complaintText,
++      complaintCode: form.complaintCode || null,
++      allergy: form.allergy,
++      pregnancy: form.pregnancy,
++      infection: form.infection,
++      mobility: form.mobility,
++      risk: form.risk,
++      provisionalDispo: form.provisionalDispo,
++      expectedResources: form.expectedResources,
++      care: form.care
++    };
++    setSubmitting(true);
++    try {
++      const res = await saveTriage(payload);
++      if (!res?.ok) {
++        alert(res?.error || "Failed to save triage");
++        return { ok:false };
++      }
++      return { ok:true };
++    } finally {
++      setSubmitting(false);
++    }
+   };
++
++  // Save, then assign a room (if available / permitted)
++  const saveAndAssign = async () => {
++    if (!enc) return;
++    const s = await save();                // uses submitting flag internally
++    if (!s?.ok) return;
++    try {
++      // Prefer a store action if you have one; otherwise fall back to window helper
++      const store = useED.getState?.();
++      if (store?.assignRoom) {
++        await store.assignRoom(enc.id);
++      } else if (window.assign) {
++        await window.assign(enc.id);
++      } else {
++        console.warn("No assignRoom action found.");
++        alert("Assign Room action not wired yet.");
++        return;
++      }
++      // Close only after assignment call resolves
++      closeTriage();
++    } catch (err) {
++      console.error(err);
++      alert("Could not assign a room. Please try again or assign from the card.");
++    }
++  };
+```
+
+Add the second button to the sticky footer (and disable both while submitting):
+
+```diff
+-        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
+-          <TButton className="bg-emerald-600 text-white flex-1" onClick={save}>Save triage</TButton>
+-          <TButton className="border bg-white" onClick={closeTriage}>Cancel</TButton>
+-        </div>
++        <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
++          <TButton
++            className="bg-emerald-600 text-white flex-1"
++            onClick={save}
++            disabled={submitting}
++          >
++            {submitting ? "Saving…" : "Save triage"}
++          </TButton>
++          <TButton
++            className="bg-blue-600 text-white flex-1"
++            onClick={saveAndAssign}
++            disabled={submitting || enc?.room}  // disable if already in a room
++            title={enc?.room ? "Already assigned to a room" : "Save & Assign Room"}
++          >
++            {submitting ? "Working…" : "Save & Assign Room"}
++          </TButton>
++          <TButton className="border bg-white" onClick={closeTriage} disabled={submitting}>Cancel</TButton>
++        </div>
+```
+
+*(If you prefer to allow Save\&Assign from **Waiting** too: your current save moves Waiting → Triage; the subsequent assign call will then room the patient. No extra changes needed.)*
+
+---
+
+## 2) (Optional) Store action for assignRoom (if you don’t have one yet)
+
+If your app only had a `window.assign(id)` helper, add a real store action so components can call it.
+
+**`client/src/store.js`**
+
+```diff
+ const api = {
+   // …existing
++  assignRoom: async (id) =>
++    (await fetch("/api/actions/assign-room", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ id })
++    })).json(),
+ };
+ 
+ export const useED = create((set, get) => ({
+   // …existing
++  async assignRoom(id) {
++    const res = await api.assignRoom(id);
++    if (!res?.ok) throw new Error(res?.error || "assign-room failed");
++    return res;
++  },
+ }));
+```
+
+(If your server uses a different path or name for room assignment, match it here—or keep the `window.assign` fallback in the drawer as provided.)
+
+---
+
+## ✅ Acceptance
+
+* **Triage drawer** footer shows: **Save triage**, **Save & Assign Room**, **Cancel**.
+* Tapping **Save & Assign Room**:
+
+  1. saves the triage data (and moves Waiting → Triage if necessary),
+  2. immediately requests a room assignment,
+  3. closes the drawer on success.
+* Buttons show simple loading states and disable while working.
+* If the patient already has a room, **Save & Assign Room** is disabled.
+* Error handling alerts you if either step fails.
+
+---
+
+When you’re ready, we can design the **Room Management widget** (bed availability, isolation suitability, cleaning status, porter dispatch, outlier rules) and wire it to the **Charge Nurse** and **BedMgr** views.

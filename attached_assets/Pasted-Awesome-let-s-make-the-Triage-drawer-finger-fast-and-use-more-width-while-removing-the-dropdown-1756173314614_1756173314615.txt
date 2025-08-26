@@ -1,0 +1,365 @@
+Awesome—let’s make the **Triage drawer** finger-fast and use more width, while removing the dropdowns that are throwing runtime errors. Below is a **copy-pasteable Replit patch prompt** that:
+
+* replaces every dropdown with **segmented buttons / chips**
+* widens the drawer and uses a **two-column layout** on larger screens
+* adds **ATS 1–5 buttons**
+* keeps everything touch-friendly (≥44px targets)
+
+---
+
+# Patch: Triage drawer = wide, touch-first, no dropdowns
+
+## 1) Add two small reusable UI helpers
+
+**`client/src/components/ui/Segmented.jsx`**
+
+```jsx
+export function Segmented({ value, onChange, options, className = "" }) {
+  return (
+    <div className={`flex flex-wrap gap-2 ${className}`}>
+      {options.map(opt => {
+        const val = typeof opt === "string" ? opt : opt.value;
+        const label = typeof opt === "string" ? opt : opt.label;
+        const selected = value === val;
+        return (
+          <button
+            key={val}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(val)}
+            className={`px-3 py-3 rounded-xl border text-base min-w-[48px]
+              ${selected ? "bg-blue-600 text-white border-blue-600" : "bg-white hover:bg-gray-50"}`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Chips({ values = [], onToggle, options, className = "" }) {
+  const set = new Set(values);
+  return (
+    <div className={`flex flex-wrap gap-2 ${className}`}>
+      {options.map(opt => {
+        const val = typeof opt === "string" ? opt : opt.value;
+        const label = typeof opt === "string" ? opt : opt.label;
+        const selected = set.has(val);
+        return (
+          <button
+            key={val}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onToggle(val, !selected)}
+            className={`px-3 py-2 rounded-full border text-sm
+              ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-white hover:bg-gray-50"}`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+```
+
+---
+
+## 2) Widen the Triage drawer and replace selects
+
+**Edit:** `client/src/components/TriageDrawer.jsx`
+
+```diff
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ import { useED } from "../store";
+ import TButton from "./ui/TButton";
+ import NumberField from "./ui/NumberField";
++import { Segmented, Chips } from "./ui/Segmented";
+@@
+-      <div className="absolute top-0 right-0 h-full w-full sm:max-w-md bg-white shadow-xl flex flex-col">
++      {/* Wider, responsive drawer */}
++      <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
+@@
+-        <form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
++        <form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3 space-y-6">
+```
+
+### A) Arrival & Complaint — **Segmented** (no select)
+
+```diff
+-  <div>
+-    <h4 className="font-semibold mb-2">Arrival & Complaint</h4>
+-    <div className="grid grid-cols-2 gap-3">
+-      <label className="text-sm">Mode of arrival
+-        <select className="mt-1 w-full border rounded px-2 py-1" value={form.modeOfArrival}
+-          onChange={e=>on("modeOfArrival", e.target.value)}>
+-          <option value="walk-in">Walk-in</option>
+-          <option value="ambulance">Ambulance</option>
+-          <option value="transfer">Transfer</option>
+-        </select>
+-      </label>
+-      <label className="text-sm col-span-2">Presenting complaint
+-        <input className="mt-1 w-full border rounded px-2 py-1" value={form.complaintText}
+-          onChange={e=>on("complaintText", e.target.value)} />
+-      </label>
+-    </div>
+-  </div>
++  <section>
++    <h4 className="font-semibold mb-2">Arrival & Complaint</h4>
++    <div className="grid lg:grid-cols-2 gap-3">
++      <div className="text-sm">
++        <div className="mb-1">Mode of arrival</div>
++        <Segmented
++          value={form.modeOfArrival}
++          onChange={(v)=>on("modeOfArrival", v)}
++          options={[
++            { value:"walk-in", label:"Walk-in" },
++            { value:"ambulance", label:"Ambulance" },
++            { value:"transfer", label:"Transfer" }
++          ]}
++        />
++      </div>
++      <label className="text-sm lg:col-span-2">Presenting complaint
++        <input className="mt-1 w-full border rounded px-3 py-3 text-base"
++               value={form.complaintText}
++               onChange={e=>on("complaintText", e.target.value)} />
++      </label>
++    </div>
++  </section>
+```
+
+### B) Safety flags — **Segmented** instead of selects
+
+```diff
+-  <div>
++  <section>
+     <h4 className="font-semibold mb-2">Safety</h4>
+-    <div className="grid grid-cols-2 gap-3">
+-      <label className="text-sm">Allergies
+-        <select value={form.allergy} onChange={e=>on("allergy", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+-          <option value="none">None</option>
+-          <option value="known">Known</option>
+-          <option value="unknown">Unknown</option>
+-        </select>
+-      </label>
+-      <label className="text-sm">Pregnancy (if applicable)
+-        <select value={form.pregnancy} onChange={e=>on("pregnancy", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+-          <option value="unknown">Unknown</option>
+-          <option value="yes">Yes</option>
+-          <option value="no">No</option>
+-        </select>
+-      </label>
+-      <label className="text-sm">Infection risk
+-        <select value={form.infection} onChange={e=>on("infection", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+-          <option value="none">None</option>
+-          <option value="suspected">Suspected</option>
+-          <option value="confirmed">Confirmed</option>
+-        </select>
+-      </label>
+-      <label className="text-sm">Mobility
+-        <select value={form.mobility} onChange={e=>on("mobility", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+-          <option value="independent">Independent</option>
+-          <option value="assist">Requires assist</option>
+-          <option value="bed">Bed-bound</option>
+-        </select>
+-      </label>
+-    </div>
+-  </div>
++    <div className="grid lg:grid-cols-2 gap-3">
++      <div className="text-sm">
++        <div className="mb-1">Allergies</div>
++        <Segmented value={form.allergy} onChange={(v)=>on("allergy", v)}
++          options={[{value:"none",label:"None"},{value:"known",label:"Known"},{value:"unknown",label:"Unknown"}]} />
++      </div>
++      <div className="text-sm">
++        <div className="mb-1">Pregnancy (if applicable)</div>
++        <Segmented value={form.pregnancy} onChange={(v)=>on("pregnancy", v)}
++          options={[{value:"unknown",label:"Unknown"},{value:"yes",label:"Yes"},{value:"no",label:"No"}]} />
++      </div>
++      <div className="text-sm">
++        <div className="mb-1">Infection risk</div>
++        <Segmented value={form.infection} onChange={(v)=>on("infection", v)}
++          options={[{value:"none",label:"None"},{value:"suspected",label:"Suspected"},{value:"confirmed",label:"Confirmed"}]} />
++      </div>
++      <div className="text-sm">
++        <div className="mb-1">Mobility</div>
++        <Segmented value={form.mobility} onChange={(v)=>on("mobility", v)}
++          options={[{value:"independent",label:"Independent"},{value:"assist",label:"Assist"},{value:"bed",label:"Bed-bound"}]} />
++      </div>
++    </div>
++  </section>
+```
+
+### C) Vitals + Pain stay as number fields (already touch-friendly)
+
+(Keep your existing `NumberField` blocks; you already have them.)
+
+### D) Risk screens — **Chips** toggles
+
+```diff
+-  <div>
+-    <h4 className="font-semibold mb-2">Risk screens</h4>
+-    <label><input type="checkbox" checked={form.risk.sepsis} onChange={e=>on("risk",{...form.risk,sepsis:e.target.checked})}/> Sepsis risk</label>
+-    <label><input type="checkbox" checked={form.risk.stroke} onChange={e=>on("risk",{...form.risk,stroke:e.target.checked})}/> Stroke FAST</label>
+-    <label><input type="checkbox" checked={form.risk.suicide} onChange={e=>on("risk",{...form.risk,suicide:e.target.checked})}/> Suicide/self-harm</label>
+-  </div>
++  <section>
++    <h4 className="font-semibold mb-2">Risk screens</h4>
++    <Chips
++      values={Object.entries(form.risk).filter(([,v])=>v).map(([k])=>k)}
++      onToggle={(key, on)=>{
++        const next = { ...form.risk, [key]: on };
++        onChange("risk", next);
++      }}
++      options={[
++        { value:"sepsis", label:"Sepsis risk" },
++        { value:"stroke", label:"Stroke / FAST" },
++        { value:"suicide", label:"Suicide/self-harm" }
++      ]}
++    />
++  </section>
+```
+
+Add helper in the component (top level inside TriageDrawer):
+
+```jsx
+const onChange = (k,v)=> setForm(s=>({...s,[k]:v}));
+```
+
+### E) Forecast — **Segmented** and **Chips**
+
+```diff
+-  <div>
+-    <h4 className="font-semibold mb-2">Forecast</h4>
+-    <label className="text-sm">Provisional disposition
+-      <select value={form.provisionalDispo} onChange={e=>on("provisionalDispo", e.target.value)} className="mt-1 w-full border rounded px-2 py-1">
+-        <option value="unsure">Unsure</option>
+-        <option value="likelyDischarge">Likely discharge</option>
+-        <option value="likelyAdmit">Likely admit</option>
+-      </select>
+-    </label>
+-    <div className="mt-2 flex gap-3">
+-      <label><input type="checkbox" checked={form.expectedResources.includes("labs")}
+-        onChange={e=>toggleArray("expectedResources","labs",e.target.checked,form,setForm)}/> Labs</label>
+-      <label><input type="checkbox" checked={form.expectedResources.includes("imaging")}
+-        onChange={e=>toggleArray("expectedResources","imaging",e.target.checked,form,setForm)}/> Imaging</label>
+-      <label><input type="checkbox" checked={form.expectedResources.includes("specialist")}
+-        onChange={e=>toggleArray("expectedResources","specialist",e.target.checked,form,setForm)}/> Specialist</label>
+-    </div>
+-  </div>
++  <section>
++    <h4 className="font-semibold mb-2">Forecast</h4>
++    <div className="text-sm mb-2">Provisional disposition</div>
++    <Segmented
++      value={form.provisionalDispo}
++      onChange={(v)=>on("provisionalDispo", v)}
++      options={[
++        { value:"unsure", label:"Unsure" },
++        { value:"likelyDischarge", label:"Likely discharge" },
++        { value:"likelyAdmit", label:"Likely admit" }
++      ]}
++    />
++    <div className="text-sm mt-3 mb-1">Expected resources</div>
++    <Chips
++      values={form.expectedResources}
++      onToggle={(val, on) => toggleArray("expectedResources", val, on, form, setForm)}
++      options={[
++        { value:"labs", label:"Labs" },
++        { value:"imaging", label:"Imaging" },
++        { value:"specialist", label:"Specialist" }
++      ]}
++    />
++  </section>
+```
+
+### F) ATS — **buttons** (no dropdown), consistent with Register drawer
+
+```diff
+-  <div>
+-    <h4 className="font-semibold mb-2">ATS</h4>
+-    <select className="border rounded px-2 py-1" value={form.ats} onChange={e=>on("ats", e.target.value)}>
+-      <option value="">—</option>
+-      <option value="1">1 Immediate</option>
+-      <option value="2">2 Very Urgent</option>
+-      <option value="3">3 Urgent</option>
+-      <option value="4">4 Semi-urgent</option>
+-      <option value="5">5 Non-urgent</option>
+-    </select>
+-  </div>
++  <section>
++    <h4 className="font-semibold mb-2">ATS</h4>
++    <div className="flex items-center gap-2">
++      <div className="grid grid-cols-5 gap-2">
++        {[1,2,3,4,5].map(n=>{
++          const selected = String(form.ats) === String(n);
++          return (
++            <button
++              key={n}
++              type="button"
++              aria-pressed={selected}
++              onClick={()=>on("ats", String(n))}
++              className={`px-3 py-3 rounded-xl border text-base min-w-[48px]
++                ${selected ? "bg-emerald-600 text-white border-emerald-600" : "bg-white hover:bg-gray-50"}`}
++            >{n}</button>
++          );
++        })}
++      </div>
++      <button type="button" className="px-3 py-3 rounded-xl border" onClick={()=>on("ats","")}>Clear</button>
++    </div>
++  </section>
+```
+
+### G) Notes: keep textarea (no dropdowns left)
+
+---
+
+## 3) Make layout breathe on wider screens
+
+Add a two-column wrapper around the **big sections** so it uses width:
+
+```diff
+-        {/* Scrollable form area */}
+-        <form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3 space-y-6">
++        {/* Scrollable form area; two columns on large screens */}
++        <form onSubmit={save} className="flex-1 overflow-y-auto px-4 py-3">
++          <div className="grid lg:grid-cols-2 gap-6">
++            {/* Move the sections inside this grid. For example: */}
++            <div className="space-y-6">
++              {/* Arrival & Complaint */}
++              {/* Safety */}
++              {/* Vitals (can stay here or split) */}
++            </div>
++            <div className="space-y-6">
++              {/* Risk screens */}
++              {/* Forecast */}
++              {/* ATS */}
++              {/* Notes */}
++            </div>
++          </div>
+```
+
+(Place your sections into the two `space-y-6` stacks to balance the column content.)
+
+---
+
+## 4) Remove any Radix/shadcn `<Select>` imports from this file
+
+If you previously imported `Select/SelectItem/...`, delete those imports in `TriageDrawer.jsx` to avoid the runtime plugin error.
+
+---
+
+## ✅ Acceptance
+
+* Opening **Triage** shows a **wide** right drawer; on large screens the form is **two columns**.
+* **No dropdowns** remain → no Radix runtime error.
+* All categorical fields use **Segmented buttons** or **Chips**:
+
+  * Mode of arrival, Allergy, Pregnancy, Infection, Mobility = **Segmented**.
+  * Risk screens, Expected resources = **Chips**.
+  * ATS = **1–5 buttons** (+ Clear).
+* Everything is **touch-friendly** (≥44px); typing is minimized.
+* Saving triage still works and updates the card; Reset Demo still clean.
+
+If you want, I can also add a **“Save & Assign Room”** primary/secondary pair in the sticky footer (calls `saveTriage` then `assignRoom`) for faster flow during busy periods.

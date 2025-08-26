@@ -116,8 +116,8 @@ export default function TriageDrawer() {
 
   if (!triageOpen || !enc) return null;
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e?.preventDefault) e.preventDefault();
     
     setIsSubmitting(true);
     try {
@@ -156,14 +156,51 @@ export default function TriageDrawer() {
       });
       
       closeTriage();
+      return { ok: true };
     } catch (error) {
       toast({
         title: "Save Failed",
         description: "Failed to save triage data. Please try again.",
         variant: "destructive",
       });
+      return { ok: false };
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Save, then assign a room (if available / permitted)
+  const saveAndAssign = async () => {
+    if (!enc) return;
+    const result = await handleSave();
+    if (!result?.ok) return;
+    
+    try {
+      // Try to assign room via global window.assign function
+      if (typeof (window as any).assign === 'function') {
+        await (window as any).assign(enc.id);
+        toast({
+          title: "Success",
+          description: `${enc.name} triaged and assigned to room`
+        });
+        closeTriage();
+      } else {
+        console.warn("No assign function found.");
+        toast({
+          title: "Room assignment not available",
+          description: "Please assign room manually from the patient card",
+          variant: "destructive"
+        });
+        closeTriage();
+      }
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Could not assign room",
+        description: "Triage saved. Please try room assignment from the card.",
+        variant: "destructive"
+      });
+      closeTriage();
     }
   };
 
@@ -440,11 +477,20 @@ export default function TriageDrawer() {
         <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
           <TButton 
             className="bg-emerald-600 text-white flex-1 min-h-[50px]" 
-            onClick={once((e: React.MouseEvent) => { handleSave(e); haptic(); })}
+            onClick={once((e: React.MouseEvent) => { e.preventDefault(); handleSave(e); haptic(); })}
             disabled={isSubmitting}
             data-testid="button-save-triage"
           >
             {isSubmitting ? "Saving..." : "Save Triage"}
+          </TButton>
+          <TButton
+            className="bg-blue-600 text-white flex-1 min-h-[50px]"
+            onClick={once(() => { saveAndAssign(); haptic(); })}
+            disabled={isSubmitting || !!enc?.room}
+            title={enc?.room ? "Already assigned to a room" : "Save & Assign Room"}
+            data-testid="button-save-assign-triage"
+          >
+            {isSubmitting ? "Working..." : "Save & Assign Room"}
           </TButton>
           <TButton 
             className="border bg-white min-h-[50px] min-w-[100px]" 
