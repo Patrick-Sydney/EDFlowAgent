@@ -38,16 +38,56 @@ function broadcastSSE(event: string, data: any) {
   });
 }
 
-// Treatment Spaces (ED) - FHIR mapping notes:
+// Treatment Spaces (ED) - Dunedin Hospital Demo Data
 // - TreatmentSpace → FHIR Location (status, physicalType, type, name/id)
 // - Encounter.roomId → FHIR Encounter.location.location (Reference(Location))
 // - Cleaning/blocked can map to Location.status + operationalStatus extension
+
+// Helper functions for time calculations
+const inMinutes = (min: number) => new Date(Date.now() + min * 60000).toISOString();
+
 const spaces = [
-  { id:"Resus-1", zone:"A", type:"resus", monitored:true, oxygen:true, negativePressure:true, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
-  { id:"A-03", zone:"A", type:"cubicle", monitored:true, oxygen:true, negativePressure:false, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
-  { id:"A-07", zone:"A", type:"cubicle", monitored:false, oxygen:true, negativePressure:false, status:"cleaning", cleanEta:12, assignedEncounterId:null, notes:null },
-  { id:"Chair-5", zone:"FT", type:"chair", monitored:false, oxygen:false, negativePressure:false, status:"available", cleanEta:null, assignedEncounterId:null, notes:null },
-  { id:"ISO-2", zone:"B", type:"isolation", monitored:true, oxygen:true, negativePressure:true, status:"blocked", cleanEta:null, assignedEncounterId:null, notes:"Facilities" },
+  // 10 Cubicles: Room1–Room10
+  { id: "Room1", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room2", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room3", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "cleaning", cleanEta: new Date(Date.now() + 8 * 60000), assignedEncounterId: null, notes: "Cleaning in progress" },
+  { id: "Room4", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room5", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "occupied", cleanEta: null, assignedEncounterId: "p045", notes: null },
+  { id: "Room6", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room7", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room8", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room9", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "Room10", zone: "A", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  
+  // 2 Resus rooms: Resus1–Resus2
+  { id: "Resus1", zone: "A", type: "resus", monitored: true, oxygen: true, negativePressure: false, status: "occupied", cleanEta: null, assignedEncounterId: "p001", notes: "Defib at bedside" },
+  { id: "Resus2", zone: "A", type: "resus", monitored: true, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  
+  // 8 Observation rooms: OBS1–OBS8
+  { id: "OBS1", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "OBS2", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "occupied", cleanEta: null, assignedEncounterId: "p118", notes: null },
+  { id: "OBS3", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "OBS4", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "OBS5", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "OBS6", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "OBS7", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "outofservice", cleanEta: null, assignedEncounterId: null, notes: "Lighting repair ETA 16:00" },
+  { id: "OBS8", zone: "B", type: "cubicle", monitored: false, oxygen: true, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  
+  // 2 ISO rooms: ISO1–ISO2
+  { id: "ISO1", zone: "B", type: "isolation", monitored: true, oxygen: true, negativePressure: true, status: "available", cleanEta: null, assignedEncounterId: null, notes: null },
+  { id: "ISO2", zone: "B", type: "isolation", monitored: true, oxygen: true, negativePressure: true, status: "occupied", cleanEta: null, assignedEncounterId: "p150", notes: null },
+  
+  // 10 Lazy-boy ambulatory chairs: LB1–LB10
+  { id: "LB1", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB2", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB3", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "occupied", cleanEta: null, assignedEncounterId: "p201", notes: "Ambulatory chair" },
+  { id: "LB4", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB5", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB6", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB7", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB8", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB9", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "cleaning", cleanEta: new Date(Date.now() + 6 * 60000), assignedEncounterId: null, notes: "Ambulatory chair" },
+  { id: "LB10", zone: "FT", type: "chair", monitored: false, oxygen: false, negativePressure: false, status: "available", cleanEta: null, assignedEncounterId: null, notes: "Ambulatory chair" }
 ];
 
 // Helper: find space

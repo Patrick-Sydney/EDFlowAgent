@@ -54,6 +54,7 @@ export class MemStorage implements IStorage {
     const encounter: Encounter = {
       ...insertEncounter,
       id,
+      ats: insertEncounter.ats ?? null, // Ensure null instead of undefined
       lane: insertEncounter.lane || "waiting", // Provide default value
       room: insertEncounter.room || null,
       provider: insertEncounter.provider || null,
@@ -113,77 +114,111 @@ export class MemStorage implements IStorage {
 
   private seedTestData() {
     const testEncounters: InsertEncounter[] = [
+      // Roomed patients matching space occupancy
       {
-        name: "Sarah Mitchell",
-        age: 45,
-        sex: "F",
-        nhi: "ABC1234",
-        ats: null, // No ATS set yet in waiting
-        complaint: "Chest pain, onset 2hrs",
-        lane: "waiting"
-      },
-      {
-        name: "James Wong", 
-        age: 28,
+        name: "Alex Taylor",
+        age: 67,
         sex: "M",
-        nhi: "DEF5678",
-        ats: null, // No ATS set yet in waiting
-        complaint: "Ankle sprain, twisted playing football",
-        lane: "waiting"
-      },
-      {
-        name: "Robert Chen",
-        age: 52,
-        sex: "M", 
-        nhi: "JKL3456",
+        nhi: "ABC1001", 
         ats: 2,
-        complaint: "Severe abdominal pain, vomiting",
-        lane: "triage",
-        provider: "Nurse J. Smith"
+        complaint: "Severe chest pain, shortness of breath",
+        lane: "roomed",
+        room: "Resus1",
+        provider: "Dr. Martinez"
       },
       {
-        name: "Lisa Thompson",
+        name: "Moana Rangi",
+        age: 52,
+        sex: "F",
+        nhi: "DEF2045",
+        ats: 3,
+        complaint: "Fall injury, possible fracture",
+        lane: "roomed", 
+        room: "Room5",
+        provider: "Dr. Wilson"
+      },
+      {
+        name: "Rose Chen",
         age: 34,
         sex: "F",
-        nhi: "MNO7890", 
+        nhi: "GHI3118",
         ats: 3,
-        complaint: "Headache, photophobia, 3 days",
+        complaint: "Abdominal pain, nausea",
+        lane: "roomed",
+        room: "OBS2", 
+        provider: "Dr. Lee"
+      },
+      {
+        name: "Te Awhina Tai",
+        age: 28,
+        sex: "F",
+        nhi: "JKL4150",
+        ats: 3,
+        complaint: "Respiratory symptoms, isolation required",
+        lane: "roomed",
+        room: "ISO2",
+        provider: "Dr. Kumar",
+        isolationRequired: "true"
+      },
+      {
+        name: "Jamie Reid",
+        age: 45,
+        sex: "M",
+        nhi: "MNO5201", 
+        ats: 4,
+        complaint: "Minor laceration, requires suturing",
+        lane: "roomed",
+        room: "LB3",
+        provider: "Nurse J. Smith"
+      },
+      // Patients in triage
+      {
+        name: "Sione Fakatou",
+        age: 36,
+        sex: "M",
+        nhi: "PQR6230",
+        ats: 4,
+        complaint: "Back pain after lifting heavy object",
         lane: "triage",
         provider: "Nurse M. Davis"
       },
       {
-        name: "Michael Brown",
-        age: 45,
-        sex: "M",
-        nhi: "PQR1234",
-        ats: 2,
-        complaint: "Possible stroke, left side weakness",
-        lane: "roomed",
-        room: "Room 12",
-        provider: "Dr. Wilson"
+        name: "Pania Walters", 
+        age: 42,
+        sex: "F",
+        nhi: "STU7260",
+        ats: 3,
+        complaint: "Severe headache, visual disturbance",
+        lane: "triage",
+        provider: "Nurse K. Wilson"
       },
+      // Patients waiting
       {
-        name: "Amanda Taylor",
-        age: 29,
+        name: "Anika Singh",
+        age: 31,
         sex: "F", 
-        nhi: "STU5678",
-        ats: 4,
-        complaint: "UTI symptoms, fever",
-        lane: "roomed",
-        room: "Room 8", 
-        provider: "Dr. Lee"
+        nhi: "VWX8240",
+        ats: null,
+        complaint: "Fever, sore throat, 2 days",
+        lane: "waiting"
       },
       {
-        name: "David Garcia",
+        name: "Hemi Baker",
+        age: 19,
+        sex: "M",
+        nhi: "YZA9251", 
+        ats: null,
+        complaint: "Sports injury, ankle pain",
+        lane: "waiting"
+      },
+      {
+        name: "Kauri Ngata",
         age: 58,
         sex: "M",
-        nhi: "VWX9012",
-        ats: 2,
-        complaint: "Chest pain, rule out MI",
-        lane: "diagnostics",
-        room: "Room 15",
-        provider: "Dr. Martinez",
-        resultsStatus: "pending"
+        nhi: "BCD0270",
+        ats: null,
+        complaint: "Chest discomfort, palpitations",
+        lane: "waiting"
       }
     ];
 
@@ -196,6 +231,7 @@ export class MemStorage implements IStorage {
       const fullEncounter: Encounter = {
         ...encounter,
         id,
+        ats: encounter.ats ?? null, // Ensure null instead of undefined
         lane: encounter.lane || "waiting", // Provide default value
         room: encounter.room || null,
         provider: encounter.provider || null,
@@ -229,6 +265,10 @@ export class MemStorage implements IStorage {
     const auditEntry: AuditEntry = {
       ...entry,
       id,
+      beforeValue: entry.beforeValue ?? null,
+      afterValue: entry.afterValue ?? null,
+      actorName: entry.actorName ?? null,
+      actorRole: entry.actorRole ?? null,
       timestamp: now,
     };
     this.auditEntries.set(id, auditEntry);

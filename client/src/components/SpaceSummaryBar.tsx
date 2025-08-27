@@ -6,6 +6,7 @@ const STATUS = {
   cleaning: { txt: "Cleaning", cls: "bg-amber-100 text-amber-700" },
   occupied: { txt: "Occupied", cls: "bg-rose-100 text-rose-700" },
   blocked: { txt: "Blocked", cls: "bg-gray-200 text-gray-700" },
+  outofservice: { txt: "Out of Service", cls: "bg-gray-200 text-gray-700" },
 };
 
 export default function SpaceSummaryBar() {
@@ -16,13 +17,13 @@ export default function SpaceSummaryBar() {
   }, [loadSpaces]);
 
   const counts = useMemo(() => {
-    const byStatus = { available: 0, cleaning: 0, occupied: 0, blocked: 0 };
+    const byStatus = { available: 0, cleaning: 0, occupied: 0, blocked: 0, outofservice: 0 };
     const byZone: Record<string, Record<string, number>> = {};
     
     for (const s of spaces) {
       byStatus[s.status as keyof typeof byStatus] = (byStatus[s.status as keyof typeof byStatus] || 0) + 1;
       if (!byZone[s.zone]) {
-        byZone[s.zone] = { available: 0, cleaning: 0, occupied: 0, blocked: 0 };
+        byZone[s.zone] = { available: 0, cleaning: 0, occupied: 0, blocked: 0, outofservice: 0 };
       }
       byZone[s.zone][s.status] = (byZone[s.zone][s.status] || 0) + 1;
     }
