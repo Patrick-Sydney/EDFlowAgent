@@ -35,6 +35,14 @@ import {
 
 // Import our existing Encounter type
 import { Encounter } from "@/shared/schema";
+// Import sophisticated monitoring system
+import { 
+  computeEwsFromObservations, 
+  cadenceFrom, 
+  secondsUntil,
+  MonitoringPolicy,
+  type PatientLite 
+} from "../utils/monitoring";
 
 /**
  * Phase‑2 Scaffold: Clickable + Expandable Patient Card
@@ -131,38 +139,48 @@ const encounterToObservations = (encounter: Encounter): Observation[] => {
   return observations;
 };
 
-// Calculate EWS from vital signs
+// Calculate EWS from vital signs using sophisticated monitoring system
 const calculateEWS = (observations: Observation[]): EWS => {
-  let score = 0;
+  if (observations.length === 0) {
+    return {
+      score: 0,
+      riskLevel: "low",
+      calculatedAt: new Date().toISOString()
+    };
+  }
   
-  // Simple EWS calculation based on observations
-  observations.forEach(obs => {
-    const value = parseFloat(obs.value.split('/')[0]); // Handle BP format like "120/80"
+  try {
+    const ewsResult = computeEwsFromObservations(observations);
+    return {
+      score: ewsResult.score,
+      riskLevel: ewsResult.band,
+      calculatedAt: ewsResult.calculatedAt
+    };
+  } catch (error) {
+    // Fallback to basic scoring if monitoring system fails
+    let score = 0;
+    observations.forEach(obs => {
+      const value = parseFloat(obs.value.split('/')[0]);
+      switch (obs.type) {
+        case "HR":
+          if (value <= 40 || value >= 131) score += 3;
+          else if ((value >= 41 && value <= 50) || (value >= 111 && value <= 130)) score += 2;
+          break;
+        case "RR":
+          if (value <= 8 || value >= 25) score += 3;
+          break;
+        case "SpO2":
+          if (value <= 91) score += 3;
+          break;
+      }
+    });
     
-    switch (obs.type) {
-      case "HR":
-        if (value <= 40 || value >= 131) score += 3;
-        else if ((value >= 41 && value <= 50) || (value >= 111 && value <= 130)) score += 2;
-        else if ((value >= 51 && value <= 90) || (value >= 101 && value <= 110)) score += 1;
-        break;
-      case "RR":
-        if (value <= 8 || value >= 25) score += 3;
-        else if ((value >= 9 && value <= 11) || (value >= 21 && value <= 24)) score += 2;
-        else if (value >= 12 && value <= 20) score += 0;
-        break;
-      case "SpO2":
-        if (value <= 91) score += 3;
-        else if (value >= 92 && value <= 93) score += 2;
-        else if (value >= 94 && value <= 95) score += 1;
-        break;
-    }
-  });
-  
-  return {
-    score,
-    riskLevel: ewsToRisk(score),
-    calculatedAt: new Date().toISOString()
-  };
+    return {
+      score,
+      riskLevel: ewsToRisk(score),
+      calculatedAt: new Date().toISOString()
+    };
+  }
 };
 
 // Generate tasks based on encounter status
@@ -319,6 +337,20 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
   const showOrdersTab = role === 'md' && (stage === 'roomed' || stage === 'observation');
   const showDispoTab = role === 'md' && (stage === 'dispo' || encounter.lane === 'ready');
   
+  // Intelligent observation cadence from monitoring system
+  const obsPolicy = useMemo(() => {
+    if (!hasEwsInputs) return null;
+    try {
+      const ewsResult = computeEwsFromObservations(observations);
+      const cadenceMinutes = cadenceFrom(ewsResult, encounter.ats as any, { 
+        suspectedSepsis: encounter.isolationRequired === "true" 
+      });
+      return { cadenceMinutes, nextDue: cadenceMinutes };
+    } catch {
+      return null;
+    }
+  }, [observations, encounter.ats, encounter.isolationRequired, hasEwsInputs]);
+  
   // Visual priority ring for high-priority patients
   const cardRing = useMemo(() => {
     if (overdueCount > 0 && ews.riskLevel === 'high') return 'ring-2 ring-red-500/40';
@@ -393,6 +425,16 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
                 <QuickBadge icon={<Activity className="h-3 w-3"/>} label={`Last obs ${fmtTime(lastObs.takenAt)}`} />
               )}
               
+              {/* Intelligent observation cadence from monitoring system */}
+              {obsPolicy && (stage === 'roomed' || stage === 'observation') && (
+                <QuickBadge 
+                  icon={<Thermometer className="h-3 w-3"/>} 
+                  label={`Next obs ${obsPolicy.cadenceMinutes}min`}
+                  className={obsPolicy.cadenceMinutes <= 15 ? "bg-amber-100" : "bg-blue-100"}
+                  title={`Based on EWS ${ews.score} - ${ews.riskLevel} priority`}
+                />
+              )}
+              
               {/* Show tasks only when they exist and relevant */}
               {showTaskBadge && (
                 <QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${pendingTasks} tasks`} />
@@ -453,11 +495,33 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
                 <Card className="lg:col-span-5">
                   <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><HeartPulse className="h-4 w-4"/>EWS & Trends</CardTitle></CardHeader>
                   <CardContent>
-                    <div className="flex items-center gap-3">
-                      <div className={`text-white rounded-lg px-3 py-2 ${riskColor(ews.riskLevel)}`} data-testid={`ews-score-${encounter.id}`}>EWS {ews.score}</div>
-                      <div className="text-sm text-muted-foreground">as of {fmtTime(ews.calculatedAt)}</div>
-                    </div>
-                    <div className="mt-3 text-sm text-muted-foreground">(Sparkline placeholder for HR/BP/Temp/RR/SpO₂ over last 6h)</div>
+                    {showEwsBadge ? (
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <div className={`text-white rounded-lg px-3 py-2 ${riskColor(ews.riskLevel)}`} data-testid={`ews-score-${encounter.id}`}>EWS {ews.score}</div>
+                          <div className="text-sm text-muted-foreground">{ews.riskLevel} risk</div>
+                          <div className="text-sm text-muted-foreground">• {fmtTime(ews.calculatedAt)}</div>
+                        </div>
+                        {obsPolicy && (
+                          <div className="mt-2 text-sm">
+                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${obsPolicy.cadenceMinutes <= 15 ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                              <Thermometer className="h-3 w-3" />
+                              Next obs due in {obsPolicy.cadenceMinutes} minutes
+                            </div>
+                            <div className="text-muted-foreground text-xs mt-1">
+                              Policy: {ews.riskLevel} EWS
+                              {encounter.ats && encounter.ats <= 2 && " • ATS " + encounter.ats + " priority"}
+                              {encounter.isolationRequired === "true" && " • Sepsis watch"}
+                            </div>
+                          </div>
+                        )}
+                        <div className="mt-3 text-sm text-muted-foreground">(Sparkline placeholder for HR/BP/Temp/RR/SpO₂ over last 6h)</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        EWS will appear once enough vitals are captured (HR, BP, RR, SpO₂, Temp)
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card className="lg:col-span-7">

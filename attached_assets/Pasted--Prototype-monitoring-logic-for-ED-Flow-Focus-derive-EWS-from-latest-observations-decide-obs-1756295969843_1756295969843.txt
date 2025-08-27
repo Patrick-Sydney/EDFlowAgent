@@ -1,0 +1,115 @@
+// Prototype monitoring logic for ED Flow
+// Focus: derive EWS from latest observations, decide observation cadence, upsert "Repeat obs" task,
+// and provide a light scheduler that flips tasks to overdue. Demo-only; tune policy for your site.
+
+import { calcEWSFromLatest, EwsResult, ACVPU } from "./ews";
+
+// --- Types kept minimal to avoid tight coupling ---
+export type ATS = 1 | 2 | 3 | 4 | 5;
+export interface Observation { id: string; type: "HR" | "BP" | "Temp" | "RR" | "SpO2" | "GCS" | "Pain"; value: string; unit?: string; takenAt: string; }
+export interface TaskItem { id: string; description: string; type?: "obs" | "medication" | "handover" | string; dueAt?: string; status: "pending" | "done" | "overdue"; source: "auto" | "user" | "orderSet"; }
+export interface PatientLite { id: string; ats?: ATS; observations: Observation[]; tasks: TaskItem[]; readyForDisposition?: boolean; flags?: { suspectedSepsis?: boolean }; ews?: { score: number; band: "low"|"medium"|"high"; calculatedAt: string } }
+
+// --- Configurable local policy (minutes) ---
+export const MonitoringPolicy = {
+  base: { low: 120, medium: 30, high: 15 }, // default cadence by EWS band
+  singleThreeMax: 60,                        // if any single parameter scores 3, cap cadence to <= this
+  atsCap: { 1: 15, 2: 30 } as Partial<Record<ATS, number>>, // tighter caps for ATS1/2
+  sepsisCap: 30,                             // suspected sepsis cap
+};
+
+// --- Helpers ---
+const parseNumber = (s?: string) => (s ? Number(String(s).replace(/[^0-9.\-]/g, "")) : NaN);
+
+export interface LatestVitals { RR?: number; SpO2?: number; Temp?: number; SBP?: number; HR?: number; ACVPU?: ACVPU; O2?: boolean; SpO2Scale?: 1|2 }
+
+// Extract the latest value for each vital type (simple, last timestamp wins)
+export function latestVitalsFrom(observations: Observation[]): LatestVitals {
+  const latest: Partial<Record<Observation["type"], Observation>> = {};
+  for (const o of observations) {
+    const prev = latest[o.type];
+    if (!prev || o.takenAt > prev.takenAt) latest[o.type] = o;
+  }
+  const SBP = latest.BP ? parseNumber(latest.BP.value.split("/")[0]) : undefined;
+  return {
+    RR: latest.RR ? parseNumber(latest.RR.value) : undefined,
+    SpO2: latest.SpO2 ? parseNumber(latest.SpO2.value) : undefined,
+    Temp: latest.Temp ? parseNumber(latest.Temp.value) : undefined,
+    SBP: Number.isFinite(SBP) ? SBP : undefined,
+    HR: latest.HR ? parseNumber(latest.HR.value) : undefined,
+    // ACVPU and O2 could come from separate assessments/devices; leave undefined for now
+  };
+}
+
+export function computeEwsFromObservations(observations: Observation[]) {
+  const latest = latestVitalsFrom(observations);
+  const ews = calcEWSFromLatest(latest);
+  return ews; // { score, band, byParam, flags }
+}
+
+// Decide next observation cadence (in minutes) from EWS + ATS + flags
+export function cadenceFrom(ews: EwsResult, ats?: ATS, flags?: PatientLite["flags"]): number {
+  let minutes = MonitoringPolicy.base[ews.band];
+  if (ews.flags.anyThree && minutes > MonitoringPolicy.singleThreeMax) minutes = MonitoringPolicy.singleThreeMax;
+  if (ats && MonitoringPolicy.atsCap[ats] && minutes > MonitoringPolicy.atsCap[ats]!) minutes = MonitoringPolicy.atsCap[ats]!;
+  if (flags?.suspectedSepsis && minutes > MonitoringPolicy.sepsisCap) minutes = MonitoringPolicy.sepsisCap;
+  return minutes;
+}
+
+// Upsert (create or adjust) the "Repeat obs" task for a patient
+export function upsertRepeatObsTask(patient: PatientLite, cadenceMinutes: number, now: Date = new Date()): TaskItem[] {
+  const tasks = [...patient.tasks];
+  const existingIdx = tasks.findIndex(t => (t.type === 'obs' || /repeat\s*obs/i.test(t.description)) && t.status !== 'done');
+
+  // Determine anchor time: last observation timestamp (if any), else now
+  const lastObs = patient.observations.reduce((acc, o) => !acc || o.takenAt > acc.takenAt ? o : acc, undefined as Observation | undefined);
+  const anchor = lastObs ? new Date(lastObs.takenAt) : now;
+  const dueAt = new Date(anchor.getTime() + cadenceMinutes * 60000).toISOString();
+
+  if (existingIdx === -1) {
+    tasks.push({
+      id: `obs-${patient.id}-${Date.now()}`,
+      type: 'obs',
+      description: `Repeat observations`,
+      dueAt,
+      status: 'pending',
+      source: 'auto',
+    });
+  } else {
+    // If cadence tightens, pull the due time forward (never push it out silently)
+    const existing = tasks[existingIdx];
+    const currentDue = existing.dueAt ? new Date(existing.dueAt).getTime() : Infinity;
+    const proposed = new Date(dueAt).getTime();
+    if (proposed < currentDue) {
+      tasks[existingIdx] = { ...existing, dueAt };
+    }
+  }
+
+  return tasks;
+}
+
+// Mark overdue + simple in-memory reminder hooks
+export function schedulerTick(patients: PatientLite[], now: Date = new Date()) {
+  const nowMs = now.getTime();
+  for (const p of patients) {
+    for (const t of p.tasks) {
+      if (t.status === 'pending' && t.dueAt) {
+        const due = new Date(t.dueAt).getTime();
+        if (nowMs > due) t.status = 'overdue';
+      }
+    }
+  }
+}
+
+export function secondsUntil(iso?: string): number | undefined {
+  if (!iso) return undefined;
+  return Math.floor((new Date(iso).getTime() - Date.now()) / 1000);
+}
+
+// Glue: one-step update when new obs are recorded
+export function onNewObservation(patient: PatientLite): { ews: EwsResult; cadenceMinutes: number; tasks: TaskItem[] } {
+  const ews = computeEwsFromObservations(patient.observations);
+  const cadenceMinutes = cadenceFrom(ews, patient.ats, patient.flags);
+  const tasks = upsertRepeatObsTask(patient, cadenceMinutes);
+  return { ews, cadenceMinutes, tasks };
+}
