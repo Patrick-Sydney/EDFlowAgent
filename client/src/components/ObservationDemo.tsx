@@ -10,8 +10,11 @@ import { Activity, Thermometer } from "lucide-react";
 export function ObservationDemo() {
   const { encounters, addObservation } = useDashboardStore();
   
+  console.log('ObservationDemo rendering, encounters count:', encounters?.length);
+  
   // Find a patient in roomed stage for demo, prefer Alex Taylor
   const demoPatient = encounters.find(e => e.name === 'Alex Taylor') || encounters.find(e => e.lane === 'roomed');
+  console.log('Demo patient found:', demoPatient?.name, demoPatient?.id);
   
   if (!demoPatient) {
     return (
@@ -32,6 +35,7 @@ export function ObservationDemo() {
   }
   
   const addHighRiskVitals = () => {
+    console.log('🔴 HIGH RISK BUTTON CLICKED!');
     console.log('Adding high-risk vitals for patient:', demoPatient.name, demoPatient.id);
     const timestamp = new Date().toISOString();
     
@@ -52,6 +56,7 @@ export function ObservationDemo() {
   };
   
   const addNormalVitals = () => {
+    console.log('🟢 NORMAL VITALS BUTTON CLICKED!');
     console.log('Adding normal vitals for patient:', demoPatient.name, demoPatient.id);
     const timestamp = new Date().toISOString();
     
