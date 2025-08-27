@@ -635,10 +635,10 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
             {/* VITALS */}
             {showVitalsTab && (
               <TabsContent value="vitals">
-                <VitalsTimeline 
+                <VitalsTimeline
                   observations={observations as any}
                   arrival={encounter.arrivalTime}
-                  showChartDefault={true}
+                  showChartDefault
                 />
               </TabsContent>
             )}
