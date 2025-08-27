@@ -125,14 +125,14 @@ export default function VitalsTimeline({ observations, arrival, showChartDefault
               <LineChart data={points} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="t" tickFormatter={(t)=> new Date(t).toLocaleTimeString()} minTickGap={48} />
-                <YAxis yAxisId="left" domain={[0, 'auto']} allowDecimals={false} />
+                <YAxis domain={[0, 'auto']} allowDecimals={false} />
                 <YAxis yAxisId="right" orientation="right" domain={[0, 'auto']} allowDecimals={false} />
                 <Tooltip labelFormatter={(l)=> new Date(String(l)).toLocaleString()} formatter={(v: any, n: string)=> [v, n]} />
                 <Legend />
-                {showHR && <Line yAxisId="left" type="monotone" dataKey="HR" name="HR (bpm)" dot={false} />}
-                {showSBP && <Line yAxisId="left" type="monotone" dataKey="SBP" name="SBP (mmHg)" dot={false} />}
+                {showHR && <Line type="monotone" dataKey="HR" name="HR (bpm)" dot={false} />}
+                {showSBP && <Line type="monotone" dataKey="SBP" name="SBP (mmHg)" dot={false} />}
                 {showTemp && <Line yAxisId="right" type="monotone" dataKey="Temp" name="Temp (°C)" dot={false} />}
-                {showRR && <Line yAxisId="left" type="monotone" dataKey="RR" name="RR (bpm)" dot={false} />}
+                {showRR && <Line type="monotone" dataKey="RR" name="RR (bpm)" dot={false} />}
                 {showSpO2 && <Line yAxisId="right" type="monotone" dataKey="SpO2" name="SpO₂ (%)" dot={false} />}
                 {/* Triage marker */}
                 {arrival && (
