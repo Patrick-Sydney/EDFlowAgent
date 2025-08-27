@@ -174,9 +174,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
   // Intelligent observation management with monitoring system
   addObservation: (patientId, obs) => set((state) => {
+    console.log('addObservation called with:', { patientId, obs });
     const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
     const patientIndex = current.findIndex(p => p.id === patientId);
-    if (patientIndex === -1) return state;
+    console.log('Patient found at index:', patientIndex);
+    if (patientIndex === -1) {
+      console.log('Patient not found!');
+      return state;
+    }
 
     const patient = current[patientIndex];
     
@@ -201,7 +206,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
     try {
       // Use monitoring system to calculate EWS and update tasks
-      const { ews, cadenceMinutes } = onNewObservation(patientLite);
+      const { ews, cadenceMinutes, tasks } = onNewObservation(patientLite);
+      console.log('Monitoring system result:', { ews, cadenceMinutes, tasksCount: tasks.length });
       
       // Store the monitoring result in a way that doesn't break the Encounter type
       const updatedPatient = {
