@@ -345,10 +345,6 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
               </DialogContent>
             </Dialog>
           )}
-          <Button variant="outline" size="sm" onClick={(e)=>{e.stopPropagation(); onOpenChart?.(encounter.id);}} data-testid={`button-open-chart-${encounter.id}`}>Open Chart</Button>
-          <Button variant="ghost" size="icon" aria-label="Expand" data-testid={`button-expand-${encounter.id}`}>
-            <ChevronDown className={`h-5 w-5 transition-transform ${expanded? 'rotate-180': ''}`} />
-          </Button>
         </div>
       </div>
 
