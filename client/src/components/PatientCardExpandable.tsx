@@ -13,8 +13,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Activity,
   Bell,
@@ -237,8 +235,6 @@ const QuickBadge: React.FC<{ label: string; className?: string; title?: string; 
 
 export default function PatientCardExpandable({ role, encounter, onOpenChart, onMarkTask, onOrderSet, onDisposition, onStartTriage, onAssignRoom, availableRooms }: PatientCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
-  const [roomDialogOpen, setRoomDialogOpen] = useState(false);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | undefined>(undefined);
   
   const lane = useMemo(() => deriveLane(encounter.room || encounter.lane), [encounter.room, encounter.lane]);
   const observations = useMemo(() => encounterToObservations(encounter), [encounter]);
@@ -319,31 +315,7 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
             <Button size="sm" onClick={(e)=>{ e.stopPropagation(); onStartTriage?.(encounter.id); }} data-testid={`button-start-triage-${encounter.id}`}>Start Triage</Button>
           )}
           {(lane === "triage" && role === "charge") && (
-            <Dialog open={roomDialogOpen} onOpenChange={(o)=>{ setRoomDialogOpen(o); }}>
-              <DialogTrigger asChild>
-                <Button size="sm" variant="secondary" onClick={(e)=> e.stopPropagation()} data-testid={`button-assign-room-${encounter.id}`}>Assign Room</Button>
-              </DialogTrigger>
-              <DialogContent onClick={(e)=> e.stopPropagation()}>
-                <DialogHeader>
-                  <DialogTitle>Assign Room</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-2">
-                  <Label>Room</Label>
-                  <Select value={selectedRoomId} onValueChange={setSelectedRoomId}>
-                    <SelectTrigger><SelectValue placeholder="Select a room" /></SelectTrigger>
-                    <SelectContent>
-                      {(availableRooms ?? []).map(r => (
-                        <SelectItem key={r.id} value={r.id}>{r.name}{r.suitability ? ` • ${r.suitability}` : ''}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button variant="outline" onClick={()=> setRoomDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={() => { if(selectedRoomId){ onAssignRoom?.(encounter.id, selectedRoomId); setRoomDialogOpen(false);} }}>Assign</Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button size="sm" variant="secondary" onClick={(e)=> { e.stopPropagation(); onAssignRoom?.(encounter.id, ""); }} data-testid={`button-assign-room-${encounter.id}`}>Assign Room</Button>
           )}
         </div>
       </div>
