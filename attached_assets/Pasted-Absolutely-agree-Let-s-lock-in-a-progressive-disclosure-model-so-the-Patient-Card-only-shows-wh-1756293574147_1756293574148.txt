@@ -1,0 +1,139 @@
+Absolutely agree. Let’s lock in a **progressive-disclosure** model so the Patient Card only shows what’s relevant for the current **stage** of the journey and the **role** viewing it.
+
+# Patient Journey → What to show (and hide)
+
+**Stage A — Arrival (Waiting)**
+
+* **Primary signal:** Name, age/sex, chief complaint, *Triage due* timer.
+* **Secondary context:** Arrival time, safety flags (allergy, isolation risk) if known.
+* **Actions:** **Start Triage** (RN/Charge only).
+* **Hide:** Vitals/EWS, Tasks, Diagnostics, Disposition, Quick Orders.
+
+**Stage B — Triage**
+
+* **Primary signal:** Triage form, stat-as-button vitals capture.
+* **Secondary context:** “Last obs” time once one vital exists.
+* **Actions:** Complete Triage; **Assign Room** (Charge); auto-suggest room for ATS 1–2.
+* **Reveal only when ready:** **EWS badge** appears *only* when required inputs present.
+* **Hide:** Tasks (until generated), Disposition, Orders, Results capsule.
+
+**Stage C — Roomed / Treatment**
+
+* **Primary signal:** **EWS badge** + last-obs time; top 1–2 active tasks (with timers).
+* **Secondary context:** Room name; brief Assessment (impression only).
+* **Actions by role:**
+
+  * RN: Complete obs, mark tasks done.
+  * MD: **Quick Order Sets** (Sepsis/Stroke/Chest Pain), **Disposition**.
+  * Charge: **Change Room** (optional), status operations.
+* **Reveal on demand:** Notes, full Vitals timeline, Diagnostics → behind tabs/drawer.
+
+**Stage D — Observation**
+
+* **Primary signal:** **Next obs due** timer; EWS trend (arrow ▲/▬/▼).
+* **Secondary:** Active tasks count; abnormal results badge (if any).
+* **Actions:** Mark obs; acknowledge results; escalate if EWS rises.
+* **Hide:** Full Assessment unless opened; Quick Orders unless MD.
+
+**Stage E — Disposition Ready**
+
+* **Primary signal:** Disposition strip (Admit / Discharge / Refer).
+* **Secondary:** Blockers checklist (pending tasks/results).
+* **Actions:** One-click disposition (MD), auto-generate discharge/transfer tasks.
+* **Hide:** Most tabs unless needed.
+
+---
+
+# UI Rules (to keep it clean)
+
+1. **Two-tier density**
+
+* **Top row (always):** Name • ATS (if set) • EWS (only when computed) • Room • Last-obs • \[Overdue count if >0].
+* **Everything else:** behind tabs or a right-side drawer.
+
+2. **Alert ladder (avoid alarm fatigue)**
+
+* **Badge** (subtle) → **Row highlight** (time-boxed) → **Inline banner** (requires action).
+* Only escalate if **severity ↑** or **time overdue** crosses thresholds.
+
+3. **Action budget**
+
+* Max **2 primary** actions visible per stage (e.g., *Start Triage*, *Assign Room*).
+* All other actions live under “More” or inside the drawer.
+
+4. **Role + stage gating**
+
+* RN/Charge/MD see different actions.
+* If a feature doesn’t apply **now**, don’t disable it—**hide** it.
+
+5. **Lazy load heavy bits**
+
+* Charts, long notes, results tables load only when their tab/drawer opens.
+
+---
+
+# Implementation blueprint (drop-in logic)
+
+**Derive stage** and gate features:
+
+```ts
+type Stage = 'arrival'|'triage'|'roomed'|'observation'|'dispo';
+const stageFor = (p: PatientFull): Stage => {
+  if (!p.ats) return 'arrival';
+  if (p.location?.toLowerCase().includes('triage')) return 'triage';
+  if (p.location?.toLowerCase().startsWith('obs')) return 'observation';
+  if (p.readyForDisposition) return 'dispo';
+  return 'roomed';
+};
+
+const can = {
+  rn:   { arrival:['startTriage'], triage:['completeTriage'], roomed:['tasks','vitals'], observation:['tasks','vitals'], dispo:[] },
+  charge:{ arrival:['startTriage'], triage:['assignRoom'], roomed:['changeRoom'], observation:['changeRoom'], dispo:[] },
+  md:   { arrival:[], triage:[], roomed:['orders','results','dispo'], observation:['orders','results','dispo'], dispo:['dispo'] },
+} as const;
+```
+
+**Build tabs dynamically (only when meaningful):**
+
+```ts
+const tabs = [
+  'overview',
+  stage!=='arrival' && 'vitals',
+  hasNotes && 'notes',
+  hasDiagnostics && 'diagnostics',
+  can[role][stage].includes('tasks') && (pendingTasks>0 || stage!=='arrival') && 'tasks',
+  can[role][stage].includes('orders') && 'orders',
+  can[role][stage].includes('dispo') && 'disposition',
+].filter(Boolean) as string[];
+```
+
+**EWS badge appears only when inputs exist:**
+
+```ts
+const hasEwsInputs = hasRR && hasSpO2 && hasTemp && hasSBP && hasHR && hasACVPU;
+const showEws = hasEwsInputs && ews.score !== undefined;
+```
+
+**Keep actions sparse per stage:**
+
+```tsx
+{stage==='arrival' && (role==='rn'||role==='charge') && <Button>Start Triage</Button>}
+{stage==='triage' && role==='charge' && <Button variant="secondary">Assign Room</Button>}
+{stage==='roomed' && role==='md' && <Button>Quick Order Sets</Button>}
+{stage==='dispo' && role==='md' && <Button>Disposition</Button>}
+```
+
+---
+
+# Acceptance checklist (prevents regressions)
+
+* Arrival (RN/Charge): **only** “Start Triage” appears; no EWS, no tasks.
+* Triage (Charge): **only** “Assign Room” primary action; EWS shows **only** after vitals captured.
+* Roomed (MD): **Orders**, **Results**, **Disposition** tabs appear; RN doesn’t see them.
+* Observation: **Next obs due** prominent; EWS trend indicator shows; heavy data behind tabs.
+* Disposition: Single strip with action; blockers visible if any.
+* No more than **2 primary buttons** visible on the card at once.
+
+---
+
+If you’d like, I can update your **PatientCardExpandable** scaffold to include this **stage/role gating**, dynamic tabs, and the **alert ladder** now—so the UI grows naturally as the patient progresses without adding clutter.

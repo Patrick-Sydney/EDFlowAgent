@@ -204,15 +204,53 @@ const generateTasks = (encounter: Encounter): TaskItem[] => {
   return tasks;
 };
 
-// ---------- Component ----------
+// ---------- Progressive Disclosure Logic ----------
 
+type Stage = 'arrival' | 'triage' | 'roomed' | 'observation' | 'dispo';
 type Lane = "waiting" | "triage" | "roomed";
+
 const deriveLane = (loc: string): Lane => {
   const x = (loc || "").toLowerCase();
   if (x.includes("triage")) return "triage";
   if (x.includes("room")) return "roomed";
   return "waiting";
 };
+
+const stageFor = (encounter: Encounter): Stage => {
+  if (!encounter.ats) return 'arrival';
+  const location = encounter.room || encounter.lane || '';
+  if (location.toLowerCase().includes('triage')) return 'triage';
+  if (location.toLowerCase().startsWith('obs')) return 'observation';
+  if (encounter.disposition) return 'dispo';
+  if (encounter.room) return 'roomed';
+  return 'arrival';
+};
+
+// Role-based actions per stage
+const canPerform = {
+  reception: { arrival: [], triage: [], roomed: [], observation: [], dispo: [] },
+  rn: { 
+    arrival: ['startTriage'], 
+    triage: ['completeTriage'], 
+    roomed: ['tasks', 'vitals'], 
+    observation: ['tasks', 'vitals'], 
+    dispo: [] 
+  },
+  charge: { 
+    arrival: ['startTriage'], 
+    triage: ['assignRoom'], 
+    roomed: ['changeRoom'], 
+    observation: ['changeRoom'], 
+    dispo: [] 
+  },
+  md: { 
+    arrival: [], 
+    triage: [], 
+    roomed: ['orders', 'results', 'dispo'], 
+    observation: ['orders', 'results', 'dispo'], 
+    dispo: ['dispo'] 
+  },
+} as const;
 
 export interface PatientCardExpandableProps {
   role: Role;
@@ -236,14 +274,16 @@ const QuickBadge: React.FC<{ label: string; className?: string; title?: string; 
 export default function PatientCardExpandable({ role, encounter, onOpenChart, onMarkTask, onOrderSet, onDisposition, onStartTriage, onAssignRoom, availableRooms }: PatientCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
   
+  const stage = useMemo(() => stageFor(encounter), [encounter]);
   const lane = useMemo(() => deriveLane(encounter.room || encounter.lane), [encounter.room, encounter.lane]);
   const observations = useMemo(() => encounterToObservations(encounter), [encounter]);
   const ews = useMemo(() => calculateEWS(observations), [observations]);
   const tasks = useMemo(() => generateTasks(encounter), [encounter]);
   const lastObs = useMemo(() => observations.slice().sort((a,b)=>a.takenAt.localeCompare(b.takenAt)).at(-1), [observations]);
   const overdueCount = useMemo(() => tasks.filter(t=>t.status==='overdue').length, [tasks]);
-
-  // Mock data for demo purposes
+  const pendingTasks = useMemo(() => tasks.filter(t=>t.status==='pending').length, [tasks]);
+  
+  // Mock data for demo purposes (needs to be defined before usage)
   const notes: NoteEntry[] = [
     {
       id: `note-1-${encounter.id}`,
@@ -264,6 +304,27 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
       summary: encounter.resultsStatus === "complete" ? "WBC 12.5, Lactate 2.1" : undefined
     }
   ] : [];
+  
+  // Progressive disclosure: only show EWS when inputs exist
+  const hasEwsInputs = observations.some(o => ['HR', 'BP', 'RR', 'SpO2', 'Temp'].includes(o.type));
+  const showEws = hasEwsInputs && ews.score !== undefined && stage !== 'arrival';
+  
+  // Dynamic tabs based on stage and role
+  const availableTabs = useMemo(() => {
+    const permissions = canPerform[role][stage];
+    const tabs = ['overview'];
+    const hasNotes = stage !== 'arrival' && (encounter.triageNotes || stage !== 'arrival');
+    const hasDiagnostics = (encounter.lane === "diagnostics" || encounter.lane === "review");
+    
+    if (stage !== 'arrival') tabs.push('vitals');
+    if (hasNotes) tabs.push('notes');
+    if (hasDiagnostics && permissions.includes('results')) tabs.push('diagnostics');
+    if (permissions.includes('tasks') && (pendingTasks > 0 || stage !== 'arrival')) tabs.push('tasks');
+    if (permissions.includes('orders')) tabs.push('orders');
+    if (permissions.includes('dispo')) tabs.push('disposition');
+    
+    return tabs;
+  }, [stage, role, pendingTasks, encounter.triageNotes, encounter.lane]);
 
   // Accessibility: expand/collapse with Enter/Space
   const onKeyToggle: React.KeyboardEventHandler<HTMLDivElement> = (e) => {
@@ -291,31 +352,76 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <CardTitle className="text-lg truncate">{encounter.name} <span className="text-muted-foreground">• {encounter.age} {encounter.sex}</span></CardTitle>
-              <Badge variant="outline">ATS {encounter.ats}</Badge>
-              <div className={`text-white text-xs px-2 py-1 rounded ${riskColor(ews.riskLevel)}`}>
-                EWS {ews.score}
-              </div>
+              {/* Only show ATS after triage started */}
+              {encounter.ats && <Badge variant="outline">ATS {encounter.ats}</Badge>}
+              {/* Only show EWS when computed and past arrival stage */}
+              {showEws && (
+                <div className={`text-white text-xs px-2 py-1 rounded ${riskColor(ews.riskLevel)}`}>
+                  EWS {ews.score}
+                </div>
+              )}
             </div>
+            
+            {/* Stage-appropriate secondary information */}
             <div className="text-sm text-muted-foreground truncate">
-              {encounter.complaint} • NHI: {encounter.nhi} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()} • {encounter.room || encounter.lane}
+              {stage === 'arrival' && (
+                <>
+                  {encounter.complaint} • NHI: {encounter.nhi} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()}
+                  {encounter.isolationRequired === "true" && " • Isolation Required"}
+                </>
+              )}
+              {stage !== 'arrival' && (
+                <>
+                  {encounter.complaint} • NHI: {encounter.nhi} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()} • {encounter.room || encounter.lane}
+                </>
+              )}
             </div>
+            
+            {/* Progressive badges based on stage */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {lastObs && (
+              {/* Show triage timer for arrival stage */}
+              {stage === 'arrival' && (
+                <QuickBadge icon={<TimerReset className="h-3 w-3"/>} label="Triage due" className="bg-amber-100" />
+              )}
+              
+              {/* Show obs timer for roomed/observation stages */}
+              {(stage === 'roomed' || stage === 'observation') && lastObs && (
                 <QuickBadge icon={<Activity className="h-3 w-3"/>} label={`Last obs ${fmtTime(lastObs.takenAt)}`} />
               )}
-              <QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${tasks.filter(t=>t.status==='pending').length} tasks`} />
-              {overdueCount>0 && (
+              
+              {/* Show tasks only when they exist and relevant */}
+              {stage !== 'arrival' && pendingTasks > 0 && (
+                <QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${pendingTasks} tasks`} />
+              )}
+              
+              {/* Always show overdue count when > 0 */}
+              {overdueCount > 0 && (
                 <QuickBadge icon={<Bell className="h-3 w-3"/>} className="bg-red-100" label={`${overdueCount} overdue`} />
+              )}
+              
+              {/* Show disposition for dispo stage */}
+              {stage === 'dispo' && encounter.disposition && (
+                <QuickBadge icon={<ClipboardCheck className="h-3 w-3"/>} label={encounter.disposition} className="bg-green-100" />
               )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {(lane === "waiting" && (role === "rn" || role === "charge")) && (
+          {/* Progressive disclosure actions - max 2 primary actions per stage */}
+          {stage === 'arrival' && (role === 'rn' || role === 'charge') && (
             <Button size="sm" onClick={(e)=>{ e.stopPropagation(); onStartTriage?.(encounter.id); }} data-testid={`button-start-triage-${encounter.id}`}>Start Triage</Button>
           )}
-          {(lane === "triage" && role === "charge") && (
+          
+          {stage === 'triage' && role === 'charge' && (
             <Button size="sm" variant="secondary" onClick={(e)=> { e.stopPropagation(); onAssignRoom?.(encounter.id, ""); }} data-testid={`button-assign-room-${encounter.id}`}>Assign Room</Button>
+          )}
+          
+          {stage === 'roomed' && role === 'md' && (
+            <Button size="sm" onClick={(e)=>{ e.stopPropagation(); onOrderSet?.("Chest Pain", encounter.id); }} data-testid={`button-quick-orders-${encounter.id}`}>Quick Orders</Button>
+          )}
+          
+          {stage === 'dispo' && role === 'md' && (
+            <Button size="sm" className="bg-medical-green hover:bg-green-700 text-white" onClick={(e)=>{ e.stopPropagation(); onDisposition?.(encounter.id, "Discharge"); }} data-testid={`button-disposition-${encounter.id}`}>Disposition</Button>
           )}
         </div>
       </div>
@@ -326,15 +432,23 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
           <Separator className="mb-3"/>
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="flex flex-wrap">
-              <TabsTrigger value="overview" data-testid={`tab-overview-${encounter.id}`}>Overview</TabsTrigger>
-              <TabsTrigger value="triage" data-testid={`tab-triage-${encounter.id}`}>Triage</TabsTrigger>
-              <TabsTrigger value="assessment" data-testid={`tab-assessment-${encounter.id}`}>Assessment</TabsTrigger>
-              <TabsTrigger value="vitals" data-testid={`tab-vitals-${encounter.id}`}>Vitals</TabsTrigger>
-              <TabsTrigger value="notes" data-testid={`tab-notes-${encounter.id}`}>Notes</TabsTrigger>
-              <TabsTrigger value="diagnostics" data-testid={`tab-diagnostics-${encounter.id}`}>Diagnostics</TabsTrigger>
-              <TabsTrigger value="tasks" data-testid={`tab-tasks-${encounter.id}`}>Tasks</TabsTrigger>
-              {role === "md" && <TabsTrigger value="orders" data-testid={`tab-orders-${encounter.id}`}>Quick Orders</TabsTrigger>}
-              {role === "md" && <TabsTrigger value="dispo" data-testid={`tab-dispo-${encounter.id}`}>Disposition</TabsTrigger>}
+              {availableTabs.map(tab => {
+                const tabConfig = {
+                  overview: { label: 'Overview', icon: <HeartPulse className="h-4 w-4" /> },
+                  vitals: { label: 'Vitals', icon: <Activity className="h-4 w-4" /> },
+                  notes: { label: 'Notes', icon: <FileText className="h-4 w-4" /> },
+                  diagnostics: { label: 'Diagnostics', icon: <TestTubes className="h-4 w-4" /> },
+                  tasks: { label: 'Tasks', icon: <ListChecks className="h-4 w-4" /> },
+                  orders: { label: 'Orders', icon: <Pill className="h-4 w-4" /> },
+                  disposition: { label: 'Disposition', icon: <ClipboardCheck className="h-4 w-4" /> }
+                }[tab] || { label: tab, icon: null };
+                
+                return (
+                  <TabsTrigger key={tab} value={tab} data-testid={`tab-${tab}-${encounter.id}`}>
+                    {tabConfig.label}
+                  </TabsTrigger>
+                );
+              })}
             </TabsList>
 
             {/* OVERVIEW */}
