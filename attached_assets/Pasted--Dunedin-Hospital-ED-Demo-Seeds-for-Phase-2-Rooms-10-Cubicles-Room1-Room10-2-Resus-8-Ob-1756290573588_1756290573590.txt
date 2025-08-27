@@ -1,0 +1,200 @@
+// Dunedin Hospital ED — Demo Seeds for Phase‑2
+// Rooms: 10 Cubicles (Room1–Room10), 2 Resus, 8 Observation (OBS1–OBS8), 2 ISO, 10 Lazy‑boy ambulatory chairs (LB1–LB10)
+// Self‑contained types match the Room Management wireframe. Adjust to your app types as needed.
+
+export type RoomStatus = "available" | "occupied" | "cleaning" | "closed";
+export type Suitability = "resus" | "adult" | "peds" | "isolation" | "procedure" | "cubicle" | "obs" | "ambulatory";
+
+export interface Room {
+  id: string;
+  name: string;
+  status: RoomStatus;
+  suitability: Suitability[];
+  oxygen?: boolean;
+  negPressure?: boolean;
+  notes?: string;
+  occupant?: {
+    patientId: string;
+    name: string;
+    ats: 1 | 2 | 3 | 4 | 5;
+    ews: number;
+    since: string; // ISO
+  };
+  lastCleanedAt?: string;
+  cleaningEta?: string;
+}
+
+export interface PatientLite {
+  id: string;
+  name: string;
+  ats: 1 | 2 | 3 | 4 | 5;
+  ews: number;
+  lane: "waiting" | "triage" | "roomed";
+}
+
+const now = () => new Date().toISOString();
+const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
+const inMin = (min: number) => new Date(Date.now() + min * 60000).toISOString();
+
+const seq = (n: number, start = 1) => Array.from({ length: n }, (_, i) => i + start);
+
+// --- Patients (some roomed to match occupants, others waiting/triage)
+export const dunedinPatients: PatientLite[] = [
+  { id: "p001", name: "Alex Taylor", ats: 2, ews: 6, lane: "roomed" }, // Resus1
+  { id: "p045", name: "Moana Rangi", ats: 3, ews: 2, lane: "roomed" }, // Room5
+  { id: "p118", name: "Rose Chen", ats: 3, ews: 3, lane: "roomed" }, // OBS2
+  { id: "p150", name: "Te Awhina Tai", ats: 3, ews: 3, lane: "roomed" }, // ISO2
+  { id: "p201", name: "Jamie Reid", ats: 4, ews: 0, lane: "roomed" }, // LB3
+  { id: "p230", name: "Sione Fakatou", ats: 4, ews: 1, lane: "triage" },
+  { id: "p240", name: "Anika Singh", ats: 3, ews: 2, lane: "waiting" },
+  { id: "p251", name: "Hemi Baker", ats: 4, ews: 0, lane: "waiting" },
+  { id: "p260", name: "Pania Walters", ats: 3, ews: 1, lane: "triage" },
+  { id: "p270", name: "Kauri Ngata", ats: 2, ews: 4, lane: "waiting" },
+];
+
+// --- Rooms
+export function buildDunedinRoomSeeds(): Room[] {
+  const rooms: Room[] = [];
+
+  // 10 Cubicles: Room1–Room10
+  seq(10).forEach((i) => {
+    rooms.push({
+      id: `Room${i}`,
+      name: `Room${i}`,
+      status: i === 3 ? "cleaning" : i === 5 ? "occupied" : "available",
+      suitability: ["adult", "cubicle"],
+      oxygen: true,
+      ...(i === 3
+        ? { cleaningEta: inMin(8), notes: "Cleaning in progress" }
+        : {}),
+      ...(i === 5
+        ? {
+            occupant: {
+              patientId: "p045",
+              name: "Moana Rangi",
+              ats: 3,
+              ews: 2,
+              since: ago(15),
+            },
+          }
+        : {}),
+    });
+  });
+
+  // 2 Resus rooms: Resus1–Resus2
+  seq(2).forEach((i) => {
+    const name = `Resus${i}`;
+    rooms.push({
+      id: name,
+      name,
+      status: i === 1 ? "occupied" : "available",
+      suitability: ["resus", "adult"],
+      oxygen: true,
+      notes: i === 1 ? "Defib at bedside" : undefined,
+      ...(i === 1
+        ? {
+            occupant: {
+              patientId: "p001",
+              name: "Alex Taylor",
+              ats: 2,
+              ews: 6,
+              since: ago(42),
+            },
+          }
+        : {}),
+    });
+  });
+
+  // 8 Observation rooms: OBS1–OBS8
+  seq(8).forEach((i) => {
+    const name = `OBS${i}`;
+    rooms.push({
+      id: name,
+      name,
+      status: i === 2 ? "occupied" : i === 7 ? "closed" : "available",
+      suitability: ["obs", "adult"],
+      oxygen: true,
+      notes: i === 7 ? "Lighting repair ETA 16:00" : undefined,
+      ...(i === 2
+        ? {
+            occupant: {
+              patientId: "p118",
+              name: "Rose Chen",
+              ats: 3,
+              ews: 3,
+              since: ago(28),
+            },
+          }
+        : {}),
+    });
+  });
+
+  // 2 ISO rooms: ISO1–ISO2
+  seq(2).forEach((i) => {
+    const name = `ISO${i}`;
+    rooms.push({
+      id: name,
+      name,
+      status: i === 2 ? "occupied" : "available",
+      suitability: ["isolation", "adult"],
+      negPressure: true,
+      ...(i === 2
+        ? {
+            occupant: {
+              patientId: "p150",
+              name: "Te Awhina Tai",
+              ats: 3,
+              ews: 3,
+              since: ago(10),
+            },
+          }
+        : {}),
+    });
+  });
+
+  // 10 Lazy‑boy ambulatory chairs: LB1–LB10
+  seq(10).forEach((i) => {
+    const name = `LB${i}`;
+    rooms.push({
+      id: name,
+      name,
+      status: i === 3 ? "occupied" : i === 9 ? "cleaning" : "available",
+      suitability: ["ambulatory", "adult"],
+      notes: "Ambulatory chair",
+      ...(i === 3
+        ? {
+            occupant: {
+              patientId: "p201",
+              name: "Jamie Reid",
+              ats: 4,
+              ews: 0,
+              since: ago(5),
+            },
+          }
+        : {}),
+      ...(i === 9 ? { cleaningEta: inMin(6) } : {}),
+    });
+  });
+
+  return rooms;
+}
+
+export const dunedinRooms: Room[] = buildDunedinRoomSeeds();
+
+// --- Example (wire into existing board) ---
+// import RoomManagementBoard from "../components/RoomManagementBoard";
+// export function DemoDunedinED() {
+//   const [rooms, setRooms] = useState(dunedinRooms);
+//   const [patients, setPatients] = useState(dunedinPatients);
+//   return (
+//     <RoomManagementBoard
+//       rooms={rooms}
+//       patients={patients}
+//       onAssign={(roomId, pid)=>{/* connect to your store */}}
+//       onUnassign={(roomId)=>{/* connect */}}
+//       onMarkClean={(roomId)=>{/* connect */}}
+//       onChangeStatus={(roomId,status)=>{/* connect */}}
+//       onSwap={(a,b)=>{/* connect */}}
+//     />
+//   );
+// }
