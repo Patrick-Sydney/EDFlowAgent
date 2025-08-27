@@ -14,6 +14,7 @@ export type ObsType = "HR" | "BP" | "Temp" | "RR" | "SpO2" | "GCS" | "Pain";
 export interface Observation { id: string; type: ObsType; value: string; unit?: string; takenAt: string; recordedBy: string; phase?: "triage" | "obs"; }
 export interface EwsPoint { t: string; score: number; delta?: number }
 export interface LatestVitals { RR?: number; SpO2?: number; Temp?: number; SBP?: number; HR?: number; }
+export interface CareEvent { t: string; label: string; kind?: 'lactate' | 'cultures' | 'abx' | 'fluids' | string; }
 
 // Import your existing EWS function (adjust the path for your project)
 import { calcEWSFromLatest } from "@/utils/ews";
@@ -89,9 +90,10 @@ export interface VitalsTimelineProps {
   observations: Observation[];
   arrival?: string; // to mark triage window if desired
   showChartDefault?: boolean;
+  events?: CareEvent[]; // clinical care events for timeline
 }
 
-export default function VitalsTimeline({ observations, arrival, showChartDefault = true }: VitalsTimelineProps) {
+export default function VitalsTimeline({ observations, arrival, showChartDefault = true, events }: VitalsTimelineProps) {
   const [showChart, setShowChart] = useState(showChartDefault);
   const [showHR, setShowHR] = useState(true);
   const [showSBP, setShowSBP] = useState(true);
