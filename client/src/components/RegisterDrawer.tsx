@@ -146,6 +146,7 @@ export default function RegisterDrawer() {
                   {/* Age — VitalButton style matching Triage */}
                   <VitalButton 
                     label="Enter Age" 
+                    shortLabel="Age"
                     unit=" years" 
                     value={form.age} 
                     onChange={(v) => onChange("age", v)} 

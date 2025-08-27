@@ -10,6 +10,7 @@ interface VitalButtonProps {
   maxLen?: number;
   min?: number;
   max?: number;
+  shortLabel?: string; // Label to show when value is present
 }
 
 export default function VitalButton({ 
@@ -20,7 +21,8 @@ export default function VitalButton({
   allowDecimal = false, 
   maxLen = 4,
   min = -Infinity,
-  max = Infinity
+  max = Infinity,
+  shortLabel
 }: VitalButtonProps) {
   const [open, setOpen] = useState(false);
   const hasVal = value !== undefined && value !== null && value !== "";
@@ -42,7 +44,7 @@ export default function VitalButton({
         }`}
         data-testid={`button-vital-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
       >
-        {hasVal ? `${label}: ${value}${unit}` : label}
+        {hasVal ? `${shortLabel || label}: ${value}${unit}` : label}
       </button>
       {open && (
         <NumberPad
