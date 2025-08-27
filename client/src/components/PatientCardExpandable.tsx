@@ -337,6 +337,9 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
   const showOrdersTab = role === 'md' && (stage === 'roomed' || stage === 'observation');
   const showDispoTab = role === 'md' && (stage === 'dispo' || encounter.lane === 'ready');
   
+  // Find next observation task from monitoring system
+  const nextObs = tasks.find(t => (/repeat\s*obs/i.test(t.description) || t.description.toLowerCase().includes('observation')) && t.status !== 'done');
+  
   // Intelligent observation cadence from monitoring system
   const obsPolicy = useMemo(() => {
     if (!hasEwsInputs) return null;
@@ -425,8 +428,18 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
                 <QuickBadge icon={<Activity className="h-3 w-3"/>} label={`Last obs ${fmtTime(lastObs.takenAt)}`} />
               )}
               
-              {/* Intelligent observation cadence from monitoring system */}
-              {obsPolicy && (stage === 'roomed' || stage === 'observation') && (
+              {/* Next observation time from monitoring system */}
+              {nextObs && nextObs.dueAt && (stage === 'roomed' || stage === 'observation') && (
+                <QuickBadge 
+                  icon={<Thermometer className="h-3 w-3"/>} 
+                  label={`Next obs ${new Date(nextObs.dueAt).toLocaleTimeString()}`}
+                  className={nextObs.status === 'overdue' ? "bg-red-100" : "bg-blue-100"}
+                  title={`Monitoring task: ${nextObs.description}`}
+                />
+              )}
+              
+              {/* Intelligent observation cadence from monitoring system (fallback) */}
+              {!nextObs && obsPolicy && (stage === 'roomed' || stage === 'observation') && (
                 <QuickBadge 
                   icon={<Thermometer className="h-3 w-3"/>} 
                   label={`Next obs ${obsPolicy.cadenceMinutes}min`}

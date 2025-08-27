@@ -108,7 +108,10 @@ export function ObservationDemo() {
         </div>
         
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          💡 Add vitals and expand the patient card to see intelligent EWS calculation and monitoring cadence!
+          💡 Add vitals and expand the patient card to see:
+          <br />• Intelligent EWS calculation with risk bands
+          <br />• Real next observation times (not just intervals)
+          <br />• Clinical reasoning display
         </div>
       </CardContent>
     </Card>
