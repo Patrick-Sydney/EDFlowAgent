@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { type Encounter, type Lane } from '@shared/schema';
 import { apiRequest } from '@/lib/queryClient';
+import { onNewObservation } from '@/utils/monitoring';
 
 interface TreatmentSpace {
   id: string;
@@ -44,6 +45,7 @@ interface DashboardState {
   setEncounters: (encounters: Encounter[]) => void;
   addEncounter: (encounter: Encounter) => void;
   updateEncounter: (encounter: Encounter) => void;
+  addObservation: (patientId: string, obs: any) => void;
   setConnectionStatus: (connected: boolean) => void;
   setDemoMode: (demoMode: boolean) => void;
   setRoleView: (roleView: string) => void;
@@ -134,6 +136,58 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       ),
       lastUpdate: new Date()
     };
+  }),
+
+  // Intelligent observation management with monitoring system
+  addObservation: (patientId, obs) => set((state) => {
+    const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
+    const patientIndex = current.findIndex(p => p.id === patientId);
+    if (patientIndex === -1) return state;
+
+    const patient = current[patientIndex];
+    
+    // Create mock observations array from triage vitals + new observation
+    const observations = [
+      ...(patient.triageHr ? [{ id: `hr-${patient.id}`, type: "HR" as const, value: patient.triageHr.toString(), unit: "bpm", takenAt: patient.arrivalTime, recordedBy: "Triage" }] : []),
+      ...(patient.triageRr ? [{ id: `rr-${patient.id}`, type: "RR" as const, value: patient.triageRr.toString(), unit: "/min", takenAt: patient.arrivalTime, recordedBy: "Triage" }] : []),
+      ...(patient.triageSpo2 ? [{ id: `spo2-${patient.id}`, type: "SpO2" as const, value: patient.triageSpo2.toString(), unit: "%", takenAt: patient.arrivalTime, recordedBy: "Triage" }] : []),
+      obs
+    ];
+    
+    // Convert Encounter to PatientLite format for monitoring system
+    const patientLite = {
+      id: patient.id,
+      ats: patient.ats as any,
+      observations,
+      tasks: [],
+      flags: { 
+        suspectedSepsis: patient.isolationRequired === "true" 
+      }
+    };
+
+    try {
+      // Use monitoring system to calculate EWS and update tasks
+      const { ews, cadenceMinutes } = onNewObservation(patientLite);
+      
+      // Store the monitoring result in a way that doesn't break the Encounter type
+      const updatedPatient = {
+        ...patient,
+        // Use custom properties that won't conflict with schema
+        _monitoringEws: { score: ews.score, riskLevel: ews.band as any, calculatedAt: new Date().toISOString() },
+        _monitoringCadence: cadenceMinutes,
+        _lastObservation: obs
+      };
+
+      return {
+        encounters: current.map((encounter, i) => 
+          i === patientIndex ? updatedPatient as any : encounter
+        ),
+        lastUpdate: new Date()
+      };
+    } catch (error) {
+      console.error('Monitoring system error:', error);
+      return state; // Return unchanged state if monitoring fails
+    }
   }),
 
   setConnectionStatus: (connected) => set({ isConnected: connected }),

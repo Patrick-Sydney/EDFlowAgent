@@ -2,7 +2,7 @@
 // Focus: derive EWS from latest observations, decide observation cadence, upsert "Repeat obs" task,
 // and provide a light scheduler that flips tasks to overdue. Demo-only; tune policy for your site.
 
-import { calcEWSFromLatest, EwsResult, ACVPU } from "./ews";
+import { calcEWSFromLatest, EwsResult, ACVPU } from "@/utils/ews";
 
 // --- Types kept minimal to avoid tight coupling ---
 export type ATS = 1 | 2 | 3 | 4 | 5;
@@ -49,7 +49,7 @@ export function computeEwsFromObservations(observations: Observation[]) {
 
 // Decide next observation cadence (in minutes) from EWS + ATS + flags
 export function cadenceFrom(ews: EwsResult, ats?: ATS, flags?: PatientLite["flags"]): number {
-  let minutes = MonitoringPolicy.base[ews.band];
+  let minutes = MonitoringPolicy.base[ews.band as keyof typeof MonitoringPolicy.base];
   if (ews.flags.anyThree && minutes > MonitoringPolicy.singleThreeMax) minutes = MonitoringPolicy.singleThreeMax;
   if (ats && MonitoringPolicy.atsCap[ats] && minutes > MonitoringPolicy.atsCap[ats]!) minutes = MonitoringPolicy.atsCap[ats]!;
   if (flags?.suspectedSepsis && minutes > MonitoringPolicy.sepsisCap) minutes = MonitoringPolicy.sepsisCap;

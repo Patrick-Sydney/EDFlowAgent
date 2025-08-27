@@ -11,6 +11,7 @@ import TriageDrawer from "@/components/TriageDrawer";
 import RoomManagementDrawer from "@/components/RoomManagementDrawer";
 import SpaceSummaryBar from "@/components/SpaceSummaryBar";
 import ReceptionView from "@/components/ReceptionView";
+import { ObservationDemo } from "@/components/ObservationDemo";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
@@ -124,6 +125,13 @@ export default function Dashboard() {
         
         {/* Treatment Spaces Summary - for Charge Nurse and Developer views */}
         {(roleView === "charge" || roleView === "developer") && <SpaceSummaryBar />}
+        
+        {/* Temporary monitoring demo - Developer only */}
+        {roleView === "developer" && (
+          <div className="mb-4 flex justify-end">
+            <ObservationDemo />
+          </div>
+        )}
         
         {/* Left-side Register drawer (Reception) */}
         <RegisterDrawer />
