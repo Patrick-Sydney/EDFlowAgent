@@ -29,6 +29,7 @@ import {
 
 import VitalsTimeline, { Observation as Obs, CareEvent } from "@/components/VitalsTimeline";
 import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
+import { buildObsDefaults } from "@/lib/obsDefaults";
 
 // ---------- Types ----------
 export type Role = "reception" | "charge" | "rn" | "md";
