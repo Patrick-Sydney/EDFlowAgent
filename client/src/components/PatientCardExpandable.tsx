@@ -297,7 +297,7 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
               </div>
             </div>
             <div className="text-sm text-muted-foreground truncate">
-              {encounter.complaint} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()} • {encounter.room || encounter.lane}
+              {encounter.complaint} • NHI: {encounter.nhi} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()} • {encounter.room || encounter.lane}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {lastObs && (
