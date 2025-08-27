@@ -305,26 +305,27 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
     }
   ] : [];
   
-  // Progressive disclosure: only show EWS when inputs exist
+  // Progressive disclosure flags - cleaner approach using boolean flags
   const hasEwsInputs = observations.some(o => ['HR', 'BP', 'RR', 'SpO2', 'Temp'].includes(o.type));
-  const showEws = hasEwsInputs && ews.score !== undefined && stage !== 'arrival';
+  const showEwsBadge = stage !== 'arrival' && hasEwsInputs;
+  const showLastObs = stage !== 'arrival';
+  const showTaskBadge = stage !== 'arrival' && tasks.some(t => t.status !== 'done');
+  const showTriageTab = stage === 'triage';
+  const showAssessmentTab = stage === 'roomed' || stage === 'observation' || stage === 'dispo';
+  const showVitalsTab = stage !== 'arrival';
+  const showNotesTab = notes.length > 0 && stage !== 'arrival';
+  const showDiagnosticsTab = diagnostics.length > 0 || (role === 'md' && (stage === 'roomed' || stage === 'observation'));
+  const showTasksTab = tasks.length > 0 || stage !== 'arrival';
+  const showOrdersTab = role === 'md' && (stage === 'roomed' || stage === 'observation');
+  const showDispoTab = role === 'md' && (stage === 'dispo' || encounter.lane === 'ready');
   
-  // Dynamic tabs based on stage and role
-  const availableTabs = useMemo(() => {
-    const permissions = canPerform[role][stage];
-    const tabs = ['overview'];
-    const hasNotes = stage !== 'arrival' && (encounter.triageNotes || stage !== 'arrival');
-    const hasDiagnostics = (encounter.lane === "diagnostics" || encounter.lane === "review");
-    
-    if (stage !== 'arrival') tabs.push('vitals');
-    if (hasNotes) tabs.push('notes');
-    if (hasDiagnostics && permissions.includes('results')) tabs.push('diagnostics');
-    if (permissions.includes('tasks') && (pendingTasks > 0 || stage !== 'arrival')) tabs.push('tasks');
-    if (permissions.includes('orders')) tabs.push('orders');
-    if (permissions.includes('dispo')) tabs.push('disposition');
-    
-    return tabs;
-  }, [stage, role, pendingTasks, encounter.triageNotes, encounter.lane]);
+  // Visual priority ring for high-priority patients
+  const cardRing = useMemo(() => {
+    if (overdueCount > 0 && ews.riskLevel === 'high') return 'ring-2 ring-red-500/40';
+    if (overdueCount > 0) return 'ring-1 ring-amber-400/40';
+    if (ews.riskLevel === 'high') return 'ring-1 ring-red-400/30';
+    return '';
+  }, [overdueCount, ews]);
 
   // Accessibility: expand/collapse with Enter/Space
   const onKeyToggle: React.KeyboardEventHandler<HTMLDivElement> = (e) => {
@@ -335,7 +336,7 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
   };
 
   return (
-    <Card className="w-full border-2 hover:border-primary/50 transition-colors rounded-2xl">
+    <Card className={`w-full border-2 hover:border-primary/50 transition-colors rounded-2xl ${cardRing}`}>
       {/* Header Row (Clickable) */}
       <div
         role="button"
@@ -355,10 +356,13 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
               {/* Only show ATS after triage started */}
               {encounter.ats && <Badge variant="outline">ATS {encounter.ats}</Badge>}
               {/* Only show EWS when computed and past arrival stage */}
-              {showEws && (
+              {showEwsBadge && (
                 <div className={`text-white text-xs px-2 py-1 rounded ${riskColor(ews.riskLevel)}`}>
                   EWS {ews.score}
                 </div>
+              )}
+              {encounter.isolationRequired === "true" && (
+                <QuickBadge icon={<AlertTriangle className="h-3 w-3"/>} label="Isolation" className="bg-red-50" />
               )}
             </div>
             
@@ -385,12 +389,12 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
               )}
               
               {/* Show obs timer for roomed/observation stages */}
-              {(stage === 'roomed' || stage === 'observation') && lastObs && (
+              {showLastObs && lastObs && (
                 <QuickBadge icon={<Activity className="h-3 w-3"/>} label={`Last obs ${fmtTime(lastObs.takenAt)}`} />
               )}
               
               {/* Show tasks only when they exist and relevant */}
-              {stage !== 'arrival' && pendingTasks > 0 && (
+              {showTaskBadge && (
                 <QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${pendingTasks} tasks`} />
               )}
               
@@ -432,23 +436,15 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
           <Separator className="mb-3"/>
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="flex flex-wrap">
-              {availableTabs.map(tab => {
-                const tabConfig = {
-                  overview: { label: 'Overview', icon: <HeartPulse className="h-4 w-4" /> },
-                  vitals: { label: 'Vitals', icon: <Activity className="h-4 w-4" /> },
-                  notes: { label: 'Notes', icon: <FileText className="h-4 w-4" /> },
-                  diagnostics: { label: 'Diagnostics', icon: <TestTubes className="h-4 w-4" /> },
-                  tasks: { label: 'Tasks', icon: <ListChecks className="h-4 w-4" /> },
-                  orders: { label: 'Orders', icon: <Pill className="h-4 w-4" /> },
-                  disposition: { label: 'Disposition', icon: <ClipboardCheck className="h-4 w-4" /> }
-                }[tab] || { label: tab, icon: null };
-                
-                return (
-                  <TabsTrigger key={tab} value={tab} data-testid={`tab-${tab}-${encounter.id}`}>
-                    {tabConfig.label}
-                  </TabsTrigger>
-                );
-              })}
+              <TabsTrigger value="overview" data-testid={`tab-overview-${encounter.id}`}>Overview</TabsTrigger>
+              {showTriageTab && <TabsTrigger value="triage" data-testid={`tab-triage-${encounter.id}`}>Triage</TabsTrigger>}
+              {showAssessmentTab && <TabsTrigger value="assessment" data-testid={`tab-assessment-${encounter.id}`}>Assessment</TabsTrigger>}
+              {showVitalsTab && <TabsTrigger value="vitals" data-testid={`tab-vitals-${encounter.id}`}>Vitals</TabsTrigger>}
+              {showNotesTab && <TabsTrigger value="notes" data-testid={`tab-notes-${encounter.id}`}>Notes</TabsTrigger>}
+              {showDiagnosticsTab && <TabsTrigger value="diagnostics" data-testid={`tab-diagnostics-${encounter.id}`}>Diagnostics</TabsTrigger>}
+              {showTasksTab && <TabsTrigger value="tasks" data-testid={`tab-tasks-${encounter.id}`}>Tasks</TabsTrigger>}
+              {showOrdersTab && <TabsTrigger value="orders" data-testid={`tab-orders-${encounter.id}`}>Quick Orders</TabsTrigger>}
+              {showDispoTab && <TabsTrigger value="disposition" data-testid={`tab-disposition-${encounter.id}`}>Disposition</TabsTrigger>}
             </TabsList>
 
             {/* OVERVIEW */}
@@ -492,75 +488,82 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
             </TabsContent>
 
             {/* TRIAGE */}
-            <TabsContent value="triage">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Stethoscope className="h-4 w-4"/>Triage Summary</CardTitle></CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div><strong>ATS:</strong> {encounter.ats}</div>
-                  <div><strong>Chief complaint:</strong> {encounter.complaint}</div>
-                  <div><strong>Arrived:</strong> {new Date(encounter.arrivalTime).toLocaleString()}</div>
-                  {encounter.triageNotes && <div><strong>Notes:</strong> {encounter.triageNotes}</div>}
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {showTriageTab && (
+              <TabsContent value="triage">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Stethoscope className="h-4 w-4"/>Triage Summary</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div><strong>ATS:</strong> {encounter.ats}</div>
+                    <div><strong>Chief complaint:</strong> {encounter.complaint}</div>
+                    <div><strong>Arrived:</strong> {new Date(encounter.arrivalTime).toLocaleString()}</div>
+                    {encounter.triageNotes && <div><strong>Notes:</strong> {encounter.triageNotes}</div>}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
             {/* ASSESSMENT */}
-            <TabsContent value="assessment">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Assessment</CardTitle></CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                  <div>
-                    <Label>History</Label>
-                    <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
-                  </div>
-                  <div>
-                    <Label>Exam</Label>
-                    <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
-                  </div>
-                  <div>
-                    <Label>Impression</Label>
-                    <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {showAssessmentTab && (
+              <TabsContent value="assessment">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Assessment</CardTitle></CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <Label>History</Label>
+                      <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
+                    </div>
+                    <div>
+                      <Label>Exam</Label>
+                      <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
+                    </div>
+                    <div>
+                      <Label>Impression</Label>
+                      <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
             {/* VITALS */}
-            <TabsContent value="vitals">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Thermometer className="h-4 w-4"/>Observations Timeline</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="text-sm text-muted-foreground mb-2">(Chart placeholder – plot HR, BP, Temp, RR, SpO₂ vs time)</div>
-                  <div className="rounded-md border">
-                    <div className="grid grid-cols-6 gap-2 px-3 py-2 text-xs font-semibold bg-muted/50">
-                      <div>Time</div><div>Type</div><div>Value</div><div>Unit</div><div>Recorder</div><div>EWS Δ</div>
+            {showVitalsTab && (
+              <TabsContent value="vitals">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Thermometer className="h-4 w-4"/>Observations Timeline</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="text-sm text-muted-foreground mb-2">(Chart placeholder – plot HR, BP, Temp, RR, SpO₂ vs time)</div>
+                    <div className="rounded-md border">
+                      <div className="grid grid-cols-6 gap-2 px-3 py-2 text-xs font-semibold bg-muted/50">
+                        <div>Time</div><div>Type</div><div>Value</div><div>Unit</div><div>Recorder</div><div>EWS Δ</div>
+                      </div>
+                      <ScrollArea className="max-h-60">
+                        <ul>
+                          {observations.slice().sort((a,b)=>b.takenAt.localeCompare(a.takenAt)).map(o => (
+                            <li key={o.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm border-t" data-testid={`observation-${o.id}`}>
+                              <div>{fmtTime(o.takenAt)}</div>
+                              <div>{o.type}</div>
+                              <div>{o.value}</div>
+                              <div>{o.unit ?? ""}</div>
+                              <div>{o.recordedBy}</div>
+                              <div>—</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </ScrollArea>
                     </div>
-                    <ScrollArea className="max-h-60">
-                      <ul>
-                        {observations.slice().sort((a,b)=>b.takenAt.localeCompare(a.takenAt)).map(o => (
-                          <li key={o.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm border-t" data-testid={`observation-${o.id}`}>
-                            <div>{fmtTime(o.takenAt)}</div>
-                            <div>{o.type}</div>
-                            <div>{o.value}</div>
-                            <div>{o.unit ?? ""}</div>
-                            <div>{o.recordedBy}</div>
-                            <div>—</div>
-                          </li>
-                        ))}
-                      </ul>
-                    </ScrollArea>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
             {/* NOTES */}
-            <TabsContent value="notes">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Notes</CardTitle></CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {notes.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(n => (
+            {showNotesTab && (
+              <TabsContent value="notes">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Notes</CardTitle></CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {notes.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(n => (
                       <li key={n.id} className="rounded-md border p-2" data-testid={`note-${n.id}`}>
                         <div className="text-xs text-muted-foreground">{n.author} • {n.authorRole} • {new Date(n.createdAt).toLocaleString()}</div>
                         <div className="text-sm whitespace-pre-wrap mt-1">{n.body}</div>
@@ -574,9 +577,11 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
                 </CardFooter>
               </Card>
             </TabsContent>
+            )}
 
             {/* DIAGNOSTICS */}
-            <TabsContent value="diagnostics">
+            {showDiagnosticsTab && (
+              <TabsContent value="diagnostics">
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><TestTubes className="h-4 w-4"/>Diagnostics</CardTitle></CardHeader>
                 <CardContent>
@@ -602,32 +607,35 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
                 </CardContent>
               </Card>
             </TabsContent>
+            )}
 
             {/* TASKS */}
-            <TabsContent value="tasks">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><ClipboardCheck className="h-4 w-4"/>Task Board</CardTitle></CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {tasks.map(t => (
-                      <li key={t.id} className="flex items-center justify-between rounded-md border p-2" data-testid={`task-detail-${t.id}`}>
-                        <div className="min-w-0">
-                          <div className="text-sm truncate">{t.description}</div>
-                          <div className="text-xs text-muted-foreground">Due {fmtTime(t.dueAt)} • {t.source}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {statusBadge(t.status)}
-                          <Button size="sm" variant="outline" onClick={()=>onMarkTask?.(encounter.id, t.id, t.status === 'done' ? 'pending' : 'done')} data-testid={`button-task-detail-${t.id}`}>{t.status==='done' ? 'Undo' : 'Done'}</Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {showTasksTab && (
+              <TabsContent value="tasks">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><ClipboardCheck className="h-4 w-4"/>Task Board</CardTitle></CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {tasks.map(t => (
+                        <li key={t.id} className="flex items-center justify-between rounded-md border p-2" data-testid={`task-detail-${t.id}`}>
+                          <div className="min-w-0">
+                            <div className="text-sm truncate">{t.description}</div>
+                            <div className="text-xs text-muted-foreground">Due {fmtTime(t.dueAt)} • {t.source}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {statusBadge(t.status)}
+                            <Button size="sm" variant="outline" onClick={()=>onMarkTask?.(encounter.id, t.id, t.status === 'done' ? 'pending' : 'done')} data-testid={`button-task-detail-${t.id}`}>{t.status==='done' ? 'Undo' : 'Done'}</Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
 
             {/* MD‑ONLY: QUICK ORDERS */}
-            {role === "md" && (
+            {showOrdersTab && (
               <TabsContent value="orders">
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Pill className="h-4 w-4"/>Quick Order Sets</CardTitle></CardHeader>
@@ -641,8 +649,8 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
             )}
 
             {/* MD‑ONLY: DISPOSITION */}
-            {role === "md" && (
-              <TabsContent value="dispo">
+            {showDispoTab && (
+              <TabsContent value="disposition">
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><XCircle className="h-4 w-4"/>Disposition</CardTitle></CardHeader>
                   <CardContent className="flex flex-wrap gap-2">
