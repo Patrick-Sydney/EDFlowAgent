@@ -1,5 +1,7 @@
 import { type Lane, type Encounter } from "@shared/schema";
 import { PatientCard } from "./PatientCard";
+import PatientCardExpandable, { type Role } from "./PatientCardExpandable";
+import { useDashboardStore } from "@/stores/dashboardStore";
 import { Clock, Stethoscope, DoorOpen, Search, UserCheck, ClipboardCheck, LogOut } from "lucide-react";
 
 interface PatientLaneProps {
@@ -55,6 +57,12 @@ const laneConfig = {
 export function PatientLane({ lane, encounters }: PatientLaneProps) {
   const config = laneConfig[lane];
   const Icon = config.icon;
+  const roleView = useDashboardStore((state) => state.roleView);
+  
+  // Map roleView to Role type
+  const role: Role = (roleView === "reception" || roleView === "charge" || roleView === "rn" || roleView === "md") 
+    ? roleView as Role 
+    : "charge";
 
   return (
     <div className="lane-container" style={{ minWidth: '280px' }} data-testid={`lane-${lane}`}>
@@ -79,7 +87,15 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
             </div>
           ) : (
             encounters.map(encounter => (
-              <PatientCard key={encounter.id} encounter={encounter} />
+              <PatientCardExpandable 
+                key={encounter.id} 
+                encounter={encounter} 
+                role={role}
+                onOpenChart={(patientId) => console.log("Open chart for", patientId)}
+                onMarkTask={(patientId, taskId, status) => console.log("Mark task", taskId, "as", status, "for", patientId)}
+                onOrderSet={(patientId, setName) => console.log("Order", setName, "set for", patientId)}
+                onDisposition={(patientId, disp) => console.log("Set disposition", disp, "for", patientId)}
+              />
             ))
           )}
         </div>
