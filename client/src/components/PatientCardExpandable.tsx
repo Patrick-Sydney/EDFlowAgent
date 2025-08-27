@@ -43,6 +43,8 @@ import {
   MonitoringPolicy,
   type PatientLite 
 } from "../utils/monitoring";
+import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
+import { buildObsDefaults } from "@/lib/obsDefaults";
 // Import advanced vitals timeline with charting
 import VitalsTimeline from "@/components/VitalsTimeline";
 
@@ -317,11 +319,13 @@ const QuickBadge: React.FC<{ label: string; className?: string; title?: string; 
 
 export default function PatientCardExpandable({ role, encounter, onOpenChart, onMarkTask, onOrderSet, onDisposition, onStartTriage, onAssignRoom, availableRooms }: PatientCardExpandableProps) {
   const [expanded, setExpanded] = useState(false);
+  const [obsOpen, setObsOpen] = useState(false);
   
   const stage = useMemo(() => stageFor(encounter), [encounter]);
   const lane = useMemo(() => deriveLane(encounter.room || encounter.lane), [encounter.room, encounter.lane]);
   const observations = useMemo(() => encounterToObservations(encounter), [encounter]);
   const ews = useMemo(() => calculateEWS(observations), [observations]);
+  const defaults = useMemo(() => buildObsDefaults(observations as any), [observations]);
   const tasks = useMemo(() => {
     // Use monitoring tasks if available, otherwise generate mock tasks
     const monitoringTasks = (encounter as any)._monitoringTasks || [];
@@ -499,6 +503,10 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
           {/* Progressive disclosure actions - max 2 primary actions per stage */}
           {stage === 'arrival' && (role === 'rn' || role === 'charge') && (
             <Button size="sm" onClick={(e)=>{ e.stopPropagation(); onStartTriage?.(encounter.id); }} data-testid={`button-start-triage-${encounter.id}`}>Start Triage</Button>
+          )}
+          
+          {(role === 'rn' || role === 'charge') && (
+            <Button size="sm" variant="outline" onClick={(e)=>{ e.stopPropagation(); setObsOpen(true); }} data-testid={`button-add-obs-${encounter.id}`}>+ Obs</Button>
           )}
           
           {stage === 'triage' && role === 'charge' && (
@@ -751,6 +759,20 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
           </Tabs>
         </div>
       )}
+      
+      {/* Touch-optimized Observation Modal */}
+      <ObservationSetModalTouch
+        open={obsOpen}
+        onOpenChange={setObsOpen}
+        patientName={`${encounter.name} • ${encounter.age} ${encounter.sex}`}
+        recorder={role.toUpperCase()}
+        isTriage={stage === 'triage'}
+        defaults={defaults}
+        onSave={(observations: TouchObservation[]) => {
+          console.log("Add observations for", encounter.id, observations);
+          // TODO: Integrate with your store/API to save observations
+        }}
+      />
     </Card>
   );
 }
