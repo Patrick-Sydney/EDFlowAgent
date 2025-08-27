@@ -172,6 +172,11 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
 
   const lastObs = useMemo(() => patient.observations.slice().sort((a,b)=>a.takenAt.localeCompare(b.takenAt)).at(-1), [patient.observations]);
   const overdueCount = useMemo(() => patient.tasks.filter(t=>t.status==='overdue').length, [patient.tasks]);
+  
+  const defaults = useMemo(
+    () => buildObsDefaults(patient.observations as any),
+    [patient.observations]
+  );
 
   const showEwsBadge = stage !== 'arrival' && ['HR','BP','Temp','RR','SpO2'].every(k => patient.observations.some(o=>o.type===k));
   const showLastObs = stage !== 'arrival';
