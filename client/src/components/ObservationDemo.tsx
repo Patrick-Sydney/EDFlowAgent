@@ -10,11 +10,8 @@ import { Activity, Thermometer } from "lucide-react";
 export function ObservationDemo() {
   const { encounters, addObservation } = useDashboardStore();
   
-  console.log('ObservationDemo rendering, encounters count:', encounters?.length);
-  
   // Find a patient in roomed stage for demo, prefer Alex Taylor
   const demoPatient = encounters.find(e => e.name === 'Alex Taylor') || encounters.find(e => e.lane === 'roomed');
-  console.log('Demo patient found:', demoPatient?.name, demoPatient?.id);
   
   if (!demoPatient) {
     return (
@@ -35,8 +32,6 @@ export function ObservationDemo() {
   }
   
   const addHighRiskVitals = () => {
-    console.log('🔴 HIGH RISK BUTTON CLICKED!');
-    console.log('Adding high-risk vitals for patient:', demoPatient.name, demoPatient.id);
     const timestamp = new Date().toISOString();
     
     // Add high-risk vitals that should trigger frequent monitoring
@@ -49,15 +44,11 @@ export function ObservationDemo() {
     ];
     
     observations.forEach(obs => {
-      console.log('Adding observation:', obs);
       addObservation(demoPatient.id, obs);
     });
-    console.log('High-risk vitals added. Check patient card for updates.');
   };
   
   const addNormalVitals = () => {
-    console.log('🟢 NORMAL VITALS BUTTON CLICKED!');
-    console.log('Adding normal vitals for patient:', demoPatient.name, demoPatient.id);
     const timestamp = new Date().toISOString();
     
     // Add normal vitals that should trigger routine monitoring
@@ -70,10 +61,8 @@ export function ObservationDemo() {
     ];
     
     observations.forEach(obs => {
-      console.log('Adding observation:', obs);
       addObservation(demoPatient.id, obs);
     });
-    console.log('Normal vitals added. Check patient card for updates.');
   };
   
   return (

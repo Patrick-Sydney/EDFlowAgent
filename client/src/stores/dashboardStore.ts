@@ -174,14 +174,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
 
   // Intelligent observation management with monitoring system
   addObservation: (patientId, obs) => set((state) => {
-    console.log('addObservation called with:', { patientId, obs });
     const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
     const patientIndex = current.findIndex(p => p.id === patientId);
-    console.log('Patient found at index:', patientIndex);
-    if (patientIndex === -1) {
-      console.log('Patient not found!');
-      return state;
-    }
+    if (patientIndex === -1) return state;
 
     const patient = current[patientIndex];
     
@@ -207,16 +202,19 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     try {
       // Use monitoring system to calculate EWS and update tasks
       const { ews, cadenceMinutes, tasks } = onNewObservation(patientLite);
-      console.log('Monitoring system result:', { ews, cadenceMinutes, tasksCount: tasks.length });
       
-      // Store the monitoring result in a way that doesn't break the Encounter type
+      // Store the monitoring result and build comprehensive observation history
+      const existingObservations = (patient as any)._observationHistory || [];
+      const updatedObservations = [...existingObservations, obs];
+      
       const updatedPatient = {
         ...patient,
         // Use custom properties that won't conflict with schema
         _monitoringEws: { score: ews.score, riskLevel: ews.band as any, calculatedAt: new Date().toISOString() },
         _monitoringCadence: cadenceMinutes,
         _monitoringTasks: tasks,
-        _lastObservation: obs
+        _lastObservation: obs,
+        _observationHistory: updatedObservations
       };
 
       return {

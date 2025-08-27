@@ -125,18 +125,42 @@ const ewsToRisk = (score: number): EWS["riskLevel"] => {
   return "low";
 };
 
-// Convert Encounter to observations
+// Convert Encounter to observations including both triage vitals and additional observations from journey
 const encounterToObservations = (encounter: Encounter): Observation[] => {
   const observations: Observation[] = [];
-  const timestamp = new Date(encounter.arrivalTime).toISOString();
+  const triageTimestamp = new Date(encounter.arrivalTime).toISOString();
   
-  if (encounter.triageHr) observations.push({ id: `hr-${encounter.id}`, type: "HR", value: encounter.triageHr.toString(), unit: "bpm", takenAt: timestamp, recordedBy: "Triage" });
-  if (encounter.triageRr) observations.push({ id: `rr-${encounter.id}`, type: "RR", value: encounter.triageRr.toString(), unit: "/min", takenAt: timestamp, recordedBy: "Triage" });
-  if (encounter.triageBpSys && encounter.triageBpDia) observations.push({ id: `bp-${encounter.id}`, type: "BP", value: `${encounter.triageBpSys}/${encounter.triageBpDia}`, unit: "mmHg", takenAt: timestamp, recordedBy: "Triage" });
-  if (encounter.triageTemp) observations.push({ id: `temp-${encounter.id}`, type: "Temp", value: encounter.triageTemp.toString(), unit: "°C", takenAt: timestamp, recordedBy: "Triage" });
-  if (encounter.triageSpo2) observations.push({ id: `spo2-${encounter.id}`, type: "SpO2", value: encounter.triageSpo2.toString(), unit: "%", takenAt: timestamp, recordedBy: "Triage" });
+  // Add triage vitals (original vitals from ED arrival/triage process)
+  if (encounter.triageHr) observations.push({ id: `hr-triage-${encounter.id}`, type: "HR", value: encounter.triageHr.toString(), unit: "bpm", takenAt: triageTimestamp, recordedBy: "Triage" });
+  if (encounter.triageRr) observations.push({ id: `rr-triage-${encounter.id}`, type: "RR", value: encounter.triageRr.toString(), unit: "/min", takenAt: triageTimestamp, recordedBy: "Triage" });
+  if (encounter.triageBpSys && encounter.triageBpDia) observations.push({ id: `bp-triage-${encounter.id}`, type: "BP", value: `${encounter.triageBpSys}/${encounter.triageBpDia}`, unit: "mmHg", takenAt: triageTimestamp, recordedBy: "Triage" });
+  if (encounter.triageTemp) observations.push({ id: `temp-triage-${encounter.id}`, type: "Temp", value: encounter.triageTemp.toString(), unit: "°C", takenAt: triageTimestamp, recordedBy: "Triage" });
+  if (encounter.triageSpo2) observations.push({ id: `spo2-triage-${encounter.id}`, type: "SpO2", value: encounter.triageSpo2.toString(), unit: "%", takenAt: triageTimestamp, recordedBy: "Triage" });
+  if (encounter.triagePain) observations.push({ id: `pain-triage-${encounter.id}`, type: "Pain", value: encounter.triagePain.toString(), unit: "/10", takenAt: triageTimestamp, recordedBy: "Triage" });
   
-  return observations;
+  // Add comprehensive observation history from patient journey
+  const observationHistory = (encounter as any)._observationHistory;
+  if (observationHistory && Array.isArray(observationHistory)) {
+    observationHistory.forEach((obs: any) => {
+      if (obs.type && obs.value && obs.takenAt) {
+        observations.push({
+          id: obs.id,
+          type: obs.type,
+          value: obs.value,
+          unit: obs.unit || "",
+          takenAt: obs.takenAt,
+          recordedBy: obs.recordedBy || "Staff"
+        });
+      }
+    });
+  }
+  
+  // Remove duplicates based on ID
+  const uniqueObservations = observations.filter((obs, index, self) => 
+    index === self.findIndex(o => o.id === obs.id)
+  );
+  
+  return uniqueObservations;
 };
 
 // Calculate EWS from vital signs using sophisticated monitoring system
@@ -612,26 +636,86 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Thermometer className="h-4 w-4"/>Observations Timeline</CardTitle></CardHeader>
                   <CardContent>
-                    <div className="text-sm text-muted-foreground mb-2">(Chart placeholder – plot HR, BP, Temp, RR, SpO₂ vs time)</div>
-                    <div className="rounded-md border">
-                      <div className="grid grid-cols-6 gap-2 px-3 py-2 text-xs font-semibold bg-muted/50">
-                        <div>Time</div><div>Type</div><div>Value</div><div>Unit</div><div>Recorder</div><div>EWS Δ</div>
+                    {observations.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Thermometer className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No observations recorded yet</p>
+                        <p className="text-xs mt-1">Vitals will appear here as they're captured throughout the patient journey</p>
                       </div>
-                      <ScrollArea className="max-h-60">
-                        <ul>
-                          {observations.slice().sort((a,b)=>b.takenAt.localeCompare(a.takenAt)).map(o => (
-                            <li key={o.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm border-t" data-testid={`observation-${o.id}`}>
-                              <div>{fmtTime(o.takenAt)}</div>
-                              <div>{o.type}</div>
-                              <div>{o.value}</div>
-                              <div>{o.unit ?? ""}</div>
-                              <div>{o.recordedBy}</div>
-                              <div>—</div>
-                            </li>
-                          ))}
-                        </ul>
-                      </ScrollArea>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                          <Activity className="h-4 w-4" />
+                          <span>{observations.length} observations across patient journey • Latest EWS: {ews.score} ({ews.riskLevel})</span>
+                        </div>
+                        <div className="rounded-md border">
+                          <div className="grid grid-cols-7 gap-2 px-3 py-2 text-xs font-semibold bg-muted/50">
+                            <div>Time</div><div>Type</div><div>Value</div><div>Unit</div><div>Recorder</div><div>Stage</div><div>Trend</div>
+                          </div>
+                          <ScrollArea className="max-h-80">
+                            <ul>
+                              {observations.slice().sort((a,b)=>b.takenAt.localeCompare(a.takenAt)).map((o, index) => {
+                                const isRecent = index === 0;
+                                const isTriage = o.recordedBy === "Triage";
+                                const stageBadge = isTriage ? "Triage" : o.recordedBy === "Demo" ? "Demo" : "Journey";
+                                const stageColor = isTriage ? "bg-blue-100 text-blue-800" : o.recordedBy === "Demo" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800";
+                                
+                                return (
+                                  <li key={o.id} className={`grid grid-cols-7 gap-2 px-3 py-2 text-sm border-t ${
+                                    isRecent ? "bg-blue-50" : ""
+                                  }`} data-testid={`observation-${o.id}`}>
+                                    <div className="flex items-center gap-1">
+                                      {isRecent && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
+                                      <span className={isRecent ? "font-medium" : ""}>{fmtTime(o.takenAt)}</span>
+                                    </div>
+                                    <div className={`flex items-center gap-1 ${isRecent ? "font-medium" : ""}`}>
+                                      {o.type === "HR" && <HeartPulse className="h-3 w-3" />}
+                                      {o.type === "BP" && <Activity className="h-3 w-3" />}
+                                      {o.type === "Temp" && <Thermometer className="h-3 w-3" />}
+                                      {o.type === "RR" && <Activity className="h-3 w-3" />}
+                                      {o.type === "SpO2" && <Activity className="h-3 w-3" />}
+                                      {o.type === "Pain" && <AlertTriangle className="h-3 w-3" />}
+                                      {o.type}
+                                    </div>
+                                    <div className={isRecent ? "font-medium" : ""}>{o.value}</div>
+                                    <div className="text-muted-foreground">{o.unit ?? ""}</div>
+                                    <div className={isRecent ? "font-medium" : ""}>{o.recordedBy}</div>
+                                    <div>
+                                      <span className={`px-1.5 py-0.5 rounded-full text-xs ${stageColor}`}>
+                                        {stageBadge}
+                                      </span>
+                                    </div>
+                                    <div className="text-center">
+                                      {index < observations.length - 1 ? (
+                                        <div className="text-xs text-muted-foreground">↑</div>
+                                      ) : (
+                                        <div className="text-xs text-muted-foreground">—</div>
+                                      )}
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </ScrollArea>
+                        </div>
+                        <div className="mt-3 p-3 bg-muted/50 rounded text-xs text-muted-foreground">
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                              <span>Most recent</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="px-1.5 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">Triage</span>
+                              <span>Initial assessment</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-800">Journey</span>
+                              <span>Follow-up observations</span>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
