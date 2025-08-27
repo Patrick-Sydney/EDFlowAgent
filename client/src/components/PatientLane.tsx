@@ -1,6 +1,6 @@
 import { type Lane, type Encounter } from "@shared/schema";
 import { PatientCard } from "./PatientCard";
-import PatientCardExpandable, { type Role } from "./PatientCardExpandable";
+import PatientCardExpandableV3, { type Role } from "./PatientCardExpandableV3";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { Clock, Stethoscope, DoorOpen, Search, UserCheck, ClipboardCheck, LogOut } from "lucide-react";
 
@@ -89,21 +89,24 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
             </div>
           ) : (
             encounters.map(encounter => (
-              <PatientCardExpandable 
+              <PatientCardExpandableV3 
                 key={encounter.id} 
-                encounter={encounter} 
+                patient={encounter as any} 
                 role={role}
-                onOpenChart={(patientId) => console.log("Open chart for", patientId)}
-                onMarkTask={(patientId, taskId, status) => console.log("Mark task", taskId, "as", status, "for", patientId)}
-                onOrderSet={(patientId, setName) => console.log("Order", setName, "set for", patientId)}
-                onDisposition={(patientId, disp) => console.log("Set disposition", disp, "for", patientId)}
-                onStartTriage={(patientId) => {
+                onOpenChart={(patientId: string) => console.log("Open chart for", patientId)}
+                onMarkTask={(patientId: string, taskId: string, status: any) => console.log("Mark task", taskId, "as", status, "for", patientId)}
+                onOrderSet={(patientId: string, setName: any) => console.log("Order", setName, "set for", patientId)}
+                onDisposition={(patientId: string, disp: any) => console.log("Set disposition", disp, "for", patientId)}
+                onStartTriage={(patientId: string) => {
                   const patient = encounters.find(e => e.id === patientId);
                   if (patient) openTriage(patient);
                 }}
-                onAssignRoom={(patientId, roomId) => {
+                onAssignRoom={(patientId: string, roomId: string) => {
                   const patient = encounters.find(e => e.id === patientId);
                   if (patient) openRoom(patient);
+                }}
+                onAddObservations={(patientId: string, observations: any[]) => {
+                  console.log("Add observations for", patientId, observations);
                 }}
               />
             ))

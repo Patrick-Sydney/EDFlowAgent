@@ -129,7 +129,7 @@ function buildSepsisEvents(p: PatientFull): CareEvent[] {
     events.push({ t: t ?? fallback, label, kind });
   };
   // Diagnostics
-  p.diagnostics.forEach(d => {
+  (p.diagnostics || []).forEach(d => {
     const name = d.name.toLowerCase();
     if (name.includes('lactate')) {
       push(d.orderedAt, 'Lactate', 'lactate');
@@ -138,7 +138,7 @@ function buildSepsisEvents(p: PatientFull): CareEvent[] {
     if (name.includes('blood culture')) push(d.orderedAt, 'Cultures', 'cultures');
   });
   // Tasks
-  p.tasks.forEach(t => {
+  (p.tasks || []).forEach(t => {
     const s = t.description.toLowerCase();
     if (/(antibiotic|antibiotics|abx)/.test(s)) push(t.dueAt, 'ABX', 'abx');
     if (/(fluid|bolus)/.test(s)) push(t.dueAt, 'Fluids', 'fluids');
@@ -170,23 +170,23 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
   const lane = useMemo(() => deriveLane(patient.location), [patient.location]);
   const stage = useMemo(() => stageFor(patient), [patient]);
 
-  const lastObs = useMemo(() => patient.observations.slice().sort((a,b)=>a.takenAt.localeCompare(b.takenAt)).at(-1), [patient.observations]);
-  const overdueCount = useMemo(() => patient.tasks.filter(t=>t.status==='overdue').length, [patient.tasks]);
+  const lastObs = useMemo(() => patient.observations?.slice().sort((a,b)=>a.takenAt.localeCompare(b.takenAt)).at(-1), [patient.observations]);
+  const overdueCount = useMemo(() => patient.tasks?.filter(t=>t.status==='overdue').length || 0, [patient.tasks]);
   
   const defaults = useMemo(
-    () => buildObsDefaults(patient.observations as any),
+    () => buildObsDefaults((patient.observations || []) as any),
     [patient.observations]
   );
 
-  const showEwsBadge = stage !== 'arrival' && ['HR','BP','Temp','RR','SpO2'].every(k => patient.observations.some(o=>o.type===k));
+  const showEwsBadge = stage !== 'arrival' && ['HR','BP','Temp','RR','SpO2'].every(k => patient.observations?.some(o=>o.type===k));
   const showLastObs = stage !== 'arrival';
-  const showTaskBadge = stage !== 'arrival' && patient.tasks.some(t=>t.status!=='done');
+  const showTaskBadge = stage !== 'arrival' && patient.tasks?.some(t=>t.status!=='done');
 
   // Alert ladder ring
   const cardRing = useMemo(() => {
-    if (overdueCount>0 && patient.ews.riskLevel==='high') return 'ring-2 ring-red-500/40';
+    if (overdueCount>0 && patient.ews?.riskLevel==='high') return 'ring-2 ring-red-500/40';
     if (overdueCount>0) return 'ring-1 ring-amber-400/40';
-    if (patient.ews.riskLevel==='high') return 'ring-1 ring-red-400/30';
+    if (patient.ews?.riskLevel==='high') return 'ring-1 ring-red-400/30';
     return '';
   }, [overdueCount, patient.ews]);
 
@@ -242,13 +242,13 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
             <div className="flex items-center gap-2">
               <CardTitle className="text-lg truncate">{patient.name} <span className="text-muted-foreground">• {patient.age} {patient.sex}</span></CardTitle>
               {patient.ats ? <Badge variant="outline">ATS {patient.ats}</Badge> : null}
-              {showEwsBadge && (<div className={`text-white text-xs px-2 py-1 rounded ${riskColor(patient.ews.riskLevel)}`}>EWS {patient.ews.score}</div>)}
+              {showEwsBadge && patient.ews && (<div className={`text-white text-xs px-2 py-1 rounded ${riskColor(patient.ews.riskLevel)}`}>EWS {patient.ews.score}</div>)}
               {patient.covid && <QuickBadge label={`COVID ${patient.covid.toUpperCase()}`} className="bg-red-50" />}
             </div>
             <div className="text-sm text-muted-foreground truncate">{patient.chiefComplaint}{stage!=='arrival' && <> • Arrived {new Date(patient.arrival).toLocaleTimeString()}</>} • {patient.location}</div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {showLastObs && lastObs && (<QuickBadge icon={<Activity className="h-3 w-3"/>} label={`Last obs ${fmtTime(lastObs.takenAt)}`} />)}
-              {showTaskBadge && (<QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${patient.tasks.filter(t=>t.status==='pending').length} tasks`} />)}
+              {showTaskBadge && (<QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${(patient.tasks || []).filter(t=>t.status==='pending').length} tasks`} />)}
               {overdueCount>0 && (<QuickBadge icon={<Bell className="h-3 w-3"/>} className="bg-red-100" label={`${overdueCount} overdue`} />)}
             </div>
           </div>
@@ -270,9 +270,9 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
               {stage==='triage' && <TabsTrigger value="triage">Triage</TabsTrigger>}
               {(stage==='roomed' || stage==='observation' || stage==='dispo') && <TabsTrigger value="assessment">Assessment</TabsTrigger>}
               {stage!=='arrival' && <TabsTrigger value="vitals">Vitals</TabsTrigger>}
-              {patient.notes.length>0 && <TabsTrigger value="notes">Notes</TabsTrigger>}
-              {(patient.diagnostics.length>0 || role==='md') && <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>}
-              {(patient.tasks.length>0 || stage!=='arrival') && <TabsTrigger value="tasks">Tasks</TabsTrigger>}
+              {(patient.notes?.length || 0)>0 && <TabsTrigger value="notes">Notes</TabsTrigger>}
+              {((patient.diagnostics?.length || 0)>0 || role==='md') && <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>}
+              {((patient.tasks?.length || 0)>0 || stage!=='arrival') && <TabsTrigger value="tasks">Tasks</TabsTrigger>}
               {role === "md" && (stage==='roomed' || stage==='observation') && <TabsTrigger value="orders">Quick Orders</TabsTrigger>}
               {role === "md" && patient.readyForDisposition && <TabsTrigger value="dispo">Disposition</TabsTrigger>}
             </TabsList>
@@ -285,8 +285,12 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
                   <CardContent>
                     {showEwsBadge ? (
                       <div className="flex items-center gap-3">
-                        <div className={`text-white rounded-lg px-3 py-2 ${riskColor(patient.ews.riskLevel)}`}>EWS {patient.ews.score}</div>
-                        <div className="text-sm text-muted-foreground">as of {fmtTime(patient.ews.calculatedAt)}</div>
+                        {patient.ews && (
+                          <>
+                            <div className={`text-white rounded-lg px-3 py-2 ${riskColor(patient.ews.riskLevel)}`}>EWS {patient.ews.score}</div>
+                            <div className="text-sm text-muted-foreground">as of {fmtTime(patient.ews.calculatedAt)}</div>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <div className="text-sm text-muted-foreground">EWS will appear after core vitals are captured.</div>
@@ -299,7 +303,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
                   <CardContent>
                     <ScrollArea className="h-40 pr-2">
                       <ul className="space-y-2">
-                        {patient.tasks.map(t => (
+                        {(patient.tasks || []).map(t => (
                           <li key={t.id} className="flex items-center justify-between rounded-md border p-2">
                             <div className="min-w-0">
                               <div className="text-sm truncate">{t.description}</div>
@@ -358,7 +362,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
 
             {/* VITALS */}
             <TabsContent value="vitals">
-              <VitalsTimeline observations={patient.observations} arrival={patient.arrival} events={buildSepsisEvents(patient)} />
+              <VitalsTimeline observations={patient.observations || []} arrival={patient.arrival} events={buildSepsisEvents(patient)} />
             </TabsContent>
 
             {/* NOTES */}
@@ -367,7 +371,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Notes</CardTitle></CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {patient.notes.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(n => (
+                    {(patient.notes || []).slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(n => (
                       <li key={n.id} className="rounded-md border p-2">
                         <div className="text-xs text-muted-foreground">{n.author} • {n.authorRole} • {new Date(n.createdAt).toLocaleString()}</div>
                         <div className="text-sm whitespace-pre-wrap mt-1">{n.body}</div>
@@ -389,7 +393,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
                     </div>
                     <ScrollArea className="max-h-56">
                       <ul>
-                        {patient.diagnostics.map(d => (
+                        {(patient.diagnostics || []).map(d => (
                           <li key={d.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm border-t">
                             <div>{d.kind}</div>
                             <div>{d.name}</div>
@@ -412,7 +416,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><ClipboardCheck className="h-4 w-4"/>Task Board</CardTitle></CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {patient.tasks.map(t => (
+                    {(patient.tasks || []).map(t => (
                       <li key={t.id} className="flex items-center justify-between rounded-md border p-2">
                         <div className="min-w-0">
                           <div className="text-sm truncate">{t.description}</div>
