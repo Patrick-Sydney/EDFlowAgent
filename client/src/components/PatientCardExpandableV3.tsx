@@ -468,6 +468,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
             patientName={`${patient.name} • ${patient.age} ${patient.sex}`}
             recorder={role.toUpperCase()}
             isTriage={stage==='triage'}
+            defaults={defaults}
             onSave={(list)=>{
               onAddObservations?.(patient.id, list);
             }}
