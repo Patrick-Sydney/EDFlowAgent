@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { type Encounter, type Lane } from '@shared/schema';
 import { apiRequest } from '@/lib/queryClient';
-import { onNewObservation } from '@/utils/monitoring';
+import { onNewObservation, schedulerTick } from '@/utils/monitoring';
+import { useEffect } from 'react';
 
 interface TreatmentSpace {
   id: string;
@@ -85,7 +86,40 @@ interface DashboardState {
   };
 }
 
-export const useDashboardStore = create<DashboardState>((set, get) => ({
+export const useDashboardStore = create<DashboardState>((set, get) => {
+  // Start scheduler tick for monitoring tasks
+  const schedulerId = setInterval(() => {
+    set((state) => {
+      const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
+      
+      // Convert encounters to PatientLite format for scheduler
+      const patientsLite = current.map(encounter => ({
+        id: encounter.id,
+        ats: encounter.ats as any,
+        observations: [], // Will be populated if needed
+        tasks: encounter._monitoringTasks || [],
+        flags: { 
+          suspectedSepsis: encounter.isolationRequired === "true" 
+        }
+      }));
+      
+      // Run scheduler tick to mark overdue tasks
+      schedulerTick(patientsLite);
+      
+      // Update encounters with modified tasks
+      const updatedEncounters = current.map((encounter, index) => ({
+        ...encounter,
+        _monitoringTasks: patientsLite[index].tasks
+      }));
+      
+      return {
+        encounters: updatedEncounters as any[],
+        lastUpdate: new Date()
+      };
+    });
+  }, 30 * 1000); // every 30 seconds
+
+  return {
   encounters: [],
   isConnected: false,
   lastUpdate: null,
@@ -175,6 +209,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         // Use custom properties that won't conflict with schema
         _monitoringEws: { score: ews.score, riskLevel: ews.band as any, calculatedAt: new Date().toISOString() },
         _monitoringCadence: cadenceMinutes,
+        _monitoringTasks: tasks,
         _lastObservation: obs
       };
 
@@ -440,4 +475,5 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   // Space filter preset actions
   setSpaceFilterPreset: (preset) => set({ spaceFilterPreset: preset }),
   clearSpaceFilterPreset: () => set({ spaceFilterPreset: null }),
-}));
+};
+});

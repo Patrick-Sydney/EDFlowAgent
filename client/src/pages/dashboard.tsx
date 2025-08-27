@@ -12,9 +12,13 @@ import RoomManagementDrawer from "@/components/RoomManagementDrawer";
 import SpaceSummaryBar from "@/components/SpaceSummaryBar";
 import ReceptionView from "@/components/ReceptionView";
 import { ObservationDemo } from "@/components/ObservationDemo";
+import { useMonitoringScheduler } from "@/hooks/useMonitoringScheduler";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
+  
+  // Start monitoring scheduler for automatic task status updates
+  useMonitoringScheduler();
 
   // Fetch initial encounters and config
   const { data, isLoading, error } = useQuery<Encounter[]>({

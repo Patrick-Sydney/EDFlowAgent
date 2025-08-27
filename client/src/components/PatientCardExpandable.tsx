@@ -296,7 +296,11 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
   const lane = useMemo(() => deriveLane(encounter.room || encounter.lane), [encounter.room, encounter.lane]);
   const observations = useMemo(() => encounterToObservations(encounter), [encounter]);
   const ews = useMemo(() => calculateEWS(observations), [observations]);
-  const tasks = useMemo(() => generateTasks(encounter), [encounter]);
+  const tasks = useMemo(() => {
+    // Use monitoring tasks if available, otherwise generate mock tasks
+    const monitoringTasks = (encounter as any)._monitoringTasks || [];
+    return monitoringTasks.length > 0 ? monitoringTasks : generateTasks(encounter);
+  }, [encounter]);
   const lastObs = useMemo(() => observations.slice().sort((a,b)=>a.takenAt.localeCompare(b.takenAt)).at(-1), [observations]);
   const overdueCount = useMemo(() => tasks.filter(t=>t.status==='overdue').length, [tasks]);
   const pendingTasks = useMemo(() => tasks.filter(t=>t.status==='pending').length, [tasks]);
