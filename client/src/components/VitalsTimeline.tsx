@@ -16,6 +16,7 @@ export interface EwsPoint { t: string; score: number; delta?: number }
 export interface LatestVitals { RR?: number; SpO2?: number; Temp?: number; SBP?: number; HR?: number; }
 
 // Import your existing EWS function (adjust the path for your project)
+import { calcEWSFromLatest } from "@/utils/ews";
 import { computeEwsFromObservations } from "@/utils/monitoring";
 
 // ---- Helpers ----
@@ -123,7 +124,7 @@ export default function VitalsTimeline({ observations, arrival, showChartDefault
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={points} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="t" tickFormatter={(t)=> new Date(t).toLocaleTimeString()} minTickGap={48} />
+                <XAxis dataKey="t" xAxisId="time" tickFormatter={(t)=> new Date(t).toLocaleTimeString()} minTickGap={48} />
                 <YAxis yAxisId="left" domain={[0, 'auto']} allowDecimals={false} />
                 <YAxis yAxisId="right" orientation="right" domain={[0, 'auto']} allowDecimals={false} />
                 <Tooltip labelFormatter={(l)=> new Date(String(l)).toLocaleString()} formatter={(v: any, n: string)=> [v, n]} />
@@ -133,8 +134,17 @@ export default function VitalsTimeline({ observations, arrival, showChartDefault
                 {showTemp && <Line yAxisId="right" type="monotone" dataKey="Temp" name="Temp (°C)" dot={false} />}
                 {showRR && <Line yAxisId="left" type="monotone" dataKey="RR" name="RR (bpm)" dot={false} />}
                 {showSpO2 && <Line yAxisId="right" type="monotone" dataKey="SpO2" name="SpO₂ (%)" dot={false} />}
-                {/* Optional: triage marker */}
-                {arrival && <ReferenceLine x={points.find(p=>p.triage)?.t ?? arrival} stroke="#999" strokeDasharray="3 3" label={{ value: 'Triage', position: 'top' }} />}
+                {/* Triage marker must bind to existing axes */}
+                {arrival && (
+                  <ReferenceLine
+                    xAxisId="time"
+                    yAxisId="left"
+                    x={points.find(p=>p.triage)?.t ?? arrival}
+                    stroke="#999"
+                    strokeDasharray="3 3"
+                    label={{ value: 'Triage', position: 'top' }}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
