@@ -58,6 +58,8 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
   const config = laneConfig[lane];
   const Icon = config.icon;
   const roleView = useDashboardStore((state) => state.roleView);
+  const openTriage = useDashboardStore((state) => state.openTriage);
+  const openRoom = useDashboardStore((state) => state.openRoom);
   
   // Map roleView to Role type
   const role: Role = (roleView === "reception" || roleView === "charge" || roleView === "rn" || roleView === "md") 
@@ -95,6 +97,14 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                 onMarkTask={(patientId, taskId, status) => console.log("Mark task", taskId, "as", status, "for", patientId)}
                 onOrderSet={(patientId, setName) => console.log("Order", setName, "set for", patientId)}
                 onDisposition={(patientId, disp) => console.log("Set disposition", disp, "for", patientId)}
+                onStartTriage={(patientId) => {
+                  const patient = encounters.find(e => e.id === patientId);
+                  if (patient) openTriage(patient);
+                }}
+                onAssignRoom={(patientId, roomId) => {
+                  const patient = encounters.find(e => e.id === patientId);
+                  if (patient) openRoom(patient);
+                }}
               />
             ))
           )}
