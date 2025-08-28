@@ -21,10 +21,10 @@ export const NZ_POLICY = {
     { min: 25, pts: 3, color: "bg-rose-600", label: "≥25" },
   ] as Band[],
   spo2_scale1: [
-    { min: 96, pts: 0, color: "bg-emerald-500", label: "≥96" },
-    { min: 94, max: 95, pts: 1, color: "bg-amber-400", label: "94–95" },
-    { min: 92, max: 93, pts: 2, color: "bg-amber-500", label: "92–93" },
     { max: 91, pts: 3, color: "bg-rose-600", label: "≤91" },
+    { min: 92, max: 93, pts: 2, color: "bg-amber-500", label: "92–93" },
+    { min: 94, max: 95, pts: 1, color: "bg-amber-400", label: "94–95" },
+    { min: 96, max: 100, pts: 0, color: "bg-emerald-500", label: "96–100" },
   ] as Band[],
   sbp: [
     { max: 70, pts: 3, color: "bg-rose-600", label: "≤70" },
