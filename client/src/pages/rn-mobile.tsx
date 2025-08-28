@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import RNViewAdapter from "@/views/RNViewAdapter";
+import RNViewAdapter from "@/views/RNView.adapter";
 import { Lane, PatientLite } from "@/views/RNViewMobile";
 import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
 import { Encounter } from "@shared/schema";
