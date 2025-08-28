@@ -1,52 +1,53 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Activity, Droplets, HeartPulse, Waves, Thermometer, ShieldAlert } from "lucide-react";
+import { X, Brain, Droplets, HeartPulse, Waves, Thermometer, Gauge } from "lucide-react";
 
 // ------------------------------------------------------------
 // NZ Early Warning Score policy (approx bands – please verify)
-// This powers BOTH the slider band colours and points shown.
+// This powers BOTH the input band colors and points shown.
 // ------------------------------------------------------------
 export type Band = { min?: number; max?: number; pts: 0|1|2|3; label?: string; color: string };
 export const NZ_POLICY = {
   rr: [
     { max: 4, pts: 3, color: "bg-rose-600", label: "≤4" },
-    { min: 5, max: 8, pts: 3, color: "bg-rose-600", label: "5–8" },
-    { min: 9, max: 11, pts: 1, color: "bg-amber-400", label: "9–11" },
-    { min: 12, max: 20, pts: 0, color: "bg-emerald-500", label: "12–20" },
-    { min: 21, max: 24, pts: 2, color: "bg-amber-500", label: "21–24" },
+    { min: 5, max: 8, pts: 3, color: "bg-rose-600", label: "5-8" },
+    { min: 9, max: 11, pts: 1, color: "bg-amber-400", label: "9-11" },
+    { min: 12, max: 20, pts: 0, color: "bg-emerald-500", label: "12-20" },
+    { min: 21, max: 24, pts: 2, color: "bg-amber-500", label: "21-24" },
     { min: 25, pts: 3, color: "bg-rose-600", label: "≥25" },
   ] as Band[],
   spo2_scale1: [
     { min: 96, pts: 0, color: "bg-emerald-500", label: "≥96" },
-    { min: 94, max: 95, pts: 1, color: "bg-amber-400", label: "94–95" },
-    { min: 92, max: 93, pts: 2, color: "bg-amber-500", label: "92–93" },
+    { min: 94, max: 95, pts: 1, color: "bg-amber-400", label: "94-95" },
+    { min: 92, max: 93, pts: 2, color: "bg-amber-500", label: "92-93" },
     { max: 91, pts: 3, color: "bg-rose-600", label: "≤91" },
   ] as Band[],
   sbp: [
     { max: 70, pts: 3, color: "bg-rose-600", label: "≤70" },
-    { min: 71, max: 80, pts: 3, color: "bg-rose-600", label: "71–80" },
-    { min: 81, max: 90, pts: 2, color: "bg-amber-500", label: "81–90" },
-    { min: 91, max: 100, pts: 1, color: "bg-amber-400", label: "91–100" },
-    { min: 101, max: 199, pts: 0, color: "bg-emerald-500", label: "101–199" },
+    { min: 71, max: 80, pts: 3, color: "bg-rose-600", label: "71-80" },
+    { min: 81, max: 90, pts: 2, color: "bg-amber-500", label: "81-90" },
+    { min: 91, max: 100, pts: 1, color: "bg-amber-400", label: "91-100" },
+    { min: 101, max: 199, pts: 0, color: "bg-emerald-500", label: "101-199" },
     { min: 200, pts: 3, color: "bg-rose-600", label: "≥200" },
   ] as Band[],
   hr: [
     { max: 40, pts: 3, color: "bg-rose-600", label: "≤40" },
-    { min: 41, max: 50, pts: 2, color: "bg-amber-500", label: "41–50" },
-    { min: 51, max: 90, pts: 0, color: "bg-emerald-500", label: "51–90" },
-    { min: 91, max: 110, pts: 1, color: "bg-amber-400", label: "91–110" },
-    { min: 111, max: 130, pts: 2, color: "bg-amber-500", label: "111–130" },
+    { min: 41, max: 50, pts: 2, color: "bg-amber-500", label: "41-50" },
+    { min: 51, max: 90, pts: 0, color: "bg-emerald-500", label: "51-90" },
+    { min: 91, max: 110, pts: 1, color: "bg-amber-400", label: "91-110" },
+    { min: 111, max: 130, pts: 2, color: "bg-amber-500", label: "111-130" },
     { min: 131, pts: 3, color: "bg-rose-600", label: "≥131" },
   ] as Band[],
   temp: [
     { max: 34, pts: 3, color: "bg-rose-600", label: "≤34" },
-    { min: 35, max: 36, pts: 1, color: "bg-amber-400", label: "35–36" },
-    { min: 36.1, max: 38, pts: 0, color: "bg-emerald-500", label: "36.1–38" },
-    { min: 38.1, max: 38.9, pts: 1, color: "bg-amber-400", label: "38.1–38.9" },
+    { min: 35, max: 36, pts: 1, color: "bg-amber-400", label: "35-36" },
+    { min: 36.1, max: 38, pts: 0, color: "bg-emerald-500", label: "36.1-38" },
+    { min: 38.1, max: 38.9, pts: 1, color: "bg-amber-400", label: "38.1-38.9" },
     { min: 39, pts: 2, color: "bg-amber-500", label: "≥39" },
   ] as Band[],
   acvpu: { A: 0, C: 3, V: 3, P: 3, U: 3 } as Record<string, 0|3>,
@@ -72,18 +73,23 @@ const bandPoints = (value: number | undefined, bands: Band[] | undefined): 0|1|2
 };
 
 // Vibrate lightly if supported (gloved finger feedback)
-const vibe = (ms = 10) => { try { (navigator as any)?.vibrate?.(ms); } catch {} };
+const vibe = (ms = 10) => {
+  try { (navigator as any)?.vibrate?.(ms); } catch {}
+};
 
 // ------------------------------------------------------------
 // Numeric keypad (large targets for touch)
 // ------------------------------------------------------------
 const Key: React.FC<{ label: string; onPress: () => void; grow?: boolean }>= ({ label, onPress, grow }) => (
-  <button onClick={() => { vibe(5); onPress(); }} className={`h-16 text-2xl font-semibold rounded-xl border bg-background active:scale-[0.98] ${grow? 'col-span-2':''}`}>{label}</button>
+  <button
+    onClick={() => { vibe(5); onPress(); }}
+    className={`h-16 text-2xl font-semibold rounded-xl border bg-background active:scale-[0.98] ${grow? 'col-span-2':''}`}
+  >{label}</button>
 );
 
 export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: () => void; onDone: () => void; allowDecimal?: boolean }>= ({ onInput, onBackspace, onDone, allowDecimal }) => (
   <div className="grid grid-cols-3 gap-3 p-3 select-none">
-    {["1","2","3","4","5","6","7","8","9"].map(k => <Key key={k} label={k} onPress={()=>onInput(k)}/>) }
+    {['1','2','3','4','5','6','7','8','9'].map(k => <Key key={k} label={k} onPress={()=>onInput(k)}/>) }
     {allowDecimal ? <Key label="," onPress={()=>onInput('.')}/> : <div/>}
     <Key label="0" onPress={()=>onInput('0')}/>
     <Key label="⌫" onPress={onBackspace}/>
@@ -92,80 +98,9 @@ export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: (
 );
 
 // ------------------------------------------------------------
-// Colour-banded Slider (finger-first)
+// BandedInputTouch – tap a band OR use keypad. Large touch targets.
 // ------------------------------------------------------------
-interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number }
-
-const pct = (v: number, min: number, max: number) => ((v - min) / (max - min)) * 100;
-
-const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChange, step = 1 }) => {
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const [dragging, setDragging] = useState(false);
-
-  const onPos = (clientX: number) => {
-    const el = railRef.current; if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = Math.min(Math.max(clientX - rect.left, 0), rect.width);
-    const raw = min + (x / rect.width) * (max - min);
-    const snapped = Math.round(raw / step) * step;
-    onChange(Number(snapped.toFixed(step < 1 ? 1 : 0)));
-  };
-
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: MouseEvent | TouchEvent) => {
-      const x = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
-      onPos(x);
-    };
-    const onUp = () => setDragging(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('mouseup', onUp, { once: true });
-    window.addEventListener('touchend', onUp, { once: true });
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('touchmove', onMove as any);
-    };
-  }, [dragging]);
-
-  const thumbLeft = useMemo(() => pct(value ?? min, min, max), [value, min, max]);
-
-  return (
-    <div className="select-none">
-      <div ref={railRef} className="relative h-10 rounded-xl overflow-hidden border bg-background"
-           onMouseDown={(e)=>{ setDragging(true); onPos(e.clientX); vibe(5); }}
-           onTouchStart={(e)=>{ setDragging(true); onPos(e.touches[0].clientX); vibe(5); }}>
-        {/* coloured segments */}
-        <div className="absolute inset-0 flex">
-          {(bands ?? []).map((b, i) => {
-            const from = b.min ?? min; const to = b.max ?? max;
-            const w = Math.max(0, pct(to, min, max) - pct(from, min, max));
-            return <div key={i} style={{ width: `${w}%` }} className={`${b.color} bg-opacity-80`} />;
-          })}
-        </div>
-        {/* tick marks at band boundaries */}
-        <div className="absolute inset-0">
-          {(bands ?? []).flatMap((b)=> [b.min, b.max]).filter(v => v !== undefined).map((v, i) => (
-            <div key={i} style={{ left: `${pct(v as number, min, max)}%` }} className="absolute top-0 bottom-0 w-px bg-black/20" />
-          ))}
-        </div>
-        {/* thumb */}
-        <div style={{ left: `calc(${thumbLeft}% - 14px)` }} className="absolute top-1/2 -translate-y-1/2 h-7 w-7 rounded-full border-2 border-white shadow bg-primary" />
-        {/* value bubble */}
-        <div style={{ left: `calc(${thumbLeft}% - 24px)` }} className="absolute -top-6 w-12 text-center text-xs font-semibold">{value}</div>
-      </div>
-      <div className="mt-2 flex items-center justify-between">
-        <Button size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.max(min, (value ?? min) - step))}>−</Button>
-        <Button size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.min(max, (value ?? min) + step))}>+</Button>
-      </div>
-    </div>
-  );
-};
-
-// ------------------------------------------------------------
-// RangeInputTouch – slider + keypad, accuracy preserved
-// ------------------------------------------------------------
-interface RangeInputTouchProps {
+interface BandedInputTouchProps {
   icon?: React.ReactNode;
   label: string;
   unit?: string;
@@ -174,44 +109,79 @@ interface RangeInputTouchProps {
   bands?: Band[];
   onChange: (val?: string) => void;
   keypadDecimal?: boolean;
-  min: number; max: number; step?: number;
+  min?: number; max?: number;
+  ariaLabel?: string;
 }
 
-const ptsBadge = (pts: 0|1|2|3) => (<Badge className={pts===0? 'bg-emerald-600' : pts===1? 'bg-amber-500' : pts===2? 'bg-orange-600' : 'bg-rose-600'}>+{pts}</Badge>);
+const ptsBadge = (pts: 0|1|2|3) => (
+  <Badge className={pts===0? 'bg-emerald-600' : pts===1? 'bg-amber-500' : pts===2? 'bg-orange-600' : 'bg-rose-600'}>+{pts}</Badge>
+);
 
-export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, unit, value, placeholder, bands, onChange, keypadDecimal, min, max, step = 1 }) => {
+export const BandedInputTouch: React.FC<BandedInputTouchProps> = ({ icon, label, unit, value, placeholder, bands, onChange, keypadDecimal, min, max, ariaLabel }) => {
   const [showPad, setShowPad] = useState(false);
-  const nVal = parseNum(value);
-  const points = bandPoints(nVal, bands);
-  const decimals = step < 1 ? 1 : 0;
+  const points = bandPoints(parseNum(value), bands);
+  const safeVal = value ?? '';
 
-  const setFromSlider = (n: number) => {
-    const clamped = Math.max(min, Math.min(max, n));
-    const snapped = Math.round(clamped / step) * step;
-    const str = snapped.toFixed(decimals);
-    if (str !== value) { onChange(str); vibe(5); }
+  const onTapBand = (b: Band) => {
+    // choose mid of band for value; respect unit typical decimals
+    const mid = b.min !== undefined && b.max !== undefined ? (b.min + b.max)/2 : (b.min ?? b.max ?? 0);
+    const str = keypadDecimal ? mid.toFixed(1) : String(Math.round(mid));
+    onChange(str);
+    vibe(5);
   };
 
-  // keypad helpers
-  const safeVal = value ?? '';
-  const inputCh = (ch: string) => { let s = safeVal + ch; s = s.replace(/(\..*)\./, '$1'); onChange(s); };
+  const inputCh = (ch: string) => {
+    let s = safeVal + ch;
+    // allow only one decimal point
+    s = s.replace(/(\..*)\./, '$1');
+    onChange(s);
+  };
   const backspace = () => onChange(safeVal.slice(0, -1) || undefined);
+
   const commit = () => setShowPad(false);
+
+  // clamps
+  const clampedVal = useMemo(() => {
+    const n = parseNum(value);
+    if (n === undefined) return undefined;
+    if (min !== undefined && n < min) return String(min);
+    if (max !== undefined && n > max) return String(max);
+    return value;
+  }, [value, min, max]);
+
+  useEffect(() => { if (clampedVal !== value) onChange(clampedVal); }, [clampedVal, value, onChange]);
 
   return (
     <div className="rounded-xl border p-2 bg-background">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-base font-medium">{icon}<span>{label}</span>{unit && <span className="text-muted-foreground">({unit})</span>}</div>
-        <div className="flex items-center gap-2">{ptsBadge(points)}<button className="rounded-xl border px-3 py-2 text-xl min-w-[96px] text-right" onClick={()=>{ setShowPad(true); vibe(10); }}>{value ?? <span className="text-muted-foreground">{placeholder ?? '—'}</span>}</button></div>
+        <div className="flex items-center gap-2 text-base font-medium">
+          {icon}
+          <span>{label}</span>
+          {unit && <span className="text-muted-foreground">({unit})</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {ptsBadge(points)}
+          <button className="rounded-xl border px-3 py-2 text-xl min-w-[96px] text-right" aria-label={ariaLabel ?? `${label}${unit? ` (${unit})`: ''}`} onClick={()=>{ setShowPad(true); vibe(10); }}>
+            {value ?? <span className="text-muted-foreground">{placeholder ?? '—'}</span>}
+          </button>
+        </div>
       </div>
-      <div className="mt-2">
-        <ColorSlider bands={bands} min={min} max={max} value={nVal} onChange={setFromSlider} step={step} />
-      </div>
-
+      {bands && (
+        <div className="mt-2 grid grid-cols-6 gap-1">
+          {bands.map((b, i) => (
+            <button key={i} onClick={()=>onTapBand(b)} className={`h-10 rounded-lg ${b.color} bg-opacity-80 text-white text-xs font-medium active:scale-[0.98]`}>
+              {b.label ?? ''}
+            </button>
+          ))}
+        </div>
+      )}
       {showPad && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-end" onClick={()=>setShowPad(false)}>
           <div className="w-full bg-background rounded-t-3xl shadow-xl" onClick={e=>e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 pt-3"><div className="text-sm text-muted-foreground">Enter {label}{unit? ` (${unit})`: ''}</div><Button variant="ghost" size="icon" onClick={()=>setShowPad(false)}><X className="h-5 w-5"/></Button></div>
+            <div className="flex items-center justify-between px-4 pt-3">
+              <div className="text-sm text-muted-foreground">Enter {label}{unit? ` (${unit})`: ''}</div>
+              <Button variant="ghost" size="icon" onClick={()=>setShowPad(false)}><X className="h-5 w-5"/></Button>
+            </div>
             <NumberPad onInput={inputCh} onBackspace={backspace} onDone={commit} allowDecimal={keypadDecimal} />
           </div>
         </div>
@@ -223,14 +193,30 @@ export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, u
 // ------------------------------------------------------------
 // ACVPU chips (large)
 // ------------------------------------------------------------
-const Chip: React.FC<{ active?: boolean; onClick?: () => void; children: React.ReactNode }>= ({ active, onClick, children }) => (<button onClick={()=>{ onClick?.(); vibe(5); }} className={`h-12 rounded-2xl border px-4 text-lg font-semibold active:scale-[0.98] ${active? 'bg-primary text-primary-foreground' : 'bg-background'}`}>{children}</button>);
-export const ACVPUChips: React.FC<{ value?: 'A'|'C'|'V'|'P'|'U'; onChange: (v: 'A'|'C'|'V'|'P'|'U') => void }>= ({ value, onChange }) => (<div className="flex gap-2">{(['A','C','V','P','U'] as const).map(k => <Chip key={k} active={value===k} onClick={()=>onChange(k)}>{k}</Chip>)}</div>);
+const Chip: React.FC<{ active?: boolean; onClick?: () => void; children: React.ReactNode }>= ({ active, onClick, children }) => (
+  <button onClick={()=>{ onClick?.(); vibe(5); }} className={`h-12 rounded-2xl border px-4 text-lg font-semibold active:scale-[0.98] ${active? 'bg-primary text-primary-foreground' : 'bg-background'}`}>{children}</button>
+);
+
+export const ACVPUChips: React.FC<{ value?: 'A'|'C'|'V'|'P'|'U'; onChange: (v: 'A'|'C'|'V'|'P'|'U') => void }>= ({ value, onChange }) => (
+  <div className="flex gap-2">
+    {(['A','C','V','P','U'] as const).map(k => <Chip key={k} active={value===k} onClick={()=>onChange(k)}>{k}</Chip>)}
+  </div>
+);
 
 // ------------------------------------------------------------
 // Observation Set Modal – full‑screen, finger‑first
 // ------------------------------------------------------------
 export interface TouchObservation { id?: string; type: 'RR'|'SpO2'|'HR'|'BP'|'Temp'|'ACVPU'|'O2'; value: string; unit?: string; takenAt: string; recordedBy: string; phase?: 'triage'|'obs' }
-export interface ObservationSetModalTouchProps { open: boolean; onOpenChange: (o: boolean) => void; patientName: string; defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; onSave: (observations: TouchObservation[]) => void; recorder: string; isTriage?: boolean; }
+
+export interface ObservationSetModalTouchProps {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  patientName: string;
+  defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>;
+  onSave: (observations: TouchObservation[]) => void;
+  recorder: string;
+  isTriage?: boolean;
+}
 
 export default function ObservationSetModalTouch({ open, onOpenChange, patientName, defaults, onSave, recorder, isTriage }: ObservationSetModalTouchProps) {
   const [rr, setRR] = useState<string|undefined>(defaults?.RR);
@@ -238,7 +224,7 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   const [hr, setHR] = useState<string|undefined>(defaults?.HR);
   const [sbp, setSBP] = useState<string|undefined>(defaults?.SBP);
   const [temp, setTemp] = useState<string|undefined>(defaults?.Temp);
-  const [acvpu, setACVPU] = useState<'A'|'C'|'V'|'P'|'U'|undefined>((defaults?.ACVPU as any) ?? 'A');
+  const [acvpu, setACVPU] = useState<'A'|'C'|'V'|'P'|'U'|undefined>(defaults?.ACVPU as any ?? 'A');
   const [o2Device, setO2Device] = useState<string|undefined>(defaults?.O2 ?? 'Room air');
   const [o2Lpm, setO2Lpm] = useState<string|undefined>();
   const [scale2, setScale2] = useState<boolean>(false);
@@ -282,52 +268,57 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
         {/* Live EWS total */}
         <div className="px-3 py-2 flex items-center gap-2">
           <Badge className={total>=7? 'bg-rose-600' : total>=4? 'bg-amber-500' : 'bg-emerald-600'}>EWS {total}</Badge>
-          <span className="text-xs text-muted-foreground">Live total (updates as you slide/type)</span>
+          <span className="text-xs text-muted-foreground">Live total (updates as you tap)</span>
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <div className="space-y-2">
-            <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} />
+            <BandedInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" ariaLabel="Respiratory rate (breaths per minute)" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} />
 
             <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-base font-medium"><Droplets className="h-5 w-5"/>Oxygen / SpO₂</div>
-                <div className="flex items-center gap-2">{<Badge className={spo2Pts===0? 'bg-emerald-600': spo2Pts===1? 'bg-amber-500': spo2Pts===2? 'bg-orange-600':'bg-rose-600'}>+{spo2Pts}</Badge>}</div>
+                <div className="flex items-center gap-2">{ptsBadge(spo2Pts)}</div>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button onClick={()=>{ setO2Device('Room air'); setO2Lpm(undefined); }} className={`h-12 rounded-xl border ${o2Device==='Room air'? 'bg-primary text-primary-foreground':''}`}>Room air</button>
-                <button onClick={()=>{ setO2Device('Nasal prongs'); setO2Lpm('2'); }} className={`h-12 rounded-xl border ${o2Device==='Nasal prongs'? 'bg-primary text-primary-foreground':''}`}>Nasal prongs 2 L/min</button>
+                <button onClick={()=>{ setO2Device('Nasal prongs'); }} className={`h-12 rounded-xl border ${o2Device==='Nasal prongs'? 'bg-primary text-primary-foreground':''}`}>Nasal prongs</button>
                 <button onClick={()=>{ setO2Device('Hudson mask'); }} className={`h-12 rounded-xl border ${o2Device==='Hudson mask'? 'bg-primary text-primary-foreground':''}`}>Hudson mask</button>
                 <button onClick={()=>{ setO2Device('NRB mask'); }} className={`h-12 rounded-xl border ${o2Device==='NRB mask'? 'bg-primary text-primary-foreground':''}`}>NRB mask</button>
               </div>
               {o2Device && o2Device!=='Room air' && (
                 <div className="mt-2">
-                  <RangeInputTouch label="Flow" unit="L/min" value={o2Lpm} onChange={setO2Lpm} min={0} max={15} step={0.5} />
+                  <BandedInputTouch label="Flow" ariaLabel="Oxygen flow (litres per minute)" unit="L/min" value={o2Lpm} onChange={setO2Lpm} keypadDecimal bands={[{min:1,max:4,pts:0,color:'bg-emerald-500',label:'1-4'},{min:5,max:8,pts:0,color:'bg-emerald-500',label:'5-8'},{min:9,max:15,pts:0,color:'bg-emerald-500',label:'9-15'}]} />
                 </div>
               )}
-              <div className="mt-2">
-                <RangeInputTouch label="SpO₂" unit="%" value={spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} min={70} max={100} step={1} />
-              </div>
               <div className="mt-2 flex items-center gap-2">
                 <button onClick={()=>setScale2(v=>!v)} className={`h-10 rounded-xl border px-3 ${scale2? 'bg-primary text-primary-foreground':''}`}>SpO₂ Scale 2</button>
                 <span className="text-xs text-muted-foreground">COPD/chronic hypercapnia</span>
               </div>
-            </div>
-
-            <RangeInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} onChange={setHR} bands={NZ_POLICY.hr} min={30} max={200} step={1} />
-
-            <div className="rounded-xl border p-2 bg-background">
-              <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><ShieldAlert className="h-5 w-5"/>Blood Pressure</div></div>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                <RangeInputTouch label="SBP" unit="mmHg" value={sbp} onChange={setSBP} bands={NZ_POLICY.sbp} min={60} max={220} step={2} />
-                <div className="flex items-center text-xs text-muted-foreground">Scoring uses SBP only</div>
+              <div className="mt-2">
+                <BandedInputTouch label="SpO₂" ariaLabel="Oxygen saturation percent" unit="%" value={spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} />
               </div>
             </div>
 
-            <RangeInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} onChange={setTemp} bands={NZ_POLICY.temp} min={32} max={42} step={0.1} keypadDecimal={true} />
+            <BandedInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" ariaLabel="Heart rate (beats per minute)" unit="bpm" value={hr} onChange={setHR} bands={NZ_POLICY.hr} />
 
             <div className="rounded-xl border p-2 bg-background">
-              <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Activity className="h-5 w-5"/>Level of Consciousness</div><Badge className={acvpuPts? 'bg-rose-600' : 'bg-emerald-600'}>+{acvpuPts}</Badge></div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-base font-medium"><Gauge className="h-5 w-5"/>Blood Pressure</div>
+              </div>
+              <div className="mt-2">
+                <BandedInputTouch label="SBP" ariaLabel="Systolic blood pressure (millimetres of mercury)" unit="mmHg" value={sbp} onChange={setSBP} bands={NZ_POLICY.sbp} />
+                <div className="text-xs text-muted-foreground mt-1">Scoring uses SBP only</div>
+              </div>
+            </div>
+
+            <BandedInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" ariaLabel="Temperature (degrees Celsius)" unit="°C" value={temp} onChange={setTemp} keypadDecimal bands={NZ_POLICY.temp} />
+
+            <div className="rounded-xl border p-2 bg-background">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-base font-medium"><Brain className="h-5 w-5"/>Level of Consciousness</div>
+                <Badge className={acvpuPts? 'bg-rose-600' : 'bg-emerald-600'}>+{acvpuPts}</Badge>
+              </div>
               <div className="mt-2"><ACVPUChips value={acvpu} onChange={setACVPU} /></div>
             </div>
           </div>
