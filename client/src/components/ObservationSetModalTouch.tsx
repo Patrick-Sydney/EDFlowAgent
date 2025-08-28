@@ -74,6 +74,15 @@ const bandPoints = (value: number | undefined, bands: Band[] | undefined): 0|1|2
 // Vibrate lightly if supported (gloved finger feedback)
 const vibe = (ms = 10) => { try { (navigator as any)?.vibrate?.(ms); } catch {} };
 
+// map tailwind bg-* classes used in bands to tint colors for halo
+const tintFor = (cls: string) => ({
+  'bg-emerald-500': 'rgba(16,185,129,0.3)', // green tint
+  'bg-amber-400':  'rgba(245,158,11,0.3)',  // amber tint
+  'bg-amber-500':  'rgba(245,158,11,0.3)',
+  'bg-rose-600':   'rgba(225,29,72,0.3)',   // red tint
+  'bg-orange-600': 'rgba(234,88,12,0.3)',   // orange tint
+}[cls] ?? 'rgba(156,163,175,0.2)');
+
 // ------------------------------------------------------------
 // Numeric keypad (large targets for touch)
 // ------------------------------------------------------------
@@ -92,7 +101,7 @@ export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: (
 );
 
 // ------------------------------------------------------------
-// Colour-banded Slider (finger-first)
+// Colour-banded Slider (finger-first) with halo effect
 // ------------------------------------------------------------
 interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number }
 
@@ -135,6 +144,23 @@ const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChan
       <div ref={railRef} className="relative h-8 rounded-full overflow-hidden bg-muted shadow-inner"
            onMouseDown={(e)=>{ setDragging(true); onPos(e.clientX); vibe(5); }}
            onTouchStart={(e)=>{ setDragging(true); onPos(e.touches[0].clientX); vibe(5); }}>
+        {/* thumb halo (on-drag only) */}
+        {dragging && bands && (() => {
+          const v = value ?? min;
+          const band = (bands as Band[]).find(b => {
+            const okMin = b.min === undefined || v >= b.min!;
+            const okMax = b.max === undefined || v <= b.max!;
+            return okMin && okMax;
+          });
+          if (!band) return null;
+          const bg = tintFor(band.color);
+          return (
+            <div
+              style={{ left: `calc(${thumbLeft}% - 28px)`, background: bg }}
+              className="absolute top-1/2 -translate-y-1/2 h-14 w-14 rounded-full blur-md opacity-90 pointer-events-none"
+            />
+          );
+        })()}
         {/* thumb */}
         <div style={{ left: `calc(${thumbLeft}% - 14px)` }} className="absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full border-2 border-white shadow bg-primary" />
         {/* value bubble */}
