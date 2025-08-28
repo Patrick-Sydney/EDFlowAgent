@@ -10,6 +10,8 @@ export type PatientLite = {
   waitingFor?: string;       // e.g. "23m waiting"
   ews?: number;
   roomName?: string | null;
+  age?: number;
+  sex?: string;
 };
 
 export type Lane = { id: string; label: string; patients: PatientLite[] };
@@ -51,6 +53,8 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
                     timer={p.waitingFor}
                     complaint={p.chiefComplaint}
                     ews={p.ews}
+                    age={p.age}
+                    sex={p.sex}
                     primaryLabel={primaryLabel}
                     onPrimary={onPrimary}
                     onOpen={() => onOpenCard(p)}

@@ -9,6 +9,8 @@ export type PatientCardCompactProps = {
   timer?: string;        // e.g., "23m waiting"
   complaint?: string;    // chief complaint snippet
   ews?: number;
+  age?: number;          // patient age
+  sex?: string;          // patient sex
   onPrimary?: () => void;
   primaryLabel?: string; // e.g., "Start Triage" | "+ Obs"
   onOpen?: () => void;   // open full card / drawer
@@ -16,7 +18,7 @@ export type PatientCardCompactProps = {
 };
 
 export function PatientCardCompact(props: PatientCardCompactProps) {
-  const { name, status, timer, complaint, ews, onPrimary, primaryLabel = "+ Obs", onOpen, rightExtras } = props;
+  const { name, status, timer, complaint, ews, age, sex, onPrimary, primaryLabel = "+ Obs", onOpen, rightExtras } = props;
   return (
     <div className="rounded-2xl border bg-card p-3 active:scale-[0.99]" onClick={onOpen} role="button">
       <div className="flex items-center gap-2 justify-between">
@@ -24,6 +26,11 @@ export function PatientCardCompact(props: PatientCardCompactProps) {
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-muted-foreground" />
             <div className="font-semibold text-lg truncate max-w-[58vw] sm:max-w-[40ch]">{name}</div>
+            {(age || sex) && (
+              <span className="text-sm text-muted-foreground">
+                {age}{sex && ` ${sex.charAt(0)}`}
+              </span>
+            )}
             {typeof ews === "number" && <Badge variant="outline">EWS {ews}</Badge>}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">

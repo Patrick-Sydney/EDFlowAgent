@@ -102,7 +102,9 @@ export default function Dashboard() {
         chiefComplaint: e.complaint,
         waitingFor: calculateWaitingTime(new Date(e.arrivalTime)),
         ews: e.ats, // Using ATS as EWS for now
-        roomName: e.room
+        roomName: e.room,
+        age: e.age,
+        sex: e.sex
       };
     };
 
