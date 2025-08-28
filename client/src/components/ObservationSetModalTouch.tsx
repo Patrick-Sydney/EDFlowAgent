@@ -92,11 +92,34 @@ export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: (
 );
 
 // ------------------------------------------------------------
-// Colour-banded Slider (finger-first)
+// Colour-banded Slider (finger-first) with smooth gradients
 // ------------------------------------------------------------
 interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number }
 
 const pct = (v: number, min: number, max: number) => ((v - min) / (max - min)) * 100;
+
+// map tailwind bg-* classes used in bands to hex for gradients
+const hexFor = (cls: string) => ({
+  'bg-emerald-500': '#10B981',
+  'bg-amber-400': '#f59e0b',
+  'bg-amber-500': '#f59e0b',
+  'bg-rose-600': '#e11d48',
+  'bg-orange-600': '#ea580c',
+}[cls] ?? '#9CA3AF');
+
+// build a linear-gradient that fills the rail with the band colours
+const gradientCSS = (bands: Band[] | undefined, min: number, max: number) => {
+  if (!bands || bands.length === 0) return 'linear-gradient(to right, #e5e7eb, #e5e7eb)';
+  const segments = bands.map(b => {
+    const from = b.min ?? min;
+    const to = b.max ?? max;
+    const c = hexFor(b.color);
+    const start = pct(from, min, max);
+    const end = pct(to, min, max);
+    return `${c} ${start}%, ${c} ${end}%`;
+  });
+  return `linear-gradient(to right, ${segments.join(', ')})`;
+};
 
 const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChange, step = 1 }) => {
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -132,27 +155,18 @@ const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChan
 
   return (
     <div className="select-none">
-      <div ref={railRef} className="relative h-10 rounded-xl overflow-hidden border bg-background"
+      <div ref={railRef} className="relative h-8 rounded-full overflow-hidden"
            onMouseDown={(e)=>{ setDragging(true); onPos(e.clientX); vibe(5); }}
            onTouchStart={(e)=>{ setDragging(true); onPos(e.touches[0].clientX); vibe(5); }}>
-        {/* coloured segments */}
-        <div className="absolute inset-0 flex">
-          {(bands ?? []).map((b, i) => {
-            const from = b.min ?? min; const to = b.max ?? max;
-            const w = Math.max(0, pct(to, min, max) - pct(from, min, max));
-            return <div key={i} style={{ width: `${w}%` }} className={`${b.color} bg-opacity-80`} />;
-          })}
-        </div>
-        {/* tick marks at band boundaries */}
-        <div className="absolute inset-0">
-          {(bands ?? []).flatMap((b)=> [b.min, b.max]).filter(v => v !== undefined).map((v, i) => (
-            <div key={i} style={{ left: `${pct(v as number, min, max)}%` }} className="absolute top-0 bottom-0 w-px bg-black/20" />
-          ))}
-        </div>
+        {/* gradient rail */}
+        <div
+          className="absolute inset-0"
+          style={{ background: gradientCSS(bands, min, max) }}
+        />
         {/* thumb */}
-        <div style={{ left: `calc(${thumbLeft}% - 14px)` }} className="absolute top-1/2 -translate-y-1/2 h-7 w-7 rounded-full border-2 border-white shadow bg-primary" />
+        <div style={{ left: `calc(${thumbLeft}% - 14px)` }} className="absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full border-2 border-white shadow bg-primary" />
         {/* value bubble */}
-        <div style={{ left: `calc(${thumbLeft}% - 24px)` }} className="absolute -top-6 w-12 text-center text-xs font-semibold">{value}</div>
+        <div style={{ left: `calc(${thumbLeft}% - 24px)` }} className="absolute -top-6 w-10 text-center text-xs font-semibold">{value}</div>
       </div>
       <div className="mt-2 flex items-center justify-between">
         <Button size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.max(min, (value ?? min) - step))}>−</Button>
