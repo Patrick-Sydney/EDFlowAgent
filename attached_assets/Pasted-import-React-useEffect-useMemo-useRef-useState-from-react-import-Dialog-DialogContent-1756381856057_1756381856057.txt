@@ -1,0 +1,391 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { X, Droplet, HeartPulse, Wind, Thermometer, Gauge, Brain } from "lucide-react";
+
+// ------------------------------------------------------------
+// NZ Early Warning Score policy (approx bands – please verify)
+// ------------------------------------------------------------
+export type Band = { min?: number; max?: number; pts: 0|1|2|3; label?: string; color: string };
+export const NZ_POLICY = {
+  rr: [
+    { max: 4, pts: 3, color: "bg-rose-600", label: "≤4" },
+    { min: 5, max: 8, pts: 3, color: "bg-rose-600", label: "5–8" },
+    { min: 9, max: 11, pts: 1, color: "bg-amber-400", label: "9–11" },
+    { min: 12, max: 20, pts: 0, color: "bg-emerald-500", label: "12–20" },
+    { min: 21, max: 24, pts: 2, color: "bg-amber-500", label: "21–24" },
+    { min: 25, pts: 3, color: "bg-rose-600", label: "≥25" },
+  ] as Band[],
+  spo2_scale1: [
+    { max: 91, pts: 3, color: "bg-rose-600", label: "≤91" },
+    { min: 92, max: 93, pts: 2, color: "bg-amber-500", label: "92–93" },
+    { min: 94, max: 95, pts: 1, color: "bg-amber-400", label: "94–95" },
+    { min: 96, max: 100, pts: 0, color: "bg-emerald-500", label: "≥96" },
+  ] as Band[],
+  sbp: [
+    { max: 70, pts: 3, color: "bg-rose-600", label: "≤70" },
+    { min: 71, max: 80, pts: 3, color: "bg-rose-600", label: "71–80" },
+    { min: 81, max: 90, pts: 2, color: "bg-amber-500", label: "81–90" },
+    { min: 91, max: 100, pts: 1, color: "bg-amber-400", label: "91–100" },
+    { min: 101, max: 199, pts: 0, color: "bg-emerald-500", label: "101–199" },
+    { min: 200, pts: 3, color: "bg-rose-600", label: "≥200" },
+  ] as Band[],
+  hr: [
+    { max: 40, pts: 3, color: "bg-rose-600", label: "≤40" },
+    { min: 41, max: 50, pts: 2, color: "bg-amber-500", label: "41–50" },
+    { min: 51, max: 90, pts: 0, color: "bg-emerald-500" },
+    { min: 91, max: 110, pts: 1, color: "bg-amber-400" },
+    { min: 111, max: 130, pts: 2, color: "bg-amber-500" },
+    { min: 131, pts: 3, color: "bg-rose-600" },
+  ] as Band[],
+  temp: [
+    { max: 34, pts: 3, color: "bg-rose-600", label: "≤34" },
+    { min: 35, max: 36, pts: 1, color: "bg-amber-400", label: "35–36" },
+    { min: 36.1, max: 38, pts: 0, color: "bg-emerald-500", label: "36.1–38" },
+    { min: 38.1, max: 38.9, pts: 1, color: "bg-amber-400", label: "38.1–38.9" },
+    { min: 39, pts: 2, color: "bg-amber-500", label: "≥39" },
+  ] as Band[],
+  acvpu: { A: 0, C: 3, V: 3, P: 3, U: 3 } as Record<string, 0|3>,
+};
+
+// ------------------------------------------------------------
+// Utilities
+// ------------------------------------------------------------
+const parseNum = (s?: string | number) => {
+  if (s === undefined || s === null) return undefined;
+  const n = Number(String(s).replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(n) ? n : undefined;
+};
+
+const bandPoints = (value: number | undefined, bands: Band[] | undefined): 0|1|2|3 => {
+  if (value === undefined || !bands) return 0;
+  for (const b of bands) {
+    const okMin = b.min === undefined || value >= b.min;
+    const okMax = b.max === undefined || value <= b.max;
+    if (okMin && okMax) return b.pts;
+  }
+  return 0;
+};
+
+const vibe = (ms = 8) => { try { (navigator as any)?.vibrate?.(ms); } catch {} };
+
+// ------------------------------------------------------------
+// Colour-neutral Slider with on‑drag halo + hidden thumb when unset
+// ------------------------------------------------------------
+interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number; readOnly?: boolean }
+
+const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChange, step = 1, readOnly }) => {
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onPos = (clientX: number) => {
+    if (readOnly) return;
+    const el = railRef.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+    const raw = min + (x / rect.width) * (max - min);
+    const snapped = Math.round(raw / step) * step;
+    onChange(Number(snapped.toFixed(step < 1 ? 1 : 0)));
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      const x = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      onPos(x);
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onUp, { once: true });
+    window.addEventListener('touchend', onUp, { once: true });
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove as any);
+    };
+  }, [dragging]);
+
+  const hasValue = value !== undefined;
+  const thumbLeft = useMemo(() => hasValue ? ((value! - min) / (max - min) * 100) : 50, [value, min, max, hasValue]);
+
+  // find band for halo
+  const currentBand = useMemo(() => {
+    if (!bands || value === undefined) return undefined;
+    return bands.find(b => (b.min === undefined || value >= b.min) && (b.max === undefined || value <= b.max));
+  }, [bands, value]);
+
+  return (
+    <div className="select-none">
+      <div
+        ref={railRef}
+        className={`relative h-8 rounded-full overflow-hidden ${readOnly ? 'bg-muted/70' : 'bg-muted'} shadow-inner`}
+        onMouseDown={(e)=>{ setDragging(true); onPos(e.clientX); vibe(4); }}
+        onTouchStart={(e)=>{ setDragging(true); onPos(e.touches[0].clientX); vibe(4); }}
+      >
+        {/* empty state helper */}
+        {!hasValue && !readOnly && (
+          <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground">Tap to set</div>
+        )}
+
+        {/* on‑drag halo (only while dragging) */}
+        {dragging && hasValue && currentBand && (
+          <div
+            style={{ left: `calc(${thumbLeft}% - 28px)`, background: currentBand.pts===3 ? 'rgba(225,29,72,0.18)' : currentBand.pts===2 ? 'rgba(234,88,12,0.16)' : currentBand.pts===1 ? 'rgba(245,158,11,0.14)' : 'rgba(16,185,129,0.12)' }}
+            className="absolute top-1/2 -translate-y-1/2 h-14 w-14 rounded-full blur-md opacity-90 pointer-events-none"
+          />
+        )}
+
+        {/* thumb */}
+        {hasValue && (
+          <div style={{ left: `calc(${thumbLeft}% - 14px)` }} className="absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full border-2 border-white shadow bg-primary" />
+        )}
+
+        {/* value bubble */}
+        {hasValue && (
+          <div style={{ left: `calc(${thumbLeft}% - 24px)` }} className="absolute -top-6 w-10 text-center text-xs font-semibold">{value}</div>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <Button disabled={readOnly} size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.max(min, (value ?? min) - step))}>−</Button>
+        <Button disabled={readOnly} size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.min(max, (value ?? min) + step))}>+</Button>
+      </div>
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
+// RangeInputTouch – neutral slider + keypad + last/Δ + streaming
+// ------------------------------------------------------------
+interface RangeInputTouchProps {
+  icon?: React.ReactNode;
+  label: string;
+  unit?: string;
+  value?: string;                    // current value being edited
+  lastValue?: number;                 // previous observation (for hint/Δ)
+  placeholder?: string;
+  bands?: Band[];
+  onChange: (val?: string) => void;
+  keypadDecimal?: boolean;
+  min: number; max: number; step?: number;
+  ariaLabel?: string;
+  readOnly?: boolean;                 // streaming device mode
+}
+
+const ptsBadge = (pts: 0|1|2|3) => (<Badge variant="outline">+{pts}</Badge>);
+
+export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, unit, value, lastValue, placeholder, bands, onChange, keypadDecimal, min, max, step = 1, ariaLabel, readOnly }) => {
+  const [showPad, setShowPad] = useState(false);
+  const nVal = parseNum(value);
+  const points = bandPoints(nVal, bands);
+  const decimals = step < 1 ? 1 : 0;
+
+  const setFromSlider = (n: number) => {
+    const clamped = Math.max(min, Math.min(max, n));
+    const snapped = Math.round(clamped / step) * step;
+    const str = snapped.toFixed(decimals);
+    if (str !== value) { onChange(str); vibe(3); }
+  };
+
+  // keypad helpers
+  const safeVal = value ?? '';
+  const inputCh = (ch: string) => { if (readOnly) return; let s = safeVal + ch; s = s.replace(/(\..*)\./, '$1'); onChange(s); };
+  const backspace = () => { if (readOnly) return; onChange(safeVal.slice(0, -1) || undefined); };
+  const commit = () => setShowPad(false);
+
+  const delta = useMemo(() => (nVal!==undefined && lastValue!==undefined) ? Number((nVal - lastValue).toFixed(decimals)) : undefined, [nVal, lastValue, decimals]);
+
+  return (
+    <div className={`rounded-2xl border p-3 ${readOnly? 'bg-muted/40' : 'bg-background'}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-base font-medium">{icon}<span>{label}</span>{unit && <span className="text-muted-foreground">({unit})</span>}</div>
+        <div className="flex items-center gap-3">
+          {lastValue!==undefined && (
+            <span className="text-xs text-muted-foreground">{nVal===undefined ? `Last: ${lastValue}` : (delta===0 ? 'Δ 0' : `Δ ${delta>0? '+' : ''}${delta}`)}</span>
+          )}
+          <div className="flex items-center gap-2">{ptsBadge(points)}
+            <button disabled={readOnly} className="rounded-xl border px-3 py-2 text-xl min-w-[96px] text-right" aria-label={ariaLabel ?? `${label}${unit? ` (${unit})`: ''}`} onClick={()=>{ setShowPad(true); vibe(6); }}>{value ?? <span className="text-muted-foreground">{placeholder ?? '—'}</span>}</button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3">
+        <ColorSlider bands={bands} min={min} max={max} value={nVal} onChange={setFromSlider} step={step} readOnly={readOnly} />
+      </div>
+
+      {showPad && !readOnly && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-end" onClick={()=>setShowPad(false)}>
+          <div className="w-full bg-background rounded-t-3xl shadow-xl" onClick={e=>e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 pt-3"><div className="text-sm text-muted-foreground">Enter {label}{unit? ` (${unit})`: ''}</div><Button variant="ghost" size="icon" onClick={()=>setShowPad(false)}><X className="h-5 w-5"/></Button></div>
+            <NumberPad onInput={inputCh} onBackspace={backspace} onDone={commit} allowDecimal={keypadDecimal} />
+          </div>
+        </div>
+      )}
+
+      {readOnly && (
+        <div className="mt-2 text-xs text-muted-foreground">Streaming from device — manual override to edit.</div>
+      )}
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
+// Numeric keypad (large targets for touch)
+// ------------------------------------------------------------
+const Key: React.FC<{ label: string; onPress: () => void; grow?: boolean }>= ({ label, onPress, grow }) => (
+  <button onClick={() => { vibe(5); onPress(); }} className={`h-16 text-2xl font-semibold rounded-xl border bg-background active:scale-[0.98] ${grow? 'col-span-2':''}`}>{label}</button>
+);
+
+export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: () => void; onDone: () => void; allowDecimal?: boolean }>= ({ onInput, onBackspace, onDone, allowDecimal }) => (
+  <div className="grid grid-cols-3 gap-3 p-3 select-none">
+    {["1","2","3","4","5","6","7","8","9"].map(k => <Key key={k} label={k} onPress={()=>onInput(k)}/>) }
+    {allowDecimal ? <Key label="," onPress={()=>onInput('.')}/> : <div/>}
+    <Key label="0" onPress={()=>onInput('0')}/>
+    <Key label="⌫" onPress={onBackspace}/>
+    <Key label="Done" onPress={onDone} grow/>
+  </div>
+);
+
+// ------------------------------------------------------------
+// ACVPU chips (large)
+// ------------------------------------------------------------
+const Chip: React.FC<{ active?: boolean; onClick?: () => void; children: React.ReactNode }>= ({ active, onClick, children }) => (<button onClick={()=>{ onClick?.(); vibe(5); }} className={`h-12 rounded-2xl border px-4 text-lg font-semibold active:scale-[0.98] ${active? 'bg-primary text-primary-foreground' : 'bg-background'}`}>{children}</button>);
+export const ACVPUChips: React.FC<{ value?: 'A'|'C'|'V'|'P'|'U'; onChange: (v: 'A'|'C'|'V'|'P'|'U') => void }>= ({ value, onChange }) => (<div className="flex gap-2">{(['A','C','V','P','U'] as const).map(k => <Chip key={k} active={value===k} onClick={()=>onChange(k)}>{k}</Chip>)}</div>);
+
+// ------------------------------------------------------------
+// Observation Set Modal – implements First vs Repeat seeding + streaming
+// ------------------------------------------------------------
+export interface Observation { id?: string; type: 'RR'|'SpO2'|'HR'|'BP'|'Temp'|'ACVPU'|'O2'; value: string; unit?: string; takenAt: string; recordedBy: string; phase?: 'triage'|'obs' }
+export interface ObservationSetModalTouchProps {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  patientName: string;
+  defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; // last values
+  onSave: (observations: Observation[]) => void;
+  recorder: string;
+  isTriage?: boolean;
+  isFirstObs?: boolean;        // NEW: if true, start unset (no thumb) and show Last: hint
+  streaming?: Partial<Record<'SpO2'|'RR'|'HR'|'SBP'|'Temp', boolean>>; // device feed per vital
+}
+
+export default function ObservationSetModalTouch({ open, onOpenChange, patientName, defaults, onSave, recorder, isTriage, isFirstObs, streaming }: ObservationSetModalTouchProps) {
+  // last numeric values for hints
+  const last = {
+    rr: parseNum(defaults?.RR), spo2: parseNum(defaults?.SpO2), hr: parseNum(defaults?.HR), sbp: parseNum(defaults?.SBP), temp: parseNum(defaults?.Temp)
+  } as const;
+
+  // seed policy: first = unset; repeat = last
+  const seed = (v?: string) => (isFirstObs ? undefined : v);
+
+  const [rr, setRR] = useState<string|undefined>(seed(defaults?.RR));
+  const [spo2, setSpO2] = useState<string|undefined>(seed(defaults?.SpO2));
+  const [hr, setHR] = useState<string|undefined>(seed(defaults?.HR));
+  const [sbp, setSBP] = useState<string|undefined>(seed(defaults?.SBP));
+  const [temp, setTemp] = useState<string|undefined>(seed(defaults?.Temp));
+  const [acvpu, setACVPU] = useState<'A'|'C'|'V'|'P'|'U'|undefined>((seed(defaults?.ACVPU) as any) ?? (isFirstObs ? undefined : 'A'));
+  const [o2Device, setO2Device] = useState<string|undefined>(seed(defaults?.O2) ?? 'Room air');
+  const [o2Lpm, setO2Lpm] = useState<string|undefined>();
+  const [scale2, setScale2] = useState<boolean>(false);
+
+  useEffect(()=>{ if(!open) return; vibe(8); }, [open]);
+
+  const rrPts = bandPoints(parseNum(rr), NZ_POLICY.rr);
+  const spo2Pts = bandPoints(parseNum(spo2), NZ_POLICY.spo2_scale1);
+  const sbpPts = bandPoints(parseNum(sbp), NZ_POLICY.sbp);
+  const hrPts = bandPoints(parseNum(hr), NZ_POLICY.hr);
+  const tempPts = bandPoints(parseNum(temp), NZ_POLICY.temp);
+  const acvpuPts = (NZ_POLICY.acvpu[acvpu ?? 'A'] ?? 0) as 0|3;
+  const total = rrPts + spo2Pts + sbpPts + hrPts + tempPts + (acvpuPts as number);
+
+  const canSave = rr || spo2 || hr || sbp || temp || acvpu || (o2Device && o2Device !== 'Room air');
+
+  const commit = () => {
+    const ts = new Date().toISOString();
+    const list: Observation[] = [];
+    if (rr) list.push({ type:'RR', value: rr, unit:'/min', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (spo2) list.push({ type:'SpO2', value: spo2, unit:'%', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (hr) list.push({ type:'HR', value: hr, unit:'bpm', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (sbp) list.push({ type:'BP', value: `${sbp}/?`, unit:'mmHg', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (temp) list.push({ type:'Temp', value: temp, unit:'°C', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (acvpu) list.push({ type:'ACVPU', value: acvpu, takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (o2Device && o2Device !== 'Room air') list.push({ type:'O2', value: o2Lpm? `${o2Device} ${o2Lpm} L/min` : o2Device, takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+
+    onSave(list);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto flex flex-col">
+        <DialogHeader className="p-4 pb-2">
+          <DialogTitle className="text-xl">Record Observations</DialogTitle>
+          <div className="text-sm text-muted-foreground">{patientName}</div>
+        </DialogHeader>
+        <Separator />
+
+        {/* Live EWS total (neutral) */}
+        <div className="px-4 py-2 flex items-center gap-2">
+          <Badge variant="outline">EWS {total}</Badge>
+          <span className="text-xs text-muted-foreground">Live total (updates as you set values)</span>
+        </div>
+
+        <ScrollArea className="flex-1 px-4 pb-32">
+          <div className="space-y-3">
+            <RangeInputTouch icon={<Wind className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} lastValue={last.rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} ariaLabel="Respiratory rate (breaths per minute)" readOnly={!!streaming?.RR} />
+
+            <div className="rounded-2xl border p-3 bg-background">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-base font-medium"><Droplet className="h-5 w-5"/>Oxygen <Badge variant="secondary" className="h-5 px-1.5 rounded-sm text-[10px] leading-none">O₂</Badge> / SpO₂</div>
+                <div className="flex items-center gap-2">{<Badge variant="outline">+{spo2Pts}</Badge>}</div>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">Target {" "}{/* Scale 2 toggle removed for simplicity in v5; add back as needed */}92–96%</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={()=>{ setO2Device('Room air'); setO2Lpm(undefined); }} className={`h-12 rounded-xl border ${o2Device==='Room air'? 'bg-primary text-primary-foreground':''}`}>Room air</button>
+                <button onClick={()=>{ setO2Device('Nasal prongs'); setO2Lpm('2'); }} className={`h-12 rounded-xl border ${o2Device==='Nasal prongs'? 'bg-primary text-primary-foreground':''}`}>Nasal prongs 2 L/min</button>
+                <button onClick={()=>{ setO2Device('Hudson mask'); }} className={`h-12 rounded-xl border ${o2Device==='Hudson mask'? 'bg-primary text-primary-foreground':''}`}>Hudson mask</button>
+                <button onClick={()=>{ setO2Device('NRB mask'); }} className={`h-12 rounded-xl border ${o2Device==='NRB mask'? 'bg-primary text-primary-foreground':''}`}>NRB mask</button>
+              </div>
+              {o2Device && o2Device!=='Room air' && (
+                <div className="mt-3">
+                  <RangeInputTouch label="Flow" unit="L/min" value={o2Lpm} onChange={setO2Lpm} min={0} max={15} step={0.5} ariaLabel="Oxygen flow (litres per minute)" />
+                </div>
+              )}
+              <div className="mt-3">
+                <RangeInputTouch label="SpO₂" unit="%" value={spo2} lastValue={last.spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} min={70} max={100} step={1} ariaLabel="Oxygen saturation percent" readOnly={!!streaming?.SpO2} />
+              </div>
+            </div>
+
+            <RangeInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} lastValue={last.hr} onChange={setHR} bands={NZ_POLICY.hr} min={30} max={200} step={1} ariaLabel="Heart rate (beats per minute)" readOnly={!!streaming?.HR} />
+
+            <div className="rounded-2xl border p-3 bg-background">
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Gauge className="h-5 w-5"/>Blood Pressure</div></div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <RangeInputTouch label="SBP" unit="mmHg" value={sbp} lastValue={last.sbp} onChange={setSBP} bands={NZ_POLICY.sbp} min={60} max={220} step={2} ariaLabel="Systolic blood pressure (millimetres of mercury)" readOnly={!!streaming?.SBP} />
+                <div className="flex items-center text-xs text-muted-foreground">Scoring uses SBP only</div>
+              </div>
+            </div>
+
+            <RangeInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} lastValue={last.temp} onChange={setTemp} bands={NZ_POLICY.temp} min={32} max={42} step={0.1} ariaLabel="Temperature (degrees Celsius)" readOnly={!!streaming?.Temp} />
+
+            <div className="rounded-2xl border p-3 bg-background">
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Brain className="h-5 w-5"/>Level of Consciousness</div><Badge variant="outline">+{(NZ_POLICY.acvpu[acvpu ?? 'A'] ?? 0)}</Badge></div>
+              <div className="mt-3"><ACVPUChips value={acvpu} onChange={setACVPU} /></div>
+            </div>
+          </div>
+        </ScrollArea>
+
+        {/* Fixed footer actions */}
+        <div className="sticky bottom-0 w-full p-4 border-t bg-background">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">Saving creates individual FHIR Observations and updates EWS.</div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="h-14 px-6 rounded-2xl text-lg" onClick={()=>onOpenChange(false)}>Cancel</Button>
+              <Button disabled={!canSave} className="h-14 px-8 rounded-2xl text-lg" onClick={commit}>Save</Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
