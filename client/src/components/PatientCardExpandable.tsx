@@ -43,7 +43,7 @@ import {
   MonitoringPolicy,
   type PatientLite 
 } from "../utils/monitoring";
-import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
+import ObservationSetModalTouch, { type TouchObservation } from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 // Import advanced vitals timeline with charting
 import VitalsTimeline from "@/components/VitalsTimeline";

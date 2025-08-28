@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,45 +8,46 @@ import { X, Activity, Droplets, HeartPulse, Waves, Thermometer, ShieldAlert } fr
 
 // ------------------------------------------------------------
 // NZ Early Warning Score policy (approx bands – please verify)
+// This powers BOTH the slider band colours and points shown.
 // ------------------------------------------------------------
 export type Band = { min?: number; max?: number; pts: 0|1|2|3; label?: string; color: string };
 export const NZ_POLICY = {
   rr: [
-    { max: 4, pts: 3, color: "bg-rose-600" },
-    { min: 5, max: 8, pts: 3, color: "bg-rose-600" },
-    { min: 9, max: 11, pts: 1, color: "bg-amber-400" },
-    { min: 12, max: 20, pts: 0, color: "bg-emerald-500" },
-    { min: 21, max: 24, pts: 2, color: "bg-amber-500" },
-    { min: 25, pts: 3, color: "bg-rose-600" },
+    { max: 4, pts: 3, color: "bg-rose-600", label: "≤4" },
+    { min: 5, max: 8, pts: 3, color: "bg-rose-600", label: "5–8" },
+    { min: 9, max: 11, pts: 1, color: "bg-amber-400", label: "9–11" },
+    { min: 12, max: 20, pts: 0, color: "bg-emerald-500", label: "12–20" },
+    { min: 21, max: 24, pts: 2, color: "bg-amber-500", label: "21–24" },
+    { min: 25, pts: 3, color: "bg-rose-600", label: "≥25" },
   ] as Band[],
   spo2_scale1: [
-    { min: 96, pts: 0, color: "bg-emerald-500" },
-    { min: 94, max: 95, pts: 1, color: "bg-amber-400" },
-    { min: 92, max: 93, pts: 2, color: "bg-amber-500" },
-    { max: 91, pts: 3, color: "bg-rose-600" },
+    { min: 96, pts: 0, color: "bg-emerald-500", label: "≥96" },
+    { min: 94, max: 95, pts: 1, color: "bg-amber-400", label: "94–95" },
+    { min: 92, max: 93, pts: 2, color: "bg-amber-500", label: "92–93" },
+    { max: 91, pts: 3, color: "bg-rose-600", label: "≤91" },
   ] as Band[],
   sbp: [
-    { max: 70, pts: 3, color: "bg-rose-600" },
-    { min: 71, max: 80, pts: 3, color: "bg-rose-600" },
-    { min: 81, max: 90, pts: 2, color: "bg-amber-500" },
-    { min: 91, max: 100, pts: 1, color: "bg-amber-400" },
-    { min: 101, max: 199, pts: 0, color: "bg-emerald-500" },
-    { min: 200, pts: 3, color: "bg-rose-600" },
+    { max: 70, pts: 3, color: "bg-rose-600", label: "≤70" },
+    { min: 71, max: 80, pts: 3, color: "bg-rose-600", label: "71–80" },
+    { min: 81, max: 90, pts: 2, color: "bg-amber-500", label: "81–90" },
+    { min: 91, max: 100, pts: 1, color: "bg-amber-400", label: "91–100" },
+    { min: 101, max: 199, pts: 0, color: "bg-emerald-500", label: "101–199" },
+    { min: 200, pts: 3, color: "bg-rose-600", label: "≥200" },
   ] as Band[],
   hr: [
-    { max: 40, pts: 3, color: "bg-rose-600" },
-    { min: 41, max: 50, pts: 2, color: "bg-amber-500" },
-    { min: 51, max: 90, pts: 0, color: "bg-emerald-500" },
-    { min: 91, max: 110, pts: 1, color: "bg-amber-400" },
-    { min: 111, max: 130, pts: 2, color: "bg-amber-500" },
-    { min: 131, pts: 3, color: "bg-rose-600" },
+    { max: 40, pts: 3, color: "bg-rose-600", label: "≤40" },
+    { min: 41, max: 50, pts: 2, color: "bg-amber-500", label: "41–50" },
+    { min: 51, max: 90, pts: 0, color: "bg-emerald-500", label: "51–90" },
+    { min: 91, max: 110, pts: 1, color: "bg-amber-400", label: "91–110" },
+    { min: 111, max: 130, pts: 2, color: "bg-amber-500", label: "111–130" },
+    { min: 131, pts: 3, color: "bg-rose-600", label: "≥131" },
   ] as Band[],
   temp: [
-    { max: 34, pts: 3, color: "bg-rose-600" },
-    { min: 35, max: 36, pts: 1, color: "bg-amber-400" },
-    { min: 36.1, max: 38, pts: 0, color: "bg-emerald-500" },
-    { min: 38.1, max: 38.9, pts: 1, color: "bg-amber-400" },
-    { min: 39, pts: 2, color: "bg-amber-500" },
+    { max: 34, pts: 3, color: "bg-rose-600", label: "≤34" },
+    { min: 35, max: 36, pts: 1, color: "bg-amber-400", label: "35–36" },
+    { min: 36.1, max: 38, pts: 0, color: "bg-emerald-500", label: "36.1–38" },
+    { min: 38.1, max: 38.9, pts: 1, color: "bg-amber-400", label: "38.1–38.9" },
+    { min: 39, pts: 2, color: "bg-amber-500", label: "≥39" },
   ] as Band[],
   acvpu: { A: 0, C: 3, V: 3, P: 3, U: 3 } as Record<string, 0|3>,
 };
@@ -73,13 +74,6 @@ const bandPoints = (value: number | undefined, bands: Band[] | undefined): 0|1|2
 // Vibrate lightly if supported (gloved finger feedback)
 const vibe = (ms = 10) => { try { (navigator as any)?.vibrate?.(ms); } catch {} };
 
-// Pull L/min from a saved O2 string, e.g. "Nasal prongs 2 L/min"
-const flowFrom = (s?: string) => {
-  if (!s) return undefined;
-  const m = String(s).match(/(\d+(?:\.\d+)?)\s*(?:l\/?min|l\s*\/\s*min|lpm|l)/i);
-  return m?.[1];
-};
-
 // ------------------------------------------------------------
 // Numeric keypad (large targets for touch)
 // ------------------------------------------------------------
@@ -98,29 +92,122 @@ export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: (
 );
 
 // ------------------------------------------------------------
-// BandedInputTouch – tap a band OR use keypad. Large touch targets.
+// Colour-banded Slider (finger-first)
 // ------------------------------------------------------------
-interface BandedInputTouchProps { icon?: React.ReactNode; label: string; unit?: string; value?: string; placeholder?: string; bands?: Band[]; onChange: (val?: string) => void; keypadDecimal?: boolean; min?: number; max?: number; }
+interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number }
+
+const pct = (v: number, min: number, max: number) => ((v - min) / (max - min)) * 100;
+
+const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChange, step = 1 }) => {
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onPos = (clientX: number) => {
+    const el = railRef.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+    const raw = min + (x / rect.width) * (max - min);
+    const snapped = Math.round(raw / step) * step;
+    onChange(Number(snapped.toFixed(step < 1 ? 1 : 0)));
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      const x = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      onPos(x);
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onUp, { once: true });
+    window.addEventListener('touchend', onUp, { once: true });
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove as any);
+    };
+  }, [dragging]);
+
+  const thumbLeft = useMemo(() => pct(value ?? min, min, max), [value, min, max]);
+
+  return (
+    <div className="select-none">
+      <div ref={railRef} className="relative h-10 rounded-xl overflow-hidden border bg-background"
+           onMouseDown={(e)=>{ setDragging(true); onPos(e.clientX); vibe(5); }}
+           onTouchStart={(e)=>{ setDragging(true); onPos(e.touches[0].clientX); vibe(5); }}>
+        {/* coloured segments */}
+        <div className="absolute inset-0 flex">
+          {(bands ?? []).map((b, i) => {
+            const from = b.min ?? min; const to = b.max ?? max;
+            const w = Math.max(0, pct(to, min, max) - pct(from, min, max));
+            return <div key={i} style={{ width: `${w}%` }} className={`${b.color} bg-opacity-80`} />;
+          })}
+        </div>
+        {/* tick marks at band boundaries */}
+        <div className="absolute inset-0">
+          {(bands ?? []).flatMap((b)=> [b.min, b.max]).filter(v => v !== undefined).map((v, i) => (
+            <div key={i} style={{ left: `${pct(v as number, min, max)}%` }} className="absolute top-0 bottom-0 w-px bg-black/20" />
+          ))}
+        </div>
+        {/* thumb */}
+        <div style={{ left: `calc(${thumbLeft}% - 14px)` }} className="absolute top-1/2 -translate-y-1/2 h-7 w-7 rounded-full border-2 border-white shadow bg-primary" />
+        {/* value bubble */}
+        <div style={{ left: `calc(${thumbLeft}% - 24px)` }} className="absolute -top-6 w-12 text-center text-xs font-semibold">{value}</div>
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <Button size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.max(min, (value ?? min) - step))}>−</Button>
+        <Button size="sm" variant="outline" className="rounded-xl" onClick={()=> onChange(Math.min(max, (value ?? min) + step))}>+</Button>
+      </div>
+    </div>
+  );
+};
+
+// ------------------------------------------------------------
+// RangeInputTouch – slider + keypad, accuracy preserved
+// ------------------------------------------------------------
+interface RangeInputTouchProps {
+  icon?: React.ReactNode;
+  label: string;
+  unit?: string;
+  value?: string;
+  placeholder?: string;
+  bands?: Band[];
+  onChange: (val?: string) => void;
+  keypadDecimal?: boolean;
+  min: number; max: number; step?: number;
+}
 
 const ptsBadge = (pts: 0|1|2|3) => (<Badge className={pts===0? 'bg-emerald-600' : pts===1? 'bg-amber-500' : pts===2? 'bg-orange-600' : 'bg-rose-600'}>+{pts}</Badge>);
 
-export const BandedInputTouch: React.FC<BandedInputTouchProps> = ({ icon, label, unit, value, placeholder, bands, onChange, keypadDecimal, min, max }) => {
+export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, unit, value, placeholder, bands, onChange, keypadDecimal, min, max, step = 1 }) => {
   const [showPad, setShowPad] = useState(false);
-  const points = bandPoints(parseNum(value), bands);
+  const nVal = parseNum(value);
+  const points = bandPoints(nVal, bands);
+  const decimals = step < 1 ? 1 : 0;
+
+  const setFromSlider = (n: number) => {
+    const clamped = Math.max(min, Math.min(max, n));
+    const snapped = Math.round(clamped / step) * step;
+    const str = snapped.toFixed(decimals);
+    if (str !== value) { onChange(str); vibe(5); }
+  };
+
+  // keypad helpers
   const safeVal = value ?? '';
-  const onTapBand = (b: Band) => { const mid = b.min !== undefined && b.max !== undefined ? (b.min + b.max)/2 : (b.min ?? b.max ?? 0); const str = keypadDecimal ? mid.toFixed(1) : String(Math.round(mid)); onChange(str); };
   const inputCh = (ch: string) => { let s = safeVal + ch; s = s.replace(/(\..*)\./, '$1'); onChange(s); };
   const backspace = () => onChange(safeVal.slice(0, -1) || undefined);
   const commit = () => setShowPad(false);
-  const clampedVal = useMemo(() => { const n = parseNum(value); if (n === undefined) return undefined; if (min !== undefined && n < min) return String(min); if (max !== undefined && n > max) return String(max); return value; }, [value, min, max]);
-  useEffect(() => { if (clampedVal !== value) onChange(clampedVal); }, [clampedVal]);
+
   return (
     <div className="rounded-2xl border p-3 bg-background">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-base font-medium">{icon}<span>{label}</span>{unit && <span className="text-muted-foreground">({unit})</span>}</div>
         <div className="flex items-center gap-2">{ptsBadge(points)}<button className="rounded-xl border px-3 py-2 text-xl min-w-[96px] text-right" onClick={()=>{ setShowPad(true); vibe(10); }}>{value ?? <span className="text-muted-foreground">{placeholder ?? '—'}</span>}</button></div>
       </div>
-      {bands && (<div className="mt-3 grid grid-cols-6 gap-2">{bands.map((b, i) => (<button key={i} onClick={()=>{ onTapBand(b); vibe(5); }} className={`h-12 rounded-xl ${b.color} bg-opacity-80 text-white text-sm font-medium active:scale-[0.98]`}>{b.label ?? ''}</button>))}</div>)}
+      <div className="mt-3">
+        <ColorSlider bands={bands} min={min} max={max} value={nVal} onChange={setFromSlider} step={step} />
+      </div>
+
       {showPad && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-end" onClick={()=>setShowPad(false)}>
           <div className="w-full bg-background rounded-t-3xl shadow-xl" onClick={e=>e.stopPropagation()}>
@@ -142,8 +229,8 @@ export const ACVPUChips: React.FC<{ value?: 'A'|'C'|'V'|'P'|'U'; onChange: (v: '
 // ------------------------------------------------------------
 // Observation Set Modal – full‑screen, finger‑first
 // ------------------------------------------------------------
-export interface Observation { id?: string; type: 'RR'|'SpO2'|'HR'|'BP'|'Temp'|'ACVPU'|'O2'; value: string; unit?: string; takenAt: string; recordedBy: string; phase?: 'triage'|'obs' }
-export interface ObservationSetModalTouchProps { open: boolean; onOpenChange: (o: boolean) => void; patientName: string; defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; onSave: (observations: Observation[]) => void; recorder: string; isTriage?: boolean; }
+export interface TouchObservation { id?: string; type: 'RR'|'SpO2'|'HR'|'BP'|'Temp'|'ACVPU'|'O2'; value: string; unit?: string; takenAt: string; recordedBy: string; phase?: 'triage'|'obs' }
+export interface ObservationSetModalTouchProps { open: boolean; onOpenChange: (o: boolean) => void; patientName: string; defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; onSave: (observations: TouchObservation[]) => void; recorder: string; isTriage?: boolean; }
 
 export default function ObservationSetModalTouch({ open, onOpenChange, patientName, defaults, onSave, recorder, isTriage }: ObservationSetModalTouchProps) {
   const [rr, setRR] = useState<string|undefined>(defaults?.RR);
@@ -153,44 +240,32 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   const [temp, setTemp] = useState<string|undefined>(defaults?.Temp);
   const [acvpu, setACVPU] = useState<'A'|'C'|'V'|'P'|'U'|undefined>((defaults?.ACVPU as any) ?? 'A');
   const [o2Device, setO2Device] = useState<string|undefined>(defaults?.O2 ?? 'Room air');
-  const [o2Lpm, setO2Lpm] = useState<string|undefined>(flowFrom(defaults?.O2));
+  const [o2Lpm, setO2Lpm] = useState<string|undefined>();
   const [scale2, setScale2] = useState<boolean>(false);
 
-  // haptic + refresh defaults when the modal opens
-  useEffect(()=>{ if(!open) return; vibe(10); setRR(defaults?.RR); setSpO2(defaults?.SpO2); setHR(defaults?.HR); setSBP(defaults?.SBP); setTemp(defaults?.Temp); setACVPU((defaults?.ACVPU as any) ?? 'A'); setO2Device(defaults?.O2 ?? 'Room air'); setO2Lpm(flowFrom(defaults?.O2)); }, [open]);
+  useEffect(()=>{ if(!open) return; vibe(10); }, [open]);
 
-  // per‑vital points + oxygen therapy points (+2 when on supplemental O2)
   const rrPts = bandPoints(parseNum(rr), NZ_POLICY.rr);
   const spo2Pts = bandPoints(parseNum(spo2), scale2? NZ_POLICY.spo2_scale1.map(b=>({...b, min: b.min? b.min-2: undefined, max: b.max? b.max-2: undefined})) as any : NZ_POLICY.spo2_scale1);
   const sbpPts = bandPoints(parseNum(sbp), NZ_POLICY.sbp);
   const hrPts = bandPoints(parseNum(hr), NZ_POLICY.hr);
   const tempPts = bandPoints(parseNum(temp), NZ_POLICY.temp);
   const acvpuPts = (NZ_POLICY.acvpu[acvpu ?? 'A'] ?? 0) as 0|3;
-  const o2Pts = o2Device && o2Device !== 'Room air' ? 2 : 0;
-  const total = rrPts + spo2Pts + sbpPts + hrPts + tempPts + (acvpuPts as number) + o2Pts;
+  const total = rrPts + spo2Pts + sbpPts + hrPts + tempPts + (acvpuPts as number);
 
   const canSave = rr || spo2 || hr || sbp || temp || acvpu;
 
-  const applyDefaults = () => {
-    setRR(defaults?.RR); setSpO2(defaults?.SpO2); setHR(defaults?.HR); setSBP(defaults?.SBP); setTemp(defaults?.Temp); setACVPU((defaults?.ACVPU as any) ?? 'A'); setO2Device(defaults?.O2 ?? 'Room air'); setO2Lpm(flowFrom(defaults?.O2));
-  };
-  const clearAll = () => {
-    setRR(undefined); setSpO2(undefined); setHR(undefined); setSBP(undefined); setTemp(undefined); setACVPU('A'); setO2Device('Room air'); setO2Lpm(undefined);
-  };
-
   const commit = () => {
     const ts = new Date().toISOString();
-    const list: Observation[] = [];
-    if (rr)   list.push({ type:'RR',   value: rr,   unit:'/min', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
-    if (spo2) list.push({ type:'SpO2', value: spo2, unit:'%',   takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
-    if (hr)   list.push({ type:'HR',   value: hr,   unit:'bpm', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
-    if (sbp)  list.push({ type:'BP',   value: `${sbp}/?`, unit:'mmHg', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
-    if (temp) list.push({ type:'Temp', value: temp, unit:'°C',  takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    const list: TouchObservation[] = [];
+    if (rr) list.push({ type:'RR', value: rr, unit:'/min', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (spo2) list.push({ type:'SpO2', value: spo2, unit:'%', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (hr) list.push({ type:'HR', value: hr, unit:'bpm', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (sbp) list.push({ type:'BP', value: `${sbp}/?`, unit:'mmHg', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+    if (temp) list.push({ type:'Temp', value: temp, unit:'°C', takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
     if (acvpu) list.push({ type:'ACVPU', value: acvpu, takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
-    if (o2Device !== 'Room air') {
-      const flow = o2Lpm ? ` ${o2Lpm} L/min` : '';
-      list.push({ type:'O2', value: `${o2Device}${flow}`, takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
-    }
+    if (o2Device && o2Device !== 'Room air') list.push({ type:'O2', value: o2Lpm? `${o2Device} ${o2Lpm} L/min` : o2Device, takenAt: ts, recordedBy: recorder, phase: isTriage? 'triage':'obs' });
+
     onSave(list);
     onOpenChange(false);
   };
@@ -200,65 +275,73 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto flex flex-col">
         <DialogHeader className="p-4 pb-2">
           <DialogTitle className="text-xl">Record Observations</DialogTitle>
-          <div className="text-sm text-muted-foreground">{patientName} • {isTriage ? 'Triage' : 'Ongoing Care'}</div>
+          <div className="text-sm text-muted-foreground">{patientName}</div>
         </DialogHeader>
+        <Separator />
 
-        <ScrollArea className="flex-1">
-          <div className="p-4 space-y-4">
-            <BandedInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="bpm" value={rr} placeholder="0" bands={NZ_POLICY.rr} onChange={setRR} min={0} max={60} />
-            <BandedInputTouch icon={<Droplets className="h-5 w-5"/>} label="SpO₂" unit="%" value={spo2} placeholder="0" bands={scale2? NZ_POLICY.spo2_scale1.map(b=>({...b, min: b.min? b.min-2: undefined, max: b.max? b.max-2: undefined})) as any : NZ_POLICY.spo2_scale1} onChange={setSpO2} min={70} max={100} />
-            <BandedInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} placeholder="0" bands={NZ_POLICY.hr} onChange={setHR} min={0} max={300} />
-            <BandedInputTouch icon={<ShieldAlert className="h-5 w-5"/>} label="Systolic BP" unit="mmHg" value={sbp} placeholder="0" bands={NZ_POLICY.sbp} onChange={setSBP} min={50} max={300} />
-            <BandedInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} placeholder="0.0" bands={NZ_POLICY.temp} onChange={setTemp} keypadDecimal min={30} max={45} />
+        {/* Live EWS total */}
+        <div className="px-4 py-2 flex items-center gap-2">
+          <Badge className={total>=7? 'bg-rose-600' : total>=4? 'bg-amber-500' : 'bg-emerald-600'}>EWS {total}</Badge>
+          <span className="text-xs text-muted-foreground">Live total (updates as you slide/type)</span>
+        </div>
 
-            <div className="rounded-2xl border p-3 bg-background">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-base font-medium">
-                  <Activity className="h-5 w-5"/>
-                  <span>ACVPU</span>
-                </div>
-                <Badge className={acvpuPts===0? 'bg-emerald-600' : 'bg-rose-600'}>+{acvpuPts}</Badge>
-              </div>
-              <ACVPUChips value={acvpu} onChange={setACVPU} />
-            </div>
+        <ScrollArea className="flex-1 px-4 pb-32">
+          <div className="space-y-3">
+            <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} />
 
             <div className="rounded-2xl border p-3 bg-background">
-              <div className="text-base font-medium mb-3">Oxygen Therapy</div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {['Room air', 'Nasal cannula', 'Face mask', 'Non-rebreather'].map(dev => (
-                  <button key={dev} onClick={()=>setO2Device(dev)} className={`h-12 rounded-xl border text-sm font-medium active:scale-[0.98] ${o2Device===dev? 'bg-primary text-primary-foreground' : 'bg-background'}`}>{dev}</button>
-                ))}
-              </div>
-              {o2Device !== 'Room air' && (
-                <BandedInputTouch label="Flow Rate" unit="L/min" value={o2Lpm} placeholder="0" onChange={setO2Lpm} min={0} max={15} />
-              )}
-            </div>
-
-            {/* EWS Score */}
-            <div className="rounded-2xl border p-4 bg-muted/50">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">Early Warning Score</span>
-                <div className={`text-2xl font-bold px-4 py-2 rounded-xl ${total >= 7 ? 'bg-rose-600 text-white' : total >= 5 ? 'bg-amber-500 text-white' : total >= 3 ? 'bg-amber-400 text-black' : 'bg-emerald-500 text-white'}`}>
-                  {total}
+                <div className="flex items-center gap-2 text-base font-medium"><Droplets className="h-5 w-5"/>Oxygen / SpO₂</div>
+                <div className="flex items-center gap-2">{<Badge className={spo2Pts===0? 'bg-emerald-600': spo2Pts===1? 'bg-amber-500': spo2Pts===2? 'bg-orange-600':'bg-rose-600'}>+{spo2Pts}</Badge>}</div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={()=>{ setO2Device('Room air'); setO2Lpm(undefined); }} className={`h-12 rounded-xl border ${o2Device==='Room air'? 'bg-primary text-primary-foreground':''}`}>Room air</button>
+                <button onClick={()=>{ setO2Device('Nasal prongs'); setO2Lpm('2'); }} className={`h-12 rounded-xl border ${o2Device==='Nasal prongs'? 'bg-primary text-primary-foreground':''}`}>Nasal prongs 2 L/min</button>
+                <button onClick={()=>{ setO2Device('Hudson mask'); }} className={`h-12 rounded-xl border ${o2Device==='Hudson mask'? 'bg-primary text-primary-foreground':''}`}>Hudson mask</button>
+                <button onClick={()=>{ setO2Device('NRB mask'); }} className={`h-12 rounded-xl border ${o2Device==='NRB mask'? 'bg-primary text-primary-foreground':''}`}>NRB mask</button>
+              </div>
+              {o2Device && o2Device!=='Room air' && (
+                <div className="mt-3">
+                  <RangeInputTouch label="Flow" unit="L/min" value={o2Lpm} onChange={setO2Lpm} min={0} max={15} step={0.5} />
                 </div>
+              )}
+              <div className="mt-3">
+                <RangeInputTouch label="SpO₂" unit="%" value={spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} min={70} max={100} step={1} />
               </div>
-              <div className="mt-3 grid grid-cols-6 gap-2 text-xs">
-                <div className="text-center">RR: {rrPts}</div>
-                <div className="text-center">SpO₂: {spo2Pts}</div>
-                <div className="text-center">HR: {hrPts}</div>
-                <div className="text-center">SBP: {sbpPts}</div>
-                <div className="text-center">Temp: {tempPts}</div>
-                <div className="text-center">ACVPU: {acvpuPts}</div>
+              <div className="mt-3 flex items-center gap-2">
+                <button onClick={()=>setScale2(v=>!v)} className={`h-10 rounded-xl border px-3 ${scale2? 'bg-primary text-primary-foreground':''}`}>SpO₂ Scale 2</button>
+                <span className="text-xs text-muted-foreground">COPD/chronic hypercapnia</span>
               </div>
-              {o2Pts > 0 && <div className="mt-2 text-xs text-center text-orange-600">+{o2Pts} (O₂ therapy)</div>}
+            </div>
+
+            <RangeInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} onChange={setHR} bands={NZ_POLICY.hr} min={30} max={200} step={1} />
+
+            <div className="rounded-2xl border p-3 bg-background">
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><ShieldAlert className="h-5 w-5"/>Blood Pressure</div></div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <RangeInputTouch label="SBP" unit="mmHg" value={sbp} onChange={setSBP} bands={NZ_POLICY.sbp} min={60} max={220} step={2} />
+                <div className="flex items-center text-xs text-muted-foreground">Scoring uses SBP only</div>
+              </div>
+            </div>
+
+            <RangeInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} onChange={setTemp} bands={NZ_POLICY.temp} min={32} max={42} step={0.1} keypadDecimal={true} />
+
+            <div className="rounded-2xl border p-3 bg-background">
+              <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Activity className="h-5 w-5"/>Level of Consciousness</div><Badge className={acvpuPts? 'bg-rose-600' : 'bg-emerald-600'}>+{acvpuPts}</Badge></div>
+              <div className="mt-3"><ACVPUChips value={acvpu} onChange={setACVPU} /></div>
             </div>
           </div>
         </ScrollArea>
 
-        <div className="p-4 flex gap-3">
-          <Button variant="outline" size="sm" onClick={applyDefaults}>Defaults</Button>
-          <Button variant="outline" size="sm" onClick={clearAll}>Clear</Button>
-          <Button onClick={commit} disabled={!canSave} className="flex-1">{isTriage ? 'Complete Triage' : 'Save Observations'}</Button>
+        {/* Fixed footer actions */}
+        <div className="sticky bottom-0 w-full p-4 border-t bg-background">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">Saving creates individual FHIR Observations and updates EWS.</div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="h-14 px-6 rounded-2xl text-lg" onClick={()=>onOpenChange(false)}>Cancel</Button>
+              <Button disabled={!canSave} className="h-14 px-8 rounded-2xl text-lg" onClick={commit}>Save</Button>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
