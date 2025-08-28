@@ -29,7 +29,10 @@ export function PatientCardCompact(props: PatientCardCompactProps) {
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
             <span className="rounded-full bg-muted px-2 py-0.5">{status}</span>
             {timer && (
-              <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{timer}</span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span className="font-medium">{timer} waiting</span>
+              </span>
             )}
           </div>
           {complaint && <div className="mt-1 text-sm text-muted-foreground truncate">{complaint}</div>}
@@ -39,11 +42,7 @@ export function PatientCardCompact(props: PatientCardCompactProps) {
           <Button className="h-11 rounded-full px-4" onClick={onPrimary}>{primaryLabel}</Button>
         </div>
       </div>
-      {/* quick chips row (optional) */}
-      <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
-        <Button size="sm" variant="outline" className="rounded-full">Details</Button>
-        <Button size="sm" variant="outline" className="rounded-full">+ Obs</Button>
-      </div>
+      {/* quick chips row removed to reduce clutter */}
     </div>
   );
 }

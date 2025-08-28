@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
 import { StatsBar } from "@/components/StatsBar";
@@ -13,9 +13,15 @@ import SpaceSummaryBar from "@/components/SpaceSummaryBar";
 import ReceptionView from "@/components/ReceptionView";
 import { ObservationDemo } from "@/components/ObservationDemo";
 import { useMonitoringScheduler } from "@/hooks/useMonitoringScheduler";
+import RNViewAdapter from "@/views/RNView.adapter";
+import { Lane, PatientLite } from "@/views/RNViewMobile";
+import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
+import { buildObsDefaults } from "@/lib/obsDefaults";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
+  const [obsModalOpen, setObsModalOpen] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
   
   // Start monitoring scheduler for automatic task status updates
   useMonitoringScheduler();
@@ -67,6 +73,86 @@ export default function Dashboard() {
   }, [data, config, setEncounters, setDemoMode, setRoleView]);
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
+  
+  // Calculate time since arrival for each patient
+  const calculateWaitingTime = (arrivalTime: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - arrivalTime.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMins / 60);
+    
+    if (diffHours > 0) {
+      return `${diffHours}h ${diffMins % 60}m`;
+    }
+    return `${diffMins}m`;
+  };
+  
+  // Transform encounters to mobile RN format
+  const rnLanes = useMemo(() => {
+    const waiting = encounters.filter(e => e.lane === "waiting");
+    const triage = encounters.filter(e => e.lane === "triage");
+    const roomed = encounters.filter(e => ["roomed", "diagnostics", "review", "ready"].includes(e.lane));
+    
+    const transformPatient = (e: Encounter): PatientLite => {
+      return {
+        id: e.id,
+        givenName: e.name.split(' ')[0] || '',
+        familyName: e.name.split(' ').slice(1).join(' ') || '',
+        displayName: e.name,
+        chiefComplaint: e.complaint,
+        waitingFor: calculateWaitingTime(new Date(e.arrivalTime)),
+        ews: e.ats, // Using ATS as EWS for now
+        roomName: e.room
+      };
+    };
+
+    return [
+      { id: "waiting", label: "Waiting", patients: waiting.map(transformPatient) },
+      { id: "triage", label: "Triage", patients: triage.map(transformPatient) },
+      { id: "roomed", label: "Room/Care", patients: roomed.map(transformPatient) }
+    ];
+  }, [encounters]);
+  
+  // RN Mobile handlers
+  const handleStartTriage = (patient: PatientLite) => {
+    const encounter = encounters.find(e => e.id === patient.id);
+    if (encounter) {
+      useDashboardStore.getState().openTriage(encounter);
+    }
+  };
+
+  const handleOpenObs = (patient: PatientLite) => {
+    setSelectedPatient(patient);
+    setObsModalOpen(true);
+  };
+
+  const handleOpenCard = (patient: PatientLite) => {
+    // Open patient details - could expand later
+    console.log("Open patient card for:", patient.displayName);
+  };
+
+  const handleSaveObs = (observations: any[]) => {
+    if (!selectedPatient) return;
+    
+    // Add observations to store
+    useDashboardStore.getState().addObservation(selectedPatient.id, observations);
+    
+    setObsModalOpen(false);
+    setSelectedPatient(null);
+  };
+  
+  // Get observation defaults for selected patient
+  const obsDefaults = useMemo(() => {
+    if (!selectedPatient) return {};
+    // For now return empty defaults - would need obs in schema
+    return {};
+  }, [selectedPatient]);
+
+  const isFirstObs = useMemo(() => {
+    if (!selectedPatient) return true;
+    // For now assume first obs - would need obs in schema
+    return true;
+  }, [selectedPatient]);
 
   // Role-based lane filtering with safe fallback
   const roleToLanes: Record<string, string[]> = {
@@ -120,12 +206,49 @@ export default function Dashboard() {
     );
   }
 
+  // Check if we should use mobile RN view
+  const isMobileRN = roleView === "rn" && typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  
+  // If mobile RN view, render the mobile interface
+  if (isMobileRN) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <RNViewAdapter
+          lanes={rnLanes}
+          onStartTriage={handleStartTriage}
+          onOpenObs={handleOpenObs}
+          onOpenCard={handleOpenCard}
+        />
+        
+        {/* Drawers */}
+        <RegisterDrawer />
+        <TriageDrawer />
+        <RoomManagementDrawer />
+        
+        <ObservationSetModalTouch
+          open={obsModalOpen}
+          onOpenChange={setObsModalOpen}
+          patientName={selectedPatient?.displayName || ""}
+          defaults={obsDefaults}
+          isFirstObs={isFirstObs}
+          onSave={handleSaveObs}
+          recorder="RN Mobile"
+          isTriage={selectedPatient ? rnLanes.find(l => l.patients.some(p => p.id === selectedPatient.id))?.id === "triage" : false}
+        />
+      </div>
+    );
+  }
+  
   return (
     <div className="bg-gray-50 min-h-screen">
       <Header />
       
       <main className="p-3 sm:p-6">
-        <StatsBar />
+        {/* Hide desktop stats on mobile when in RN mode */}
+        <div className={roleView === "rn" ? "hidden md:block" : ""}>
+          <StatsBar />
+        </div>
         
         {/* Treatment Spaces Summary - for Charge Nurse and Developer views */}
         {(roleView === "charge" || roleView === "developer") && <SpaceSummaryBar />}
