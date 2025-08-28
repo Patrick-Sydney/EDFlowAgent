@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -272,10 +272,10 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto flex flex-col">
+      <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto max-h-[100vh] flex flex-col overflow-hidden">
         <DialogHeader className="p-4 pb-2">
           <DialogTitle className="text-xl">Record Observations</DialogTitle>
-          <div className="text-sm text-muted-foreground">{patientName}</div>
+          <DialogDescription className="text-sm text-muted-foreground">{patientName}</DialogDescription>
         </DialogHeader>
         <Separator />
 
@@ -285,7 +285,7 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
           <span className="text-xs text-muted-foreground">Live total (updates as you slide/type)</span>
         </div>
 
-        <ScrollArea className="flex-1 px-4 pb-32">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           <div className="space-y-3">
             <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} />
 
@@ -331,15 +331,15 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
               <div className="mt-3"><ACVPUChips value={acvpu} onChange={setACVPU} /></div>
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Fixed footer actions */}
-        <div className="sticky bottom-0 w-full p-4 border-t bg-background">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">Saving creates individual FHIR Observations and updates EWS.</div>
-            <div className="flex gap-2">
-              <Button variant="outline" className="h-14 px-6 rounded-2xl text-lg" onClick={()=>onOpenChange(false)}>Cancel</Button>
-              <Button disabled={!canSave} className="h-14 px-8 rounded-2xl text-lg" onClick={commit}>Save</Button>
+        <div className="shrink-0 border-t bg-background p-4">
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:justify-between">
+            <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">Saving creates individual FHIR Observations and updates EWS.</div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="h-12 sm:h-14 px-6 rounded-2xl text-base sm:text-lg min-w-[100px]" onClick={()=>onOpenChange(false)}>Cancel</Button>
+              <Button disabled={!canSave} className="h-12 sm:h-14 px-8 rounded-2xl text-base sm:text-lg min-w-[100px]" onClick={commit}>Save</Button>
             </div>
           </div>
         </div>
