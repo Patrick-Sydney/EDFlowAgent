@@ -20,7 +20,7 @@ function RoleViewPicker() {
 
   return (
     <select
-      className="text-sm border border-gray-300 rounded px-3 py-1 bg-white"
+      className="text-xs sm:text-sm border border-gray-300 rounded px-2 sm:px-3 py-2 bg-white min-h-[44px] sm:min-h-auto"
       value={roleView || "charge"}
       onChange={(e) => setRoleView(e.target.value)}
       title="Role view (UI filter)"
@@ -86,49 +86,49 @@ export function Header() {
 
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50">
-      <div className="max-w-full px-6 py-4">
-        <div className="flex items-center justify-between">
+      <div className="max-w-full px-3 sm:px-6 py-3 sm:py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
           {/* Logo and Title */}
           <div className="flex items-center space-x-3">
             <div className="bg-medical-blue p-2 rounded-lg">
               <Hospital className="text-white text-xl w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">ED Flow Agent</h1>
-              <p className="text-sm text-gray-600">Emergency Department Patient Flow Dashboard</p>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900">ED Flow Agent</h1>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Emergency Department Patient Flow Dashboard</p>
             </div>
           </div>
 
-          {/* Control Actions */}
-          <div className="flex items-center space-x-3 flex-wrap justify-end">
+          {/* Controls Row - Mobile optimized */}
+          <div className="flex items-center justify-between sm:justify-end space-x-3">
             <RoleViewPicker />
-          </div>
-
-          {/* Real-time Status */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 bg-green-50 px-3 py-2 rounded-lg">
-              <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-medical-green animate-pulse' : 'bg-gray-400'}`}></div>
-              <span className={`text-sm font-medium ${isConnected ? 'text-medical-green' : 'text-gray-600'}`}>
-                {isConnected ? 'Live' : 'Disconnected'}
-              </span>
-            </div>
-            <div className="text-right">
-              <div className="text-sm font-semibold text-gray-900" data-testid="current-time">
-                {currentTime.toLocaleTimeString('en-US', { hour12: false })}
+            
+            {/* Real-time Status */}
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              <div className="flex items-center space-x-2 bg-green-50 px-2 sm:px-3 py-1 sm:py-2 rounded-lg">
+                <div className={`w-2 sm:w-3 h-2 sm:h-3 rounded-full ${isConnected ? 'bg-medical-green animate-pulse' : 'bg-gray-400'}`}></div>
+                <span className={`text-xs sm:text-sm font-medium ${isConnected ? 'text-medical-green' : 'text-gray-600'}`}>
+                  {isConnected ? 'Live' : 'Off'}
+                </span>
               </div>
-              <div className="text-xs text-gray-600">Local Time</div>
+              <div className="text-right">
+                <div className="text-xs sm:text-sm font-semibold text-gray-900" data-testid="current-time">
+                  {currentTime.toLocaleTimeString('en-US', { hour12: false })}
+                </div>
+                <div className="text-xs text-gray-600 hidden sm:block">Local Time</div>
+              </div>
             </div>
-          </div>
 
-          {/* Demo/Testing Controls */}
-          {demoMode && (
-            <ScenarioMenu 
-              runScenario={(key) => {
-                if (key === "reset") handleResetDemo();
-                else handleScenario(key);
-              }}
-            />
-          )}
+            {/* Demo/Testing Controls */}
+            {demoMode && (
+              <ScenarioMenu 
+                runScenario={(key) => {
+                  if (key === "reset") handleResetDemo();
+                  else handleScenario(key);
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </header>

@@ -502,23 +502,23 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
         <div className="flex items-center gap-2">
           {/* Progressive disclosure actions - max 2 primary actions per stage */}
           {stage === 'arrival' && (role === 'rn' || role === 'charge') && (
-            <Button size="sm" onClick={(e)=>{ e.stopPropagation(); onStartTriage?.(encounter.id); }} data-testid={`button-start-triage-${encounter.id}`}>Start Triage</Button>
+            <Button size="sm" className="min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); onStartTriage?.(encounter.id); }} data-testid={`button-start-triage-${encounter.id}`}>Start Triage</Button>
           )}
           
           {(role === 'rn' || role === 'charge') && (
-            <Button size="sm" variant="outline" onClick={(e)=>{ e.stopPropagation(); setObsOpen(true); }} data-testid={`button-add-obs-${encounter.id}`}>+ Obs</Button>
+            <Button size="sm" variant="outline" className="min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); setObsOpen(true); }} data-testid={`button-add-obs-${encounter.id}`}>+ Obs</Button>
           )}
           
           {stage === 'triage' && role === 'charge' && (
-            <Button size="sm" variant="secondary" onClick={(e)=> { e.stopPropagation(); onAssignRoom?.(encounter.id, ""); }} data-testid={`button-assign-room-${encounter.id}`}>Assign Room</Button>
+            <Button size="sm" variant="secondary" className="min-h-[44px] px-4" onClick={(e)=> { e.stopPropagation(); onAssignRoom?.(encounter.id, ""); }} data-testid={`button-assign-room-${encounter.id}`}>Assign Room</Button>
           )}
           
           {stage === 'roomed' && role === 'md' && (
-            <Button size="sm" onClick={(e)=>{ e.stopPropagation(); onOrderSet?.("Chest Pain", encounter.id); }} data-testid={`button-quick-orders-${encounter.id}`}>Quick Orders</Button>
+            <Button size="sm" className="min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); onOrderSet?.("Chest Pain", encounter.id); }} data-testid={`button-quick-orders-${encounter.id}`}>Quick Orders</Button>
           )}
           
           {stage === 'dispo' && role === 'md' && (
-            <Button size="sm" className="bg-medical-green hover:bg-green-700 text-white" onClick={(e)=>{ e.stopPropagation(); onDisposition?.(encounter.id, "Discharge"); }} data-testid={`button-disposition-${encounter.id}`}>Disposition</Button>
+            <Button size="sm" className="bg-medical-green hover:bg-green-700 text-white min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); onDisposition?.(encounter.id, "Discharge"); }} data-testid={`button-disposition-${encounter.id}`}>Disposition</Button>
           )}
         </div>
       </div>
@@ -529,20 +529,20 @@ export default function PatientCardExpandable({ role, encounter, onOpenChart, on
           <Separator className="mb-3"/>
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="flex flex-wrap">
-              <TabsTrigger value="overview" data-testid={`tab-overview-${encounter.id}`}>Overview</TabsTrigger>
-              {showTriageTab && <TabsTrigger value="triage" data-testid={`tab-triage-${encounter.id}`}>Triage</TabsTrigger>}
-              {showAssessmentTab && <TabsTrigger value="assessment" data-testid={`tab-assessment-${encounter.id}`}>Assessment</TabsTrigger>}
-              {showVitalsTab && <TabsTrigger value="vitals" data-testid={`tab-vitals-${encounter.id}`}>Vitals</TabsTrigger>}
-              {showNotesTab && <TabsTrigger value="notes" data-testid={`tab-notes-${encounter.id}`}>Notes</TabsTrigger>}
-              {showDiagnosticsTab && <TabsTrigger value="diagnostics" data-testid={`tab-diagnostics-${encounter.id}`}>Diagnostics</TabsTrigger>}
-              {showTasksTab && <TabsTrigger value="tasks" data-testid={`tab-tasks-${encounter.id}`}>Tasks</TabsTrigger>}
-              {showOrdersTab && <TabsTrigger value="orders" data-testid={`tab-orders-${encounter.id}`}>Quick Orders</TabsTrigger>}
-              {showDispoTab && <TabsTrigger value="disposition" data-testid={`tab-disposition-${encounter.id}`}>Disposition</TabsTrigger>}
+              <TabsTrigger value="overview" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-overview-${encounter.id}`}>Overview</TabsTrigger>
+              {showTriageTab && <TabsTrigger value="triage" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-triage-${encounter.id}`}>Triage</TabsTrigger>}
+              {showAssessmentTab && <TabsTrigger value="assessment" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-assessment-${encounter.id}`}>Assessment</TabsTrigger>}
+              {showVitalsTab && <TabsTrigger value="vitals" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-vitals-${encounter.id}`}>Vitals</TabsTrigger>}
+              {showNotesTab && <TabsTrigger value="notes" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-notes-${encounter.id}`}>Notes</TabsTrigger>}
+              {showDiagnosticsTab && <TabsTrigger value="diagnostics" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-diagnostics-${encounter.id}`}>Diagnostics</TabsTrigger>}
+              {showTasksTab && <TabsTrigger value="tasks" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-tasks-${encounter.id}`}>Tasks</TabsTrigger>}
+              {showOrdersTab && <TabsTrigger value="orders" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-orders-${encounter.id}`}>Quick Orders</TabsTrigger>}
+              {showDispoTab && <TabsTrigger value="disposition" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-disposition-${encounter.id}`}>Disposition</TabsTrigger>}
             </TabsList>
 
             {/* OVERVIEW */}
             <TabsContent value="overview">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
                 <Card className="lg:col-span-5">
                   <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><HeartPulse className="h-4 w-4"/>EWS & Trends</CardTitle></CardHeader>
                   <CardContent>

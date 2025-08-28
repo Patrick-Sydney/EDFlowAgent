@@ -124,7 +124,7 @@ export default function Dashboard() {
     <div className="bg-gray-50 min-h-screen">
       <Header />
       
-      <main className="p-6">
+      <main className="p-3 sm:p-6">
         <StatsBar />
         
         {/* Treatment Spaces Summary - for Charge Nurse and Developer views */}
@@ -150,7 +150,7 @@ export default function Dashboard() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
           {/* Mobile: Single column stack, Desktop: Horizontal scroll */}
           <div className="sm:overflow-x-auto">
-            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6 pb-4" style={{ minWidth: '1960px' }}>
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6 pb-4 sm:min-w-[1960px]">
               {filteredLanes.map(lane => (
                 <PatientLane
                   key={lane}
