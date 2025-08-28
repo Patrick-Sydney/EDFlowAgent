@@ -199,12 +199,12 @@ export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, u
   const commit = () => setShowPad(false);
 
   return (
-    <div className="rounded-2xl border p-3 bg-background">
+    <div className="rounded-xl border p-2 bg-background">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-base font-medium">{icon}<span>{label}</span>{unit && <span className="text-muted-foreground">({unit})</span>}</div>
         <div className="flex items-center gap-2">{ptsBadge(points)}<button className="rounded-xl border px-3 py-2 text-xl min-w-[96px] text-right" onClick={()=>{ setShowPad(true); vibe(10); }}>{value ?? <span className="text-muted-foreground">{placeholder ?? '—'}</span>}</button></div>
       </div>
-      <div className="mt-3">
+      <div className="mt-2">
         <ColorSlider bands={bands} min={min} max={max} value={nVal} onChange={setFromSlider} step={step} />
       </div>
 
@@ -273,42 +273,42 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto max-h-[100vh] flex flex-col overflow-hidden">
-        <DialogHeader className="p-4 pb-2">
-          <DialogTitle className="text-xl">Record Observations</DialogTitle>
+        <DialogHeader className="p-3 pb-1">
+          <DialogTitle className="text-lg">Record Observations</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">{patientName}</DialogDescription>
         </DialogHeader>
         <Separator />
 
         {/* Live EWS total */}
-        <div className="px-4 py-2 flex items-center gap-2">
+        <div className="px-3 py-2 flex items-center gap-2">
           <Badge className={total>=7? 'bg-rose-600' : total>=4? 'bg-amber-500' : 'bg-emerald-600'}>EWS {total}</Badge>
           <span className="text-xs text-muted-foreground">Live total (updates as you slide/type)</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="space-y-3">
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <div className="space-y-2">
             <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} />
 
-            <div className="rounded-2xl border p-3 bg-background">
+            <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-base font-medium"><Droplets className="h-5 w-5"/>Oxygen / SpO₂</div>
                 <div className="flex items-center gap-2">{<Badge className={spo2Pts===0? 'bg-emerald-600': spo2Pts===1? 'bg-amber-500': spo2Pts===2? 'bg-orange-600':'bg-rose-600'}>+{spo2Pts}</Badge>}</div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <button onClick={()=>{ setO2Device('Room air'); setO2Lpm(undefined); }} className={`h-12 rounded-xl border ${o2Device==='Room air'? 'bg-primary text-primary-foreground':''}`}>Room air</button>
                 <button onClick={()=>{ setO2Device('Nasal prongs'); setO2Lpm('2'); }} className={`h-12 rounded-xl border ${o2Device==='Nasal prongs'? 'bg-primary text-primary-foreground':''}`}>Nasal prongs 2 L/min</button>
                 <button onClick={()=>{ setO2Device('Hudson mask'); }} className={`h-12 rounded-xl border ${o2Device==='Hudson mask'? 'bg-primary text-primary-foreground':''}`}>Hudson mask</button>
                 <button onClick={()=>{ setO2Device('NRB mask'); }} className={`h-12 rounded-xl border ${o2Device==='NRB mask'? 'bg-primary text-primary-foreground':''}`}>NRB mask</button>
               </div>
               {o2Device && o2Device!=='Room air' && (
-                <div className="mt-3">
+                <div className="mt-2">
                   <RangeInputTouch label="Flow" unit="L/min" value={o2Lpm} onChange={setO2Lpm} min={0} max={15} step={0.5} />
                 </div>
               )}
-              <div className="mt-3">
+              <div className="mt-2">
                 <RangeInputTouch label="SpO₂" unit="%" value={spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} min={70} max={100} step={1} />
               </div>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-2 flex items-center gap-2">
                 <button onClick={()=>setScale2(v=>!v)} className={`h-10 rounded-xl border px-3 ${scale2? 'bg-primary text-primary-foreground':''}`}>SpO₂ Scale 2</button>
                 <span className="text-xs text-muted-foreground">COPD/chronic hypercapnia</span>
               </div>
@@ -316,9 +316,9 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
 
             <RangeInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} onChange={setHR} bands={NZ_POLICY.hr} min={30} max={200} step={1} />
 
-            <div className="rounded-2xl border p-3 bg-background">
+            <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><ShieldAlert className="h-5 w-5"/>Blood Pressure</div></div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-2 grid grid-cols-3 gap-2">
                 <RangeInputTouch label="SBP" unit="mmHg" value={sbp} onChange={setSBP} bands={NZ_POLICY.sbp} min={60} max={220} step={2} />
                 <div className="flex items-center text-xs text-muted-foreground">Scoring uses SBP only</div>
               </div>
@@ -326,20 +326,20 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
 
             <RangeInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} onChange={setTemp} bands={NZ_POLICY.temp} min={32} max={42} step={0.1} keypadDecimal={true} />
 
-            <div className="rounded-2xl border p-3 bg-background">
+            <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Activity className="h-5 w-5"/>Level of Consciousness</div><Badge className={acvpuPts? 'bg-rose-600' : 'bg-emerald-600'}>+{acvpuPts}</Badge></div>
-              <div className="mt-3"><ACVPUChips value={acvpu} onChange={setACVPU} /></div>
+              <div className="mt-2"><ACVPUChips value={acvpu} onChange={setACVPU} /></div>
             </div>
           </div>
         </div>
 
         {/* Fixed footer actions */}
-        <div className="shrink-0 border-t bg-background p-4">
-          <div className="flex flex-col sm:flex-row items-center gap-3 sm:justify-between">
-            <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">Saving creates individual FHIR Observations and updates EWS.</div>
-            <div className="flex gap-3">
-              <Button variant="outline" className="h-12 sm:h-14 px-6 rounded-2xl text-base sm:text-lg min-w-[100px]" onClick={()=>onOpenChange(false)}>Cancel</Button>
-              <Button disabled={!canSave} className="h-12 sm:h-14 px-8 rounded-2xl text-base sm:text-lg min-w-[100px]" onClick={commit}>Save</Button>
+        <div className="shrink-0 border-t bg-background p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground flex-1">Creates FHIR Observations</div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="h-11 px-5 rounded-xl text-sm" onClick={()=>onOpenChange(false)}>Cancel</Button>
+              <Button disabled={!canSave} className="h-11 px-6 rounded-xl text-sm" onClick={commit}>Save</Button>
             </div>
           </div>
         </div>
