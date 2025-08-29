@@ -2,22 +2,20 @@ import React, { useMemo } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
 import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
 
-// Shape the data your page already has
 export type PatientLite = {
   id: string;
   givenName?: string; familyName?: string; displayName?: string;
+  age?: number; sex?: string;
   chiefComplaint?: string;
-  waitingFor?: string;       // e.g. "23m waiting"
+  waitingFor?: string;       // e.g. "5h 15m waiting"
   ews?: number;
   roomName?: string | null;
-  age?: number;
-  sex?: string;
 };
 
 export type Lane = { id: string; label: string; patients: PatientLite[] };
 
 export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard }: {
-  lanes: Lane[];                                       // Waiting / InTriage / Room
+  lanes: Lane[];
   onStartTriage: (p: PatientLite) => void;
   onOpenObs: (p: PatientLite) => void;
   onOpenCard: (p: PatientLite) => void;
@@ -29,13 +27,13 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
 
   return (
     <div className="pb-24">
-      <RNMobileLaneNav lanes={pills} />
+      <RNMobileLaneNav lanes={pills} stickyOffset={56} />
 
       <div className="mx-3 space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
         {lanes.map((lane) => (
-          <section key={lane.id} id={lane.id} className="scroll-mt-24">
-            <div className="sticky top-[calc(env(safe-area-inset-top)+132px)] z-20 bg-background/85 backdrop-blur px-1 py-2">
-              <h2 className="text-base font-semibold">
+          <section key={lane.id} id={lane.id} className="scroll-mt-20">
+            <div className="sticky top-[calc(env(safe-area-inset-top)+72px)] z-20 bg-background/80 backdrop-blur border-b px-1 py-1.5">
+              <h2 className="text-[15px] font-semibold">
                 {lane.label} <span className="text-muted-foreground">({lane.patients.length})</span>
               </h2>
             </div>
@@ -45,6 +43,7 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
                 const status = lane.label === "Room" ? (p.roomName ?? "Rooming") : lane.label;
                 const primaryLabel = lane.label === "Waiting" ? "Start Triage" : "+ Obs";
                 const onPrimary = () => (lane.label === "Waiting" ? onStartTriage(p) : onOpenObs(p));
+                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
                 return (
                   <PatientCardCompact
                     key={p.id}
@@ -53,8 +52,7 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
                     timer={p.waitingFor}
                     complaint={p.chiefComplaint}
                     ews={p.ews}
-                    age={p.age}
-                    sex={p.sex}
+                    ageSex={ageSex}
                     primaryLabel={primaryLabel}
                     onPrimary={onPrimary}
                     onOpen={() => onOpenCard(p)}

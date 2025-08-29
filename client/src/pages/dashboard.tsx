@@ -17,11 +17,15 @@ import RNViewAdapter from "@/views/RNView.adapter";
 import { Lane, PatientLite } from "@/views/RNViewMobile";
 import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
+import AppHeaderMobile, { Role } from "@/components/app/AppHeaderMobile";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Dashboard() {
-  const { encounters, setEncounters, setDemoMode, roleView, setRoleView } = useDashboardStore();
+  const { encounters, setEncounters, setDemoMode, roleView, setRoleView, resetDemo, demoMode } = useDashboardStore();
   const [obsModalOpen, setObsModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
+  const { toast } = useToast();
   
   // Start monitoring scheduler for automatic task status updates
   useMonitoringScheduler();
@@ -155,6 +159,44 @@ export default function Dashboard() {
     // For now assume first obs - would need obs in schema
     return true;
   }, [selectedPatient]);
+  
+  // Mobile header handlers
+  const handleMobileRoleChange = (role: Role) => {
+    const roleMap: Record<Role, string> = {
+      "RN view": "rn",
+      "Charge view": "charge", 
+      "MD view": "md"
+    };
+    setRoleView(roleMap[role]);
+  };
+  
+  const handleMobileScenarios = async () => {
+    if (!demoMode) return;
+    
+    // For simplicity, just trigger a surge scenario on mobile
+    try {
+      await apiRequest('POST', '/api/scenario/surge');
+      toast({
+        title: "Scenario Activated",
+        description: "Surge scenario has been triggered.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error", 
+        description: "Failed to activate scenario.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const getMobileRole = (): Role => {
+    const roleMap: Record<string, Role> = {
+      "rn": "RN view",
+      "charge": "Charge view",
+      "md": "MD view"
+    };
+    return roleMap[roleView] || "Charge view";
+  };
 
   // Role-based lane filtering with safe fallback
   const roleToLanes: Record<string, string[]> = {
@@ -215,7 +257,11 @@ export default function Dashboard() {
   if (isMobileRN) {
     return (
       <div className="min-h-screen bg-background">
-        <Header />
+        <AppHeaderMobile
+          role={getMobileRole()}
+          onChangeRole={handleMobileRoleChange}
+          onScenarios={demoMode ? handleMobileScenarios : undefined}
+        />
         <RNViewAdapter
           lanes={rnLanes}
           onStartTriage={handleStartTriage}

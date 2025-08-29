@@ -1,0 +1,223 @@
+// =============================
+// File: src/components/app/AppHeaderMobile.tsx
+// Compact mobile header: left app icon opens Role picker; center shows Live + time
+// =============================
+import React, { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Hospital, FlaskConical } from "lucide-react";
+
+export type Role = "RN view" | "Charge view" | "MD view";
+
+export default function AppHeaderMobile({
+  role,
+  onChangeRole,
+  onScenarios,
+}: {
+  role: Role;
+  onChangeRole: (r: Role) => void;
+  onScenarios?: () => void;
+}) {
+  const [now, setNow] = useState<string>(() => new Date().toLocaleTimeString());
+  const [openRole, setOpenRole] = useState(false);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date().toLocaleTimeString()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      <div className="h-12 flex items-center justify-between px-2">
+        {/* Left: App icon doubles as Role switcher */}
+        <Button variant="ghost" size="icon" className="rounded-xl" aria-label="Change role" onClick={() => setOpenRole(true)}>
+          <Hospital className="h-5 w-5" />
+        </Button>
+
+        {/* Center: Live + local time */}
+        <div className="flex items-center gap-2 text-sm">
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+            Live
+          </span>
+          <span className="tabular-nums text-muted-foreground">{now}</span>
+        </div>
+
+        {/* Right: Scenarios icon (optional) */}
+        <Button variant="ghost" size="icon" className="rounded-xl" aria-label="Scenarios" onClick={onScenarios}>
+          <FlaskConical className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Role picker (simple dialog for reliability) */}
+      <Dialog open={openRole} onOpenChange={setOpenRole}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle>Select view</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {["RN view", "Charge view", "MD view"].map((r) => (
+              <Button key={r} variant={role === r ? "default" : "outline"} className="justify-start" onClick={() => { onChangeRole(r as Role); setOpenRole(false); }}>
+                {r}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+
+// =============================
+// File: src/components/rn/PatientCardCompact.tsx
+// Phone‑first patient card: robust long‑name handling, stable actions
+// =============================
+import React from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Clock, User } from "lucide-react";
+
+export type PatientCardCompactProps = {
+  name: string;
+  status: string;        // e.g., "Waiting" | "In Triage" | "Room 4"
+  timer?: string;        // e.g., "5h 15m waiting"
+  complaint?: string;    // chief complaint snippet
+  ews?: number;
+  ageSex?: string;       // e.g., "36 M"; now moved to 2nd line
+  onPrimary?: () => void;
+  primaryLabel?: string; // e.g., "Start Triage" | "+ Obs"
+  onOpen?: () => void;   // open full card / drawer
+  rightExtras?: React.ReactNode; // optional extra actions/icons
+};
+
+const shortName = (full: string) => {
+  const s = full.trim();
+  if (s.length <= 28) return s; // usually fine on phone
+  // Try to keep first + last initial
+  const parts = s.split(/\s+/);
+  if (parts.length >= 2) return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  return s.slice(0, 26) + "…";
+};
+
+export function PatientCardCompact(props: PatientCardCompactProps) {
+  const { name, status, timer, complaint, ews, ageSex, onPrimary, primaryLabel = "+ Obs", onOpen, rightExtras } = props;
+  const display = shortName(name);
+  return (
+    <div className="rounded-2xl border bg-card p-3 active:scale-[0.99]" onClick={onOpen} role="button">
+      <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+        {/* Left block (min-w-0 allows truncation) */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <User className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div title={name} className="font-semibold text-lg truncate max-w-[58vw] sm:max-w-[40ch]">{display}</div>
+            {typeof ews === "number" && <Badge variant="outline" className="shrink-0 text-xs">EWS {ews}</Badge>}
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+            {ageSex && <span className="shrink-0">{ageSex}</span>}
+            <span className="rounded-full bg-muted px-2 py-0.5 shrink-0">{status}</span>
+            {timer && (
+              <span className="flex items-center gap-1 min-w-0"><Clock className="h-3 w-3" /><span className="truncate">{timer}</span></span>
+            )}
+          </div>
+          {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
+        </div>
+
+        {/* Right: primary action (fixed width) */}
+        <div className="ml-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {rightExtras}
+          <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
+        </div>
+      </div>
+
+      {/* quick chips row (optional) */}
+      <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
+        <Button size="sm" variant="outline" className="rounded-full">Details</Button>
+        <Button size="sm" variant="outline" className="rounded-full">+ Obs</Button>
+      </div>
+    </div>
+  );
+}
+
+
+// =============================
+// File: src/views/RNViewMobile.tsx
+// Tighter sticky headings + pass age/sex and formatting
+// =============================
+import React, { useMemo } from "react";
+import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
+import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+
+export type PatientLite = {
+  id: string;
+  givenName?: string; familyName?: string; displayName?: string;
+  age?: number; sex?: string;
+  chiefComplaint?: string;
+  waitingFor?: string;       // e.g. "5h 15m waiting"
+  ews?: number;
+  roomName?: string | null;
+};
+
+export type Lane = { id: string; label: string; patients: PatientLite[] };
+
+export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard }: {
+  lanes: Lane[];
+  onStartTriage: (p: PatientLite) => void;
+  onOpenObs: (p: PatientLite) => void;
+  onOpenCard: (p: PatientLite) => void;
+}) {
+  const pills: LanePill[] = useMemo(
+    () => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })),
+    [lanes]
+  );
+
+  return (
+    <div className="pb-24">
+      <RNMobileLaneNav lanes={pills} stickyOffset={56} />
+
+      <div className="mx-3 space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+        {lanes.map((lane) => (
+          <section key={lane.id} id={lane.id} className="scroll-mt-20">
+            <div className="sticky top-[calc(env(safe-area-inset-top)+72px)] z-20 bg-background/80 backdrop-blur border-b px-1 py-1.5">
+              <h2 className="text-[15px] font-semibold">
+                {lane.label} <span className="text-muted-foreground">({lane.patients.length})</span>
+              </h2>
+            </div>
+            <div className="mt-2 space-y-3">
+              {lane.patients.map((p) => {
+                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
+                const status = lane.label === "Room" ? (p.roomName ?? "Rooming") : lane.label;
+                const primaryLabel = lane.label === "Waiting" ? "Start Triage" : "+ Obs";
+                const onPrimary = () => (lane.label === "Waiting" ? onStartTriage(p) : onOpenObs(p));
+                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+                return (
+                  <PatientCardCompact
+                    key={p.id}
+                    name={name}
+                    status={status}
+                    timer={p.waitingFor}
+                    complaint={p.chiefComplaint}
+                    ews={p.ews}
+                    ageSex={ageSex}
+                    primaryLabel={primaryLabel}
+                    onPrimary={onPrimary}
+                    onOpen={() => onOpenCard(p)}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// =============================
+// Wiring guide (no code):
+// 1) Replace your current mobile header with <AppHeaderMobile role={role} onChangeRole={...} onScenarios={...} />
+//    and remove the ED Flow Agent title on phone. Desktop/tablet can keep your existing header.
+// 2) Ensure RNViewMobile is rendered via your RNView.adapter (from previous pack). The new sticky offsets
+//    align the pills, header, and section titles.
+// 3) PatientCardCompact now gracefully handles long names and keeps actions stable.
