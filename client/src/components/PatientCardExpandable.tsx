@@ -161,6 +161,7 @@ function VitalsCapsule({ vitals, onOpenTimeline, onAddObs }: { vitals?: MinVital
 // - Restores EWS and ATS chips on the header
 // ------------------------------------------------------------------
 export type ExpandableCardProps = {
+  ctaMode?: "none" | "collapsed" | "swipe"; // NEW
   name: string;
   status: string;
   timer?: string;
@@ -186,7 +187,7 @@ export type ExpandableCardProps = {
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
-    name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
+    ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
     minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull
   } = props;
 
@@ -222,7 +223,9 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
           </div>
           <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
-            <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
+            {ctaMode === "collapsed" ? (
+              <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -240,6 +243,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <div className="rounded-xl border p-3">
             <div className="text-sm font-medium">Quick actions</div>
             <div className="mt-2 flex flex-wrap gap-2">
+              <Button size="sm" onClick={onPrimary}>{primaryLabel}</Button>
               {role === 'RN' && (
                 <>
                   <Button size="sm" variant="outline" className="rounded-full" onClick={onAddObs}>+ Obs</Button>
