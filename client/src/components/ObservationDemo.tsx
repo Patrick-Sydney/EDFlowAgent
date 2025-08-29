@@ -31,7 +31,7 @@ export function ObservationDemo() {
     );
   }
   
-  const addHighRiskVitals = () => {
+  const addHighRiskVitals = async () => {
     const timestamp = new Date().toISOString();
     
     // Add high-risk vitals that should trigger frequent monitoring
@@ -43,12 +43,10 @@ export function ObservationDemo() {
       { id: `spo2-${Date.now()+4}`, type: "SpO2" as const, value: "89", unit: "%", takenAt: timestamp, recordedBy: "Demo" }
     ];
     
-    observations.forEach(obs => {
-      addObservation(demoPatient.id, obs);
-    });
+    await addObservation(demoPatient.id, observations);
   };
   
-  const addNormalVitals = () => {
+  const addNormalVitals = async () => {
     const timestamp = new Date().toISOString();
     
     // Add normal vitals that should trigger routine monitoring
@@ -60,9 +58,7 @@ export function ObservationDemo() {
       { id: `spo2-${Date.now()+4}`, type: "SpO2" as const, value: "98", unit: "%", takenAt: timestamp, recordedBy: "Demo" }
     ];
     
-    observations.forEach(obs => {
-      addObservation(demoPatient.id, obs);
-    });
+    await addObservation(demoPatient.id, observations);
   };
   
   return (

@@ -218,11 +218,11 @@ export default function Dashboard() {
     console.log("Open patient card for:", patient.displayName);
   };
 
-  const handleSaveObs = (observations: any[]) => {
+  const handleSaveObs = async (observations: any[]) => {
     if (!selectedPatient) return;
     
     // Add observations to store
-    useDashboardStore.getState().addObservation(selectedPatient.id, observations);
+    await useDashboardStore.getState().addObservation(selectedPatient.id, observations);
     
     setObsModalOpen(false);
     setSelectedPatient(null);

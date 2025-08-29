@@ -1012,6 +1012,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true, data: space });
   });
 
+  // Get observations for a patient
+  app.get("/api/observations", async (req, res) => {
+    try {
+      const { patientId } = req.query;
+      
+      if (!patientId) {
+        return res.status(400).json({ message: "patientId is required" });
+      }
+      
+      const encounter = await storage.getEncounter(patientId as string);
+      if (!encounter) {
+        return res.json([]); // Return empty array if patient not found
+      }
+      
+      // Convert encounter vitals to observation format
+      const observations = [];
+      
+      // Add triage vitals if available
+      if (encounter.triageHr || encounter.triageRr || encounter.triageSpo2 || encounter.triageBpSys || encounter.triageTemp) {
+        const triageTime = encounter.arrivalTime;
+        const obs: any = { t: triageTime, source: 'triage' };
+        
+        if (encounter.triageHr) obs.hr = encounter.triageHr;
+        if (encounter.triageRr) obs.rr = encounter.triageRr;
+        if (encounter.triageSpo2) obs.spo2 = encounter.triageSpo2;
+        if (encounter.triageBpSys) obs.sbp = encounter.triageBpSys;
+        if (encounter.triageTemp) obs.temp = encounter.triageTemp / 10; // Convert back from integer storage
+        
+        observations.push(obs);
+      }
+      
+      // Add any stored observation history from the encounter
+      const storedObs = (encounter as any)._observationHistory || [];
+      observations.push(...storedObs.map((obs: any) => ({
+        t: obs.takenAt || obs.time || new Date().toISOString(),
+        hr: obs.type === 'HR' ? parseInt(obs.value) : undefined,
+        rr: obs.type === 'RR' ? parseInt(obs.value) : undefined,
+        spo2: obs.type === 'SpO2' ? parseInt(obs.value) : undefined,
+        sbp: obs.type === 'BP' ? parseInt(obs.value) : undefined,
+        temp: obs.type === 'Temp' ? parseFloat(obs.value) : undefined,
+        source: obs.phase || 'obs'
+      })));
+      
+      res.json(observations);
+    } catch (error) {
+      console.error("Failed to get observations:", error);
+      res.status(500).json({ message: "Failed to get observations" });
+    }
+  });
+
+  // Save observations for a patient
+  app.post("/api/observations", async (req, res) => {
+    try {
+      const { patientId, observations } = req.body;
+      
+      if (!patientId || !observations || !Array.isArray(observations)) {
+        return res.status(400).json({ message: "patientId and observations array are required" });
+      }
+      
+      const encounter = await storage.getEncounter(patientId);
+      if (!encounter) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+      
+      // Store observations in the encounter's custom field
+      const existingObs = (encounter as any)._observationHistory || [];
+      const updatedObs = [...existingObs, ...observations];
+      
+      const updatedEncounter = await storage.updateEncounter({
+        id: patientId,
+        lastUpdated: new Date().toISOString(),
+        // Store observations in a custom field
+        _observationHistory: updatedObs
+      } as any);
+      
+      // Broadcast update via SSE
+      broadcastSSE("encounter:update", updatedEncounter);
+      
+      res.json({ message: "Observations saved successfully", observations });
+    } catch (error) {
+      console.error("Failed to save observations:", error);
+      res.status(500).json({ message: "Failed to save observations" });
+    }
+  });
+
   // SSE endpoint for real-time updates
   app.get("/api/events", (req, res) => {
     // Set SSE headers

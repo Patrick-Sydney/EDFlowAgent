@@ -200,6 +200,13 @@ export function VitalsTimelineDrawer({ open, onOpenChange, patientId, patientNam
 }) {
   const { points, events, loading, error, refresh } = useVitalsTimeline(patientId);
 
+  // Auto-refresh when drawer opens to ensure latest data
+  React.useEffect(() => {
+    if (open && patientId) {
+      refresh();
+    }
+  }, [open, patientId, refresh]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[720px] sm:rounded-2xl rounded-none h-[90vh] sm:h-auto flex flex-col">

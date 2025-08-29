@@ -46,7 +46,7 @@ interface DashboardState {
   setEncounters: (encounters: Encounter[]) => void;
   addEncounter: (encounter: Encounter) => void;
   updateEncounter: (encounter: Encounter) => void;
-  addObservation: (patientId: string, obs: any) => void;
+  addObservation: (patientId: string, obs: any) => Promise<void>;
   setConnectionStatus: (connected: boolean) => void;
   setDemoMode: (demoMode: boolean) => void;
   setRoleView: (roleView: string) => void;
@@ -173,19 +173,50 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
   }),
 
   // Intelligent observation management with monitoring system
-  addObservation: (patientId, obs) => set((state) => {
+  addObservation: async (patientId, obs) => {
+    const state = get();
     const current = Array.isArray(state.encounters) ? state.encounters : Object.values(state.encounters ?? {}) as Encounter[];
     const patientIndex = current.findIndex(p => p.id === patientId);
-    if (patientIndex === -1) return state;
+    if (patientIndex === -1) return;
 
     const patient = current[patientIndex];
     
+    // Save observations to backend first
+    try {
+      const response = await fetch('/api/observations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          patientId, 
+          observations: Array.isArray(obs) ? obs : [obs] 
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save observations to backend');
+      }
+
+      // Invalidate the observations cache for this patient
+      const { queryClient } = await import('@/lib/queryClient');
+      queryClient.invalidateQueries({ 
+        queryKey: ['/api/observations'], 
+        predicate: (query) => {
+          const queryKey = query.queryKey as string[];
+          return queryKey.includes('/api/observations');
+        }
+      });
+      
+    } catch (error) {
+      console.error('Failed to save observations to backend:', error);
+      // Continue with local storage as fallback
+    }
+
     // Create mock observations array from triage vitals + new observation
     const observations = [
       ...(patient.triageHr ? [{ id: `hr-${patient.id}`, type: "HR" as const, value: patient.triageHr.toString(), unit: "bpm", takenAt: patient.arrivalTime, recordedBy: "Triage" }] : []),
       ...(patient.triageRr ? [{ id: `rr-${patient.id}`, type: "RR" as const, value: patient.triageRr.toString(), unit: "/min", takenAt: patient.arrivalTime, recordedBy: "Triage" }] : []),
       ...(patient.triageSpo2 ? [{ id: `spo2-${patient.id}`, type: "SpO2" as const, value: patient.triageSpo2.toString(), unit: "%", takenAt: patient.arrivalTime, recordedBy: "Triage" }] : []),
-      obs
+      ...(Array.isArray(obs) ? obs : [obs])
     ];
     
     // Convert Encounter to PatientLite format for monitoring system
@@ -205,7 +236,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
       
       // Store the monitoring result and build comprehensive observation history
       const existingObservations = (patient as any)._observationHistory || [];
-      const updatedObservations = [...existingObservations, obs];
+      const updatedObservations = [...existingObservations, ...(Array.isArray(obs) ? obs : [obs])];
       
       const updatedPatient = {
         ...patient,
@@ -213,21 +244,21 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         _monitoringEws: { score: ews.score, riskLevel: ews.band as any, calculatedAt: new Date().toISOString() },
         _monitoringCadence: cadenceMinutes,
         _monitoringTasks: tasks,
-        _lastObservation: obs,
+        _lastObservation: Array.isArray(obs) ? obs[obs.length - 1] : obs,
         _observationHistory: updatedObservations
       };
 
-      return {
+      set({
         encounters: current.map((encounter, i) => 
           i === patientIndex ? updatedPatient as any : encounter
         ),
         lastUpdate: new Date()
-      };
+      });
     } catch (error) {
       console.error('Monitoring system error:', error);
-      return state; // Return unchanged state if monitoring fails
+      // Don't update state if monitoring fails
     }
-  }),
+  },
 
   setConnectionStatus: (connected) => set({ isConnected: connected }),
 
