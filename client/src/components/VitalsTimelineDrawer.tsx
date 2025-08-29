@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useObsStore } from "@/state/observations";
 import {
   ResponsiveContainer,
   LineChart,
@@ -61,7 +62,6 @@ export function useVitalsTimeline(patientId: string) {
     }
 
     // Check Zustand store first
-    const { useObsStore } = require('@/state/observations');
     const obsFromStore = useObsStore.getState().byPatient[patientId];
     if (obsFromStore?.length) {
       setTimelineData({ points: obsFromStore, events: timelineData.events || [] });
