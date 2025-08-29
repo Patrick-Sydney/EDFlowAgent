@@ -49,63 +49,70 @@ export type TimelineData = {
 // ============================================================================
 export function useVitalsTimeline(patientId: string) {
   const queryClient = useQueryClient();
+  const [isLoading, setIsLoading] = useState(true);
+  const [timelineData, setTimelineData] = useState<TimelineData>({ points: [], events: [] });
+  const [error, setError] = useState<string | null>(null);
 
-  const normalize = (raw: any): TimelineData => {
-    // Accept multiple shapes; map to ObsPoint
-    const pts: ObsPoint[] = [];
-    const evs: BundleEvent[] = [];
-
-    const pushObs = (o: any) => {
-      if (!o) return;
-      const t = o.takenAt || o.t || o.time || o.effective || o.effectiveDateTime || o.effectiveInstant;
-      if (!t) return;
-      const p: ObsPoint = {
-        t: new Date(t).toISOString(),
-        rr: o.value && o.type === 'RR' ? parseInt(o.value) : (o.rr ?? o.respRate ?? o.respiratoryRate),
-        spo2: o.value && o.type === 'SpO2' ? parseInt(o.value) : (o.spo2 ?? o.SpO2 ?? o.spo2pct),
-        hr: o.value && o.type === 'HR' ? parseInt(o.value) : (o.hr ?? o.pulse ?? o.heartRate),
-        sbp: o.value && o.type === 'BP' ? parseInt(o.value.split('/')[0]) : (o.sbp ?? o.systolic ?? o.bpSys ?? o.bp?.systolic),
-        temp: o.value && o.type === 'Temp' ? parseFloat(o.value) : (o.temp ?? o.temperature),
-        ews: o.ews,
-        source: o.source as any || 'obs',
-      };
-      pts.push(p);
-    };
-
-    // Common sources
-    if (Array.isArray(raw)) raw.forEach(pushObs);
-    else if (raw?.points) raw.points.forEach(pushObs);
-    else if (raw?.observations) raw.observations.forEach(pushObs);
-
-    // Events (sepsis bundle markers)
-    const rawEvents = raw?.events || raw?.bundle || raw?.markers || [];
-    for (const e of rawEvents) {
-      const t = e.t || e.time || e.at;
-      if (!t) continue;
-      evs.push({ t: new Date(t).toISOString(), type: e.type, label: e.label });
+  useEffect(() => {
+    if (!patientId) {
+      setTimelineData({ points: [], events: [] });
+      setIsLoading(false);
+      return;
     }
 
-    // Sort by time
-    pts.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
-    evs.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    // Check Zustand store first
+    const { useObsStore } = require('@/state/observations');
+    const obsFromStore = useObsStore.getState().byPatient[patientId];
+    if (obsFromStore?.length) {
+      setTimelineData({ points: obsFromStore, events: timelineData.events || [] });
+      setIsLoading(false);
+      return;
+    }
 
-    return { points: pts, events: evs };
-  };
-
-  // Use React Query to fetch observations
-  const { data: rawData = [], isLoading: loading, error: queryError } = useQuery({
-    queryKey: ['/api/observations', patientId],
-    enabled: !!patientId,
-  });
-
-  const data = useMemo(() => normalize(rawData), [rawData]);
-  const error = queryError?.message || null;
+    // Fallback to API if no data in store
+    setIsLoading(true);
+    fetch(`/api/observations?patientId=${encodeURIComponent(patientId)}`)
+      .then(response => response.json())
+      .then(rawData => {
+        // Normalize API data to ObsPoint format
+        const pts: ObsPoint[] = [];
+        if (Array.isArray(rawData)) {
+          rawData.forEach((o: any) => {
+            const t = o.takenAt || o.t || o.time;
+            if (!t) return;
+            pts.push({
+              t: new Date(t).toISOString(),
+              rr: o.value && o.type === 'RR' ? parseInt(o.value) : o.rr,
+              spo2: o.value && o.type === 'SpO2' ? parseInt(o.value) : o.spo2,
+              hr: o.value && o.type === 'HR' ? parseInt(o.value) : o.hr,
+              sbp: o.value && o.type === 'BP' ? parseInt(o.value.split('/')[0]) : o.sbp,
+              temp: o.value && o.type === 'Temp' ? parseFloat(o.value) : o.temp,
+              ews: o.ews,
+              source: o.source || 'obs',
+            });
+          });
+        }
+        pts.sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+        setTimelineData({ points: pts, events: [] });
+        setIsLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setIsLoading(false);
+      });
+  }, [patientId]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/observations', patientId] });
   };
 
-  return { ...data, loading, error, refresh };
+  return { 
+    points: timelineData.points, 
+    events: timelineData.events, 
+    loading: isLoading, 
+    error, 
+    refresh 
+  };
 }
 
 // ============================================================================
