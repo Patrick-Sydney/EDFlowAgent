@@ -1,0 +1,92 @@
+import React, { useMemo } from "react";
+import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
+import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+
+export type MDPatient = {
+  id: string;
+  displayName?: string; 
+  givenName?: string; 
+  familyName?: string;
+  age?: number; 
+  sex?: string;
+  chiefComplaint?: string;
+  ews?: number;
+  roomName?: string | null;
+  mdWaiting?: string;
+  resultsReady?: boolean;
+  dispoReady?: boolean;
+};
+
+export type MDLane = { 
+  id: 'worklist' | 'results' | 'dispo'; 
+  label: string; 
+  patients: MDPatient[] 
+};
+
+export default function MDViewMobile({ 
+  lanes, 
+  onSeeNow, 
+  onOpenResults, 
+  onOrderSet, 
+  onDispo, 
+  onOpenCard 
+}: {
+  lanes: MDLane[];
+  onSeeNow: (p: MDPatient) => void;
+  onOpenResults: (p: MDPatient) => void;
+  onOrderSet: (p: MDPatient) => void;
+  onDispo: (p: MDPatient) => void;
+  onOpenCard: (p: MDPatient) => void;
+}) {
+  const pills: LanePill[] = useMemo(
+    () => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })),
+    [lanes]
+  );
+
+  const primaryMap: Record<MDLane['id'], { label: string; fn: (p: MDPatient) => void }> = {
+    worklist: { label: 'See Now', fn: onSeeNow },
+    results:  { label: 'Open Results', fn: onOpenResults },
+    dispo:    { label: 'Disposition', fn: onDispo },
+  };
+
+  return (
+    <div className="pb-24">
+      <RNMobileLaneNav lanes={pills} stickyOffset={48} />
+
+      <div className="mx-3 space-y-8 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+        {lanes.map((lane) => (
+          <section key={lane.id} id={lane.id} className="scroll-mt-16">
+            <div className="sticky top-[calc(env(safe-area-inset-top)+104px)] z-20 bg-background border-b border-border px-2 py-2">
+              <h2 className="text-base font-semibold">
+                {lane.label} <span className="text-muted-foreground">({lane.patients.length})</span>
+              </h2>
+            </div>
+            <div className="mt-3 space-y-3">
+              {lane.patients.map((p) => {
+                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
+                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+                const status = lane.id === 'worklist' ? (p.roomName ? `Room ${p.roomName}` : 'To see') : lane.id === 'results' ? 'Results' : 'Dispo';
+                const { label, fn } = primaryMap[lane.id];
+                
+                return (
+                  <PatientCardCompact
+                    key={p.id}
+                    name={name}
+                    ageSex={ageSex}
+                    status={status}
+                    timer={p.mdWaiting}
+                    complaint={p.chiefComplaint}
+                    ews={p.ews}
+                    primaryLabel={label}
+                    onPrimary={() => fn(p)}
+                    onOpen={() => onOpenCard(p)}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,239 @@
+// =============================
+// File: src/views/ChargeViewMobile.tsx
+// Phone‑first Charge view: sticky lane pills + compact cards + role actions
+// Reuses RNMobileLaneNav + PatientCardCompact
+// =============================
+import React, { useEffect, useState, useMemo } from "react";
+import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
+import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+
+export type ChargePatient = {
+  id: string;
+  displayName?: string; givenName?: string; familyName?: string;
+  age?: number; sex?: string;
+  chiefComplaint?: string;
+  waitingFor?: string;        // context-aware timer label ("2h 11m waiting for room")
+  ews?: number;
+  roomName?: string | null;   // e.g., "Room 3"
+  triageStartedAt?: string | null;
+  arrivalAt?: string;
+};
+
+export type ChargeLane = { id: 'waiting' | 'intriage' | 'room'; label: string; patients: ChargePatient[] };
+
+export default function ChargeViewMobile({
+  lanes,
+  onStartTriage,
+  onAssignRoom,
+  onOpenCard,
+  onAddObs,
+}: {
+  lanes: ChargeLane[];
+  onStartTriage: (p: ChargePatient) => void;
+  onAssignRoom: (p: ChargePatient) => void;
+  onOpenCard: (p: ChargePatient) => void;
+  onAddObs: (p: ChargePatient) => void;
+}) {
+  // Measure sticky offset from the shared mobile header + pill bar
+  const [offsetPx, setOffsetPx] = useState(88);
+  useEffect(() => {
+    const header = document.getElementById('app-header-mobile');
+    const pillsEl = document.getElementById('rn-lane-pills');
+    const compute = () => {
+      const h = header?.getBoundingClientRect().height ?? 0;
+      const p = pillsEl?.getBoundingClientRect().height ?? 0;
+      setOffsetPx(Math.round(h + p));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    header && ro.observe(header); pillsEl && ro.observe(pillsEl);
+    window.addEventListener('resize', compute, { passive: true });
+    window.addEventListener('orientationchange', compute);
+    return () => { ro.disconnect(); window.removeEventListener('resize', compute); window.removeEventListener('orientationchange', compute); };
+  }, []);
+
+  const pills: LanePill[] = useMemo(() => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })), [lanes]);
+
+  return (
+    <div className="pb-24">
+      <RNMobileLaneNav lanes={pills} stickyOffset={offsetPx} />
+
+      <div className="mx-3 space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+        {lanes.map((lane) => (
+          <section key={lane.id} id={lane.id} style={{ scrollMarginTop: offsetPx + 12 }}>
+            <div className="sticky z-20 bg-background/80 backdrop-blur border-b px-1 py-1.5" style={{ top: `calc(env(safe-area-inset-top) + ${offsetPx}px)` }}>
+              <h2 className="text-[15px] font-semibold">{lane.label} <span className="text-muted-foreground">({lane.patients.length})</span></h2>
+            </div>
+            <div className="mt-2 space-y-3">
+              {lane.patients.map((p) => {
+                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
+                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+                const status = lane.id === 'room' ? (p.roomName ?? 'Rooming') : lane.label;
+                const primaryLabel = lane.id === 'waiting' ? 'Start Triage' : lane.id === 'intriage' ? 'Assign Room' : 'Manage';
+                const onPrimary = () => lane.id === 'waiting' ? onStartTriage(p) : lane.id === 'intriage' ? onAssignRoom(p) : onOpenCard(p);
+                return (
+                  <PatientCardCompact
+                    key={p.id}
+                    name={name}
+                    ageSex={ageSex}
+                    status={status}
+                    timer={p.waitingFor}
+                    complaint={p.chiefComplaint}
+                    ews={p.ews}
+                    primaryLabel={primaryLabel}
+                    onPrimary={onPrimary}
+                    onOpen={() => onOpenCard(p)}
+                    rightExtras={<button className="hidden" />}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// =============================
+// File: src/views/ChargeView.adapter.tsx
+// Chooses mobile vs your existing Charge desk view
+// =============================
+import React from "react";
+import ChargeViewMobile, { ChargeLane, ChargePatient } from "./ChargeViewMobile";
+
+export default function ChargeViewAdapter({ lanes, onStartTriage, onAssignRoom, onOpenCard, onAddObs, DeskView }: {
+  lanes: ChargeLane[];
+  onStartTriage: (p: ChargePatient) => void;
+  onAssignRoom: (p: ChargePatient) => void;
+  onOpenCard: (p: ChargePatient) => void;
+  onAddObs: (p: ChargePatient) => void;
+  DeskView?: React.ComponentType<any>;
+}) {
+  const isPhone = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  if (isPhone || !DeskView) return <ChargeViewMobile lanes={lanes} onStartTriage={onStartTriage} onAssignRoom={onAssignRoom} onOpenCard={onOpenCard} onAddObs={onAddObs} />;
+  return <DeskView lanes={lanes} onStartTriage={onStartTriage} onAssignRoom={onAssignRoom} onOpenCard={onOpenCard} onAddObs={onAddObs} />;
+}
+
+
+// =============================
+// File: src/views/MDViewMobile.tsx
+// Phone‑first MD view: Worklist / Results / Dispo lanes with role‑specific actions
+// =============================
+import React, { useEffect, useMemo, useState } from "react";
+import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
+import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+import { Button } from "@/components/ui/button";
+
+export type MDPatient = {
+  id: string;
+  displayName?: string; givenName?: string; familyName?: string;
+  age?: number; sex?: string;
+  chiefComplaint?: string;
+  ews?: number;
+  roomName?: string | null;
+  mdWaiting?: string;         // e.g., "43m waiting for MD"
+  resultsReady?: boolean;
+  dispoReady?: boolean;
+};
+
+export type MDLane = { id: 'worklist' | 'results' | 'dispo'; label: string; patients: MDPatient[] };
+
+export default function MDViewMobile({ lanes, onSeeNow, onOpenResults, onOrderSet, onDispo, onOpenCard }: {
+  lanes: MDLane[];
+  onSeeNow: (p: MDPatient) => void;
+  onOpenResults: (p: MDPatient) => void;
+  onOrderSet: (p: MDPatient) => void;   // quick order sets
+  onDispo: (p: MDPatient) => void;
+  onOpenCard: (p: MDPatient) => void;
+}) {
+  const [offsetPx, setOffsetPx] = useState(88);
+  useEffect(() => {
+    const header = document.getElementById('app-header-mobile');
+    const pillsEl = document.getElementById('rn-lane-pills');
+    const compute = () => {
+      const h = header?.getBoundingClientRect().height ?? 0;
+      const p = pillsEl?.getBoundingClientRect().height ?? 0;
+      setOffsetPx(Math.round(h + p));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    header && ro.observe(header); pillsEl && ro.observe(pillsEl);
+    window.addEventListener('resize', compute, { passive: true });
+    window.addEventListener('orientationchange', compute);
+    return () => { ro.disconnect(); window.removeEventListener('resize', compute); window.removeEventListener('orientationchange', compute); };
+  }, []);
+
+  const pills: LanePill[] = useMemo(() => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })), [lanes]);
+
+  const primaryMap: Record<MDLane['id'], { label: string; fn: (p: MDPatient) => void }> = {
+    worklist: { label: 'See Now', fn: onSeeNow },
+    results:  { label: 'Open Results', fn: onOpenResults },
+    dispo:    { label: 'Disposition', fn: onDispo },
+  };
+
+  return (
+    <div className="pb-24">
+      <RNMobileLaneNav lanes={pills} stickyOffset={offsetPx} />
+
+      <div className="mx-3 space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+        {lanes.map((lane) => (
+          <section key={lane.id} id={lane.id} style={{ scrollMarginTop: offsetPx + 12 }}>
+            <div className="sticky z-20 bg-background/80 backdrop-blur border-b px-1 py-1.5" style={{ top: `calc(env(safe-area-inset-top) + ${offsetPx}px)` }}>
+              <h2 className="text-[15px] font-semibold">{lane.label} <span className="text-muted-foreground">({lane.patients.length})</span></h2>
+            </div>
+            <div className="mt-2 space-y-3">
+              {lane.patients.map((p) => {
+                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
+                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+                const status = lane.id === 'worklist' ? (p.roomName ? `Room ${p.roomName}` : 'To see') : lane.id === 'results' ? 'Results' : 'Dispo';
+                const { label, fn } = primaryMap[lane.id];
+                return (
+                  <PatientCardCompact
+                    key={p.id}
+                    name={name}
+                    ageSex={ageSex}
+                    status={status}
+                    timer={p.mdWaiting}
+                    complaint={p.chiefComplaint}
+                    ews={p.ews}
+                    primaryLabel={label}
+                    onPrimary={() => fn(p)}
+                    onOpen={() => onOpenCard(p)}
+                    rightExtras={<div className="hidden" />}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {/* Quick order sets drawer stub (optional) */}
+      {/* You can trigger onOrderSet(p) from inside PatientCardCompact via rightExtras or Details */}
+    </div>
+  );
+}
+
+
+// =============================
+// File: src/views/MDView.adapter.tsx
+// Chooses mobile vs existing MD desk view
+// =============================
+import React from "react";
+import MDViewMobile, { MDLane, MDPatient } from "./MDViewMobile";
+
+export default function MDViewAdapter({ lanes, onSeeNow, onOpenResults, onOrderSet, onDispo, onOpenCard, DeskView }: {
+  lanes: MDLane[];
+  onSeeNow: (p: MDPatient) => void;
+  onOpenResults: (p: MDPatient) => void;
+  onOrderSet: (p: MDPatient) => void;
+  onDispo: (p: MDPatient) => void;
+  onOpenCard: (p: MDPatient) => void;
+  DeskView?: React.ComponentType<any>;
+}) {
+  const isPhone = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  if (isPhone || !DeskView) return <MDViewMobile lanes={lanes} onSeeNow={onSeeNow} onOpenResults={onOpenResults} onOrderSet={onOrderSet} onDispo={onDispo} onOpenCard={onOpenCard} />;
+  return <DeskView lanes={lanes} onSeeNow={onSeeNow} onOpenResults={onOpenResults} onOrderSet={onOrderSet} onDispo={onDispo} onOpenCard={onOpenCard} />;
+}

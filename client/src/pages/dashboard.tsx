@@ -15,6 +15,8 @@ import { ObservationDemo } from "@/components/ObservationDemo";
 import { useMonitoringScheduler } from "@/hooks/useMonitoringScheduler";
 import RNViewAdapter from "@/views/RNView.adapter";
 import { Lane, PatientLite } from "@/views/RNViewMobile";
+import ChargeViewMobile, { ChargeLane, ChargePatient } from "@/views/ChargeViewMobile";
+import MDViewMobile, { MDLane, MDPatient } from "@/views/MDViewMobile";
 import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 import AppHeaderMobile, { Role } from "@/components/app/AppHeaderMobile";
@@ -119,6 +121,61 @@ export default function Dashboard() {
     ];
   }, [encounters]);
   
+  // Transform encounters for Charge mobile view
+  const chargeLanes = useMemo(() => {
+    const waiting = encounters.filter(e => e.lane === "waiting");
+    const triage = encounters.filter(e => e.lane === "triage"); 
+    const roomed = encounters.filter(e => ["roomed", "diagnostics", "review", "ready"].includes(e.lane));
+    
+    const transformChargePatient = (e: Encounter): ChargePatient => ({
+      id: e.id,
+      givenName: e.name.split(' ')[0] || '',
+      familyName: e.name.split(' ').slice(1).join(' ') || '',
+      displayName: e.name,
+      chiefComplaint: e.complaint,
+      waitingFor: `${calculateWaitingTime(new Date(e.arrivalTime))} waiting`,
+      ews: e.ats,
+      roomName: e.room,
+      age: e.age,
+      sex: e.sex,
+      arrivalAt: e.arrivalTime
+    });
+
+    return [
+      { id: 'waiting' as const, label: "Waiting", patients: waiting.map(transformChargePatient) },
+      { id: 'intriage' as const, label: "In Triage", patients: triage.map(transformChargePatient) },
+      { id: 'room' as const, label: "In Rooms", patients: roomed.map(transformChargePatient) }
+    ];
+  }, [encounters]);
+  
+  // Transform encounters for MD mobile view
+  const mdLanes = useMemo(() => {
+    const worklist = encounters.filter(e => ["roomed", "diagnostics"].includes(e.lane));
+    const results = encounters.filter(e => e.lane === "review");
+    const dispo = encounters.filter(e => e.lane === "ready");
+    
+    const transformMDPatient = (e: Encounter): MDPatient => ({
+      id: e.id,
+      givenName: e.name.split(' ')[0] || '',
+      familyName: e.name.split(' ').slice(1).join(' ') || '',
+      displayName: e.name,
+      chiefComplaint: e.complaint,
+      mdWaiting: `${calculateWaitingTime(new Date(e.arrivalTime))} waiting for MD`,
+      ews: e.ats,
+      roomName: e.room,
+      age: e.age,
+      sex: e.sex,
+      resultsReady: e.lane === "review",
+      dispoReady: e.lane === "ready"
+    });
+
+    return [
+      { id: 'worklist' as const, label: "Worklist", patients: worklist.map(transformMDPatient) },
+      { id: 'results' as const, label: "Results", patients: results.map(transformMDPatient) },
+      { id: 'dispo' as const, label: "Disposition", patients: dispo.map(transformMDPatient) }
+    ];
+  }, [encounters]);
+  
   // RN Mobile handlers
   const handleStartTriage = (patient: PatientLite) => {
     const encounter = encounters.find(e => e.id === patient.id);
@@ -132,7 +189,7 @@ export default function Dashboard() {
     setObsModalOpen(true);
   };
 
-  const handleOpenCard = (patient: PatientLite) => {
+  const handleOpenCard = (patient: PatientLite | ChargePatient | MDPatient) => {
     // Open patient details - could expand later
     console.log("Open patient card for:", patient.displayName);
   };
@@ -187,6 +244,33 @@ export default function Dashboard() {
         variant: "destructive",
       });
     }
+  };
+  
+  // Charge mobile handlers
+  const handleAssignRoom = (patient: ChargePatient) => {
+    console.log("Assign room for:", patient.displayName);
+    // TODO: Implement room assignment logic
+  };
+  
+  // MD mobile handlers  
+  const handleSeeNow = (patient: MDPatient) => {
+    console.log("See now:", patient.displayName);
+    // TODO: Implement see now logic
+  };
+  
+  const handleOpenResults = (patient: MDPatient) => {
+    console.log("Open results for:", patient.displayName);
+    // TODO: Implement results view
+  };
+  
+  const handleOrderSet = (patient: MDPatient) => {
+    console.log("Order set for:", patient.displayName);
+    // TODO: Implement order sets
+  };
+  
+  const handleDispo = (patient: MDPatient) => {
+    console.log("Disposition for:", patient.displayName);
+    // TODO: Implement disposition logic
   };
   
   const getMobileRole = (): Role => {
@@ -250,11 +334,12 @@ export default function Dashboard() {
     );
   }
 
-  // Check if we should use mobile RN view
-  const isMobileRN = roleView === "rn" && typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  // Check if we should use mobile view for any role
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+  const shouldUseMobileView = isMobile && ["rn", "charge", "md"].includes(roleView);
   
-  // If mobile RN view, render the mobile interface
-  if (isMobileRN) {
+  // If mobile view, render the appropriate mobile interface
+  if (shouldUseMobileView) {
     return (
       <div className="min-h-screen bg-background">
         <AppHeaderMobile
@@ -262,12 +347,35 @@ export default function Dashboard() {
           onChangeRole={handleMobileRoleChange}
           onScenarios={demoMode ? handleMobileScenarios : undefined}
         />
-        <RNViewAdapter
-          lanes={rnLanes}
-          onStartTriage={handleStartTriage}
-          onOpenObs={handleOpenObs}
-          onOpenCard={handleOpenCard}
-        />
+        {roleView === "rn" && (
+          <RNViewAdapter
+            lanes={rnLanes}
+            onStartTriage={handleStartTriage}
+            onOpenObs={handleOpenObs}
+            onOpenCard={handleOpenCard}
+          />
+        )}
+        
+        {roleView === "charge" && (
+          <ChargeViewMobile
+            lanes={chargeLanes}
+            onStartTriage={handleStartTriage}
+            onAssignRoom={handleAssignRoom}
+            onOpenCard={handleOpenCard}
+            onAddObs={handleOpenObs}
+          />
+        )}
+        
+        {roleView === "md" && (
+          <MDViewMobile
+            lanes={mdLanes}
+            onSeeNow={handleSeeNow}
+            onOpenResults={handleOpenResults}
+            onOrderSet={handleOrderSet}
+            onDispo={handleDispo}
+            onOpenCard={handleOpenCard}
+          />
+        )}
         
         {/* Drawers */}
         <RegisterDrawer />
