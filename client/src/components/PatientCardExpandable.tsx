@@ -200,6 +200,13 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : s.slice(0,26) + '…';
   }, [name]);
 
+  const handlePrimary = () => {
+    if (onPrimary) return onPrimary();
+    const label = (primaryLabel || "").toLowerCase();
+    if (label.includes("obs") && onAddObs) return onAddObs();
+    if (label.includes("assign") && onAssignRoom) return onAssignRoom();
+  };
+
   return (
     <div className="rounded-2xl border bg-card p-3">
       {/* Header row */}
@@ -224,7 +231,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           </div>
           <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
             {ctaMode === "collapsed" ? (
-              <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
+              <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={handlePrimary}>{primaryLabel}</Button>
             ) : null}
           </div>
         </div>
@@ -243,7 +250,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <div className="rounded-xl border p-3">
             <div className="text-sm font-medium">Quick actions</div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" onClick={onPrimary}>{primaryLabel}</Button>
+              <Button size="sm" onClick={handlePrimary}>{primaryLabel}</Button>
               {role === 'RN' && (
                 <>
                   <Button size="sm" variant="outline" className="rounded-full" onClick={onAddObs}>+ Obs</Button>
@@ -271,7 +278,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             </div>
             <div className="rounded-xl border p-3">
               <div className="text-xs text-muted-foreground">Tasks due</div>
-              <div className="text-sm">2 pending</div>
+              <div className="text-sm">None</div>
             </div>
           </div>
         </div>
