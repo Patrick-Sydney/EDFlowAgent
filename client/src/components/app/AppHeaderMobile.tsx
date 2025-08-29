@@ -23,7 +23,7 @@ export default function AppHeaderMobile({
   }, []);
 
   return (
-    <div className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+    <div className="sticky top-0 z-40 border-b border-border bg-background" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className="h-12 flex items-center justify-between px-2">
         {/* Left: App icon doubles as Role switcher */}
         <Button variant="ghost" size="icon" className="rounded-xl" aria-label="Change role" onClick={() => setOpenRole(true)}>

@@ -42,7 +42,7 @@ export default function RNMobileLaneNav({
 
   return (
     <div
-      className="sticky z-30 bg-background border-b border-border"
+      className="sticky z-30 bg-background border-b border-border -mt-px"
       style={{ top: `calc(env(safe-area-inset-top) + ${stickyOffset}px)` }}
     >
       <div className="flex gap-3 overflow-x-auto px-3 py-3 no-scrollbar">

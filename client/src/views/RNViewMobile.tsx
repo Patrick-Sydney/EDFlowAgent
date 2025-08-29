@@ -27,7 +27,7 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
 
   return (
     <div className="pb-24">
-      <RNMobileLaneNav lanes={pills} stickyOffset={56} />
+      <RNMobileLaneNav lanes={pills} stickyOffset={48} />
 
       <div className="mx-3 space-y-8 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
         {lanes.map((lane) => (
