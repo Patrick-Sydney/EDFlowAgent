@@ -124,17 +124,27 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                   timer={timer}
                   complaint={encounter.complaint}
                   ews={encounter.triageHr ? Math.floor(encounter.triageHr / 30) : undefined}
+                  ats={encounter.ats as 1|2|3|4|5}
                   dob={null}
                   nhi={encounter.nhi}
                   mrn={null}
                   alerts={[]}
                   allergies={[]}
+                  minVitals={{
+                    rr: 16,
+                    spo2: 98,
+                    hr: 72,
+                    sbp: 120,
+                    temp: 36.5,
+                    takenAt: new Date().toISOString()
+                  }}
                   primaryLabel={primaryConfig.label}
                   onPrimary={primaryConfig.action}
                   onAddObs={() => console.log("Add obs for", encounter.name)}
                   onAssignRoom={() => openRoom(encounter)}
                   onOrderSet={() => console.log("Order set for", encounter.name)}
                   onOpenFull={() => console.log("Open full chart for", encounter.name)}
+                  onOpenVitals={() => console.log("Open vitals timeline for", encounter.name)}
                 />
               );
             })
