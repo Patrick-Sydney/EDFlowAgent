@@ -2,6 +2,7 @@ import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, User } from "lucide-react";
+import { IDChip } from "@/components/PatientIdentitySheet";
 
 export type PatientCardCompactProps = {
   name: string;
@@ -13,6 +14,7 @@ export type PatientCardCompactProps = {
   onPrimary?: () => void;
   primaryLabel?: string; // e.g., "Start Triage" | "+ Obs"
   onOpen?: () => void;   // open full card / drawer
+  onOpenIdentity?: () => void; // open identity sheet
   rightExtras?: React.ReactNode; // optional extra actions/icons
 };
 
@@ -26,7 +28,7 @@ const shortName = (full: string) => {
 };
 
 export function PatientCardCompact(props: PatientCardCompactProps) {
-  const { name, status, timer, complaint, ews, ageSex, onPrimary, primaryLabel = "+ Obs", onOpen, rightExtras } = props;
+  const { name, status, timer, complaint, ews, ageSex, onPrimary, primaryLabel = "+ Obs", onOpen, onOpenIdentity, rightExtras } = props;
   const display = shortName(name);
   return (
     <div className="rounded-2xl border bg-card p-3 active:scale-[0.99]" onClick={onOpen} role="button">
@@ -50,6 +52,7 @@ export function PatientCardCompact(props: PatientCardCompactProps) {
 
         {/* Right: primary action (fixed width) */}
         <div className="ml-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          {onOpenIdentity && <IDChip onClick={onOpenIdentity} />}
           {rightExtras}
           <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
         </div>

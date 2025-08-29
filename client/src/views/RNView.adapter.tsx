@@ -6,6 +6,7 @@ export default function RNViewAdapter(props: {
   onStartTriage: (p: PatientLite) => void;
   onOpenObs: (p: PatientLite) => void;
   onOpenCard: (p: PatientLite) => void;
+  onOpenIdentity?: (p: PatientLite) => void;
   DeskView?: React.ComponentType<any>; // your existing RN view
 }) {
   const isPhone = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches; // md breakpoint

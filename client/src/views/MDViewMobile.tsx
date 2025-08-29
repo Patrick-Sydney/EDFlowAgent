@@ -29,7 +29,8 @@ export default function MDViewMobile({
   onOpenResults, 
   onOrderSet, 
   onDispo, 
-  onOpenCard 
+  onOpenCard,
+  onOpenIdentity 
 }: {
   lanes: MDLane[];
   onSeeNow: (p: MDPatient) => void;
@@ -37,6 +38,7 @@ export default function MDViewMobile({
   onOrderSet: (p: MDPatient) => void;
   onDispo: (p: MDPatient) => void;
   onOpenCard: (p: MDPatient) => void;
+  onOpenIdentity?: (p: MDPatient) => void;
 }) {
   const pills: LanePill[] = useMemo(
     () => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })),
@@ -80,6 +82,7 @@ export default function MDViewMobile({
                     primaryLabel={label}
                     onPrimary={() => fn(p)}
                     onOpen={() => onOpenCard(p)}
+                    onOpenIdentity={onOpenIdentity ? () => onOpenIdentity(p) : undefined}
                   />
                 );
               })}

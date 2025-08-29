@@ -14,11 +14,12 @@ export type PatientLite = {
 
 export type Lane = { id: string; label: string; patients: PatientLite[] };
 
-export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard }: {
+export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard, onOpenIdentity }: {
   lanes: Lane[];
   onStartTriage: (p: PatientLite) => void;
   onOpenObs: (p: PatientLite) => void;
   onOpenCard: (p: PatientLite) => void;
+  onOpenIdentity?: (p: PatientLite) => void;
 }) {
   const pills: LanePill[] = useMemo(
     () => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })),
@@ -56,6 +57,7 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
                     primaryLabel={primaryLabel}
                     onPrimary={onPrimary}
                     onOpen={() => onOpenCard(p)}
+                    onOpenIdentity={onOpenIdentity ? () => onOpenIdentity(p) : undefined}
                   />
                 );
               })}

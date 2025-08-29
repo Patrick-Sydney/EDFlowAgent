@@ -20,6 +20,7 @@ import MDViewMobile, { MDLane, MDPatient } from "@/views/MDViewMobile";
 import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 import AppHeaderMobile, { Role } from "@/components/app/AppHeaderMobile";
+import PatientIdentitySheet, { PatientIdentity } from "@/components/PatientIdentitySheet";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -27,6 +28,8 @@ export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView, resetDemo, demoMode } = useDashboardStore();
   const [obsModalOpen, setObsModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [selectedIdentity, setSelectedIdentity] = useState<PatientIdentity | null>(null);
   const { toast } = useToast();
   
   // Start monitoring scheduler for automatic task status updates
@@ -273,6 +276,24 @@ export default function Dashboard() {
     // TODO: Implement disposition logic
   };
   
+  // Identity sheet handler
+  const handleOpenIdentity = (patient: PatientLite | ChargePatient | MDPatient) => {
+    // Transform patient data to identity format
+    const identity: PatientIdentity = {
+      id: patient.id,
+      legalName: patient.displayName || `${patient.givenName || ''} ${patient.familyName || ''}`.trim(),
+      age: patient.age,
+      sex: patient.sex,
+      nhi: `ABC${Math.random().toString().slice(2, 6)}`, // Mock NHI for demo
+      mrn: `MRN${patient.id.slice(-6)}`, // Mock MRN
+      allergies: ["NKDA"], // Mock data
+      alerts: [] // No alerts for demo
+    };
+    
+    setSelectedIdentity(identity);
+    setIdentityOpen(true);
+  };
+  
   const getMobileRole = (): Role => {
     const roleMap: Record<string, Role> = {
       "rn": "RN view",
@@ -353,6 +374,7 @@ export default function Dashboard() {
             onStartTriage={handleStartTriage}
             onOpenObs={handleOpenObs}
             onOpenCard={handleOpenCard}
+            onOpenIdentity={handleOpenIdentity}
           />
         )}
         
@@ -363,6 +385,7 @@ export default function Dashboard() {
             onAssignRoom={handleAssignRoom}
             onOpenCard={handleOpenCard}
             onAddObs={handleOpenObs}
+            onOpenIdentity={handleOpenIdentity}
           />
         )}
         
@@ -374,6 +397,7 @@ export default function Dashboard() {
             onOrderSet={handleOrderSet}
             onDispo={handleDispo}
             onOpenCard={handleOpenCard}
+            onOpenIdentity={handleOpenIdentity}
           />
         )}
         
@@ -392,6 +416,17 @@ export default function Dashboard() {
           recorder="RN Mobile"
           isTriage={selectedPatient ? rnLanes.find(l => l.patients.some(p => p.id === selectedPatient.id))?.id === "triage" : false}
         />
+        
+        {/* Patient Identity Sheet */}
+        {selectedIdentity && (
+          <PatientIdentitySheet
+            open={identityOpen}
+            onOpenChange={setIdentityOpen}
+            patient={selectedIdentity}
+            role={roleView === "rn" ? "RN" : roleView === "charge" ? "Charge" : "MD"}
+            onAudit={(evt) => console.log("Identity audit:", evt)}
+          />
+        )}
       </div>
     );
   }

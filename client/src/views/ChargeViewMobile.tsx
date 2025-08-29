@@ -29,12 +29,14 @@ export default function ChargeViewMobile({
   onAssignRoom,
   onOpenCard,
   onAddObs,
+  onOpenIdentity,
 }: {
   lanes: ChargeLane[];
   onStartTriage: (p: ChargePatient) => void;
   onAssignRoom: (p: ChargePatient) => void;
   onOpenCard: (p: ChargePatient) => void;
   onAddObs: (p: ChargePatient) => void;
+  onOpenIdentity?: (p: ChargePatient) => void;
 }) {
   const pills: LanePill[] = useMemo(
     () => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })),
@@ -73,6 +75,7 @@ export default function ChargeViewMobile({
                     primaryLabel={primaryLabel}
                     onPrimary={onPrimary}
                     onOpen={() => onOpenCard(p)}
+                    onOpenIdentity={onOpenIdentity ? () => onOpenIdentity(p) : undefined}
                   />
                 );
               })}
