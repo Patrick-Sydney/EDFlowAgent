@@ -69,7 +69,7 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
       await Promise.all(
         allPatientIds.map(async (patientId) => {
           try {
-            const response = await fetch(`/api/observations/${patientId}`);
+            const response = await fetch(`/api/observations?patientId=${encodeURIComponent(patientId)}`);
             if (response.ok) {
               results[patientId] = await response.json();
             } else {
