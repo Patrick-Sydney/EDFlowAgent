@@ -196,14 +196,22 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
         throw new Error('Failed to save observations to backend');
       }
 
-      // Invalidate the observations cache for this patient
-      const { queryClient } = await import('@/lib/queryClient');
-      queryClient.invalidateQueries({ 
-        queryKey: ['/api/observations'], 
-        predicate: (query) => {
-          const queryKey = query.queryKey as string[];
-          return queryKey.includes('/api/observations');
-        }
+      // Use the new observations store for immediate local state update
+      const { useObsStore } = await import('@/state/observations');
+      const nowIso = new Date().toISOString();
+      
+      // Convert observation format and add to store
+      const obsArray = Array.isArray(obs) ? obs : [obs];
+      obsArray.forEach(observation => {
+        useObsStore.getState().addObs(patientId, {
+          t: observation.takenAt || nowIso,
+          rr: observation.type === 'RR' ? parseInt(observation.value) : undefined,
+          spo2: observation.type === 'SpO2' ? parseInt(observation.value) : undefined,
+          hr: observation.type === 'HR' ? parseInt(observation.value) : undefined,
+          sbp: observation.type === 'BP' ? parseInt(observation.value.split('/')[0]) : undefined,
+          temp: observation.type === 'Temp' ? parseFloat(observation.value) : undefined,
+          source: "obs",
+        });
       });
       
     } catch (error) {
