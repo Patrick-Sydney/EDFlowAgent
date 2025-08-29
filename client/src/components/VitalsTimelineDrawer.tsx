@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
   LineChart,
@@ -43,13 +44,11 @@ export type TimelineData = {
 
 // ============================================================================
 // HOOK — useVitalsTimeline(patientId)
-// - Tries local window seeds, then /api/observations, else returns empty
-// - Provides refresh() and addLocal(point)
+// - Uses React Query to fetch observations with proper cache management
+// - Provides refresh() via React Query invalidation
 // ============================================================================
 export function useVitalsTimeline(patientId: string) {
-  const [data, setData] = useState<TimelineData>({ points: [], events: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const normalize = (raw: any): TimelineData => {
     // Accept multiple shapes; map to ObsPoint
@@ -58,17 +57,17 @@ export function useVitalsTimeline(patientId: string) {
 
     const pushObs = (o: any) => {
       if (!o) return;
-      const t = o.t || o.time || o.effective || o.effectiveDateTime || o.effectiveInstant;
+      const t = o.takenAt || o.t || o.time || o.effective || o.effectiveDateTime || o.effectiveInstant;
       if (!t) return;
       const p: ObsPoint = {
         t: new Date(t).toISOString(),
-        rr: o.rr ?? o.respRate ?? o.respiratoryRate,
-        spo2: o.spo2 ?? o.SpO2 ?? o.spo2pct,
-        hr: o.hr ?? o.pulse ?? o.heartRate,
-        sbp: o.sbp ?? o.systolic ?? o.bpSys ?? o.bp?.systolic,
-        temp: o.temp ?? o.temperature,
+        rr: o.value && o.type === 'RR' ? parseInt(o.value) : (o.rr ?? o.respRate ?? o.respiratoryRate),
+        spo2: o.value && o.type === 'SpO2' ? parseInt(o.value) : (o.spo2 ?? o.SpO2 ?? o.spo2pct),
+        hr: o.value && o.type === 'HR' ? parseInt(o.value) : (o.hr ?? o.pulse ?? o.heartRate),
+        sbp: o.value && o.type === 'BP' ? parseInt(o.value.split('/')[0]) : (o.sbp ?? o.systolic ?? o.bpSys ?? o.bp?.systolic),
+        temp: o.value && o.type === 'Temp' ? parseFloat(o.value) : (o.temp ?? o.temperature),
         ews: o.ews,
-        source: o.source as any,
+        source: o.source as any || 'obs',
       };
       pts.push(p);
     };
@@ -93,44 +92,20 @@ export function useVitalsTimeline(patientId: string) {
     return { points: pts, events: evs };
   };
 
-  const refresh = async () => {
-    setLoading(true); setError(null);
-    try {
-      // 1) window seed (dev/demo)
-      const win: any = typeof window !== 'undefined' ? (window as any) : {};
-      const seeded = win.EDFLOW?.observations?.[patientId] || win.ED_DEMO?.observations?.[patientId];
-      if (seeded) { setData(normalize(seeded)); setLoading(false); return; }
+  // Use React Query to fetch observations
+  const { data: rawData = [], isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['/api/observations', patientId],
+    enabled: !!patientId,
+  });
 
-      // 2) API (if available)
-      const url = `/api/observations?patientId=${encodeURIComponent(patientId)}`;
-      try {
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
-          setData(normalize(json));
-          setLoading(false); return;
-        }
-      } catch {/* swallow */}
+  const data = useMemo(() => normalize(rawData), [rawData]);
+  const error = queryError?.message || null;
 
-      // 3) Fallback: try to derive from a common in-memory patient object
-      const p = win.EDFLOW?.patients?.find?.((x: any) => x.id === patientId) || null;
-      if (p?.observations) { setData(normalize({ observations: p.observations })); setLoading(false); return; }
-
-      // 4) No data
-      setData({ points: [], events: [] });
-      setLoading(false);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load'); setLoading(false);
-    }
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/observations', patientId] });
   };
 
-  const addLocal = (point: ObsPoint) => {
-    setData((d) => ({ ...d, points: [...d.points, point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t)) }));
-  };
-
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [patientId]);
-
-  return { ...data, loading, error, refresh, addLocal };
+  return { ...data, loading, error, refresh };
 }
 
 // ============================================================================
