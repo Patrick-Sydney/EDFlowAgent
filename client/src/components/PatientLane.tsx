@@ -124,9 +124,9 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                   timer={timer}
                   complaint={encounter.complaint}
                   ews={encounter.triageHr ? Math.floor(encounter.triageHr / 30) : undefined}
-                  dob={encounter.dob}
+                  dob={null}
                   nhi={encounter.nhi}
-                  mrn={encounter.mrn}
+                  mrn={null}
                   alerts={[]}
                   allergies={[]}
                   primaryLabel={primaryConfig.label}

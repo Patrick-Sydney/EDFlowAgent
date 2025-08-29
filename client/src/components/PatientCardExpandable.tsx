@@ -3,8 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert } from "lucide-react";
-import { Encounter } from "@/shared/schema";
-
 // Define Role type for compatibility
 export type Role = "reception" | "charge" | "rn" | "md";
 
