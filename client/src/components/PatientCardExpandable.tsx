@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
+import { VitalsTimelineDrawer } from "./VitalsTimelineDrawer";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -174,7 +175,7 @@ export type ExpandableCardProps = {
   allergies?: string[];
   role: 'RN' | 'Charge' | 'MD';
   minVitals?: MinVitals;     // last known vitals for capsule
-  onOpenVitals?: () => void; // open full vitals timeline
+  patientId?: string;        // for timeline integration
   onPrimary?: () => void;
   primaryLabel?: string;
   onOrderSet?: () => void;       // MD quick order set
@@ -186,10 +187,11 @@ export type ExpandableCardProps = {
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
     name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
-    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull
+    minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull
   } = props;
 
   const [open, setOpen] = useState(false);
+  const [openTL, setOpenTL] = useState(false);
   const displayName = useMemo(() => {
     const s = (name || "").trim();
     if (s.length <= 28) return s;
@@ -232,7 +234,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <IdentityInline legalName={name} ageSex={ageSex} dob={dob ?? undefined} nhi={nhi ?? undefined} mrn={mrn ?? undefined} alerts={alerts} allergies={allergies} onAudit={(e)=>{/* wire to audit */}} />
 
           {/* Vitals Capsule (restores quick vitals & access to timeline) */}
-          <VitalsCapsule vitals={minVitals} onOpenTimeline={onOpenVitals} onAddObs={onAddObs} />
+          <VitalsCapsule vitals={minVitals} onOpenTimeline={() => setOpenTL(true)} onAddObs={onAddObs} />
 
           {/* Role-specific quick actions */}
           <div className="rounded-xl border p-3">
@@ -270,6 +272,15 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           </div>
         </div>
       </div>
+
+      {/* Vitals Timeline Drawer */}
+      <VitalsTimelineDrawer
+        open={openTL}
+        onOpenChange={setOpenTL}
+        patientId={patientId || ""}
+        patientName={name}
+        onAddObs={onAddObs}
+      />
     </div>
   );
 }

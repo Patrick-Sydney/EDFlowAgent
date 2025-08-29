@@ -1,8 +1,6 @@
 import { type Lane, type Encounter } from "@shared/schema";
 import { PatientCard } from "./PatientCard";
 import PatientCardExpandable, { type Role } from "./PatientCardExpandable";
-import { VitalsTimelineDrawer } from "./VitalsTimelineDrawer";
-import { useState } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { Clock, Stethoscope, DoorOpen, Search, UserCheck, ClipboardCheck, LogOut } from "lucide-react";
 
@@ -62,8 +60,6 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
   const roleView = useDashboardStore((state) => state.roleView);
   const openTriage = useDashboardStore((state) => state.openTriage);
   const openRoom = useDashboardStore((state) => state.openRoom);
-  const [vitalsOpen, setVitalsOpen] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<Encounter | null>(null);
   
   // Map roleView to Role type
   const role: Role = (roleView === "reception" || roleView === "charge" || roleView === "rn" || roleView === "md") 
@@ -140,10 +136,7 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                   onAddObs={() => console.log("Add obs for", encounter.name)}
                   onAssignRoom={() => openRoom(encounter)}
                   onOrderSet={() => console.log("Order set for", encounter.name)}
-                  onOpenVitals={() => {
-                    setSelectedPatient(encounter);
-                    setVitalsOpen(true);
-                  }}
+                  patientId={encounter.id}
                   onOpenFull={() => console.log("Open full card for", encounter.name)}
                 />
               );
@@ -151,15 +144,6 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
           )}
         </div>
       </div>
-      
-      {/* Vitals Timeline Drawer */}
-      <VitalsTimelineDrawer 
-        open={vitalsOpen}
-        onOpenChange={setVitalsOpen}
-        patientId={selectedPatient?.id || ""}
-        patientName={selectedPatient?.name}
-        onAddObs={() => console.log("Add obs for", selectedPatient?.name)}
-      />
     </div>
   );
 }
