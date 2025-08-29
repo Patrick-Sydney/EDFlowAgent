@@ -88,25 +88,56 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
               No patients in {config.title.toLowerCase()}
             </div>
           ) : (
-            encounters.map(encounter => (
-              <PatientCardExpandable 
-                key={encounter.id} 
-                encounter={encounter} 
-                role={role}
-                onOpenChart={(patientId) => console.log("Open chart for", patientId)}
-                onMarkTask={(patientId, taskId, status) => console.log("Mark task", taskId, "as", status, "for", patientId)}
-                onOrderSet={(patientId, setName) => console.log("Order", setName, "set for", patientId)}
-                onDisposition={(patientId, disp) => console.log("Set disposition", disp, "for", patientId)}
-                onStartTriage={(patientId) => {
-                  const patient = encounters.find(e => e.id === patientId);
-                  if (patient) openTriage(patient);
-                }}
-                onAssignRoom={(patientId, roomId) => {
-                  const patient = encounters.find(e => e.id === patientId);
-                  if (patient) openRoom(patient);
-                }}
-              />
-            ))
+            encounters.map(encounter => {
+              const ageSex = `${encounter.age} ${encounter.sex}`;
+              const timer = (() => {
+                const arrivalTime = new Date(encounter.arrivalTime);
+                const now = new Date();
+                const diffMinutes = Math.floor((now.getTime() - arrivalTime.getTime()) / (1000 * 60));
+                if (diffMinutes < 60) return `${diffMinutes}m`;
+                const hours = Math.floor(diffMinutes / 60);
+                const minutes = diffMinutes % 60;
+                return `${hours}h ${minutes}m`;
+              })();
+              
+              // Role-specific primary label and action
+              const getPrimaryConfig = () => {
+                if (role === 'rn') {
+                  return { label: '+ Obs', action: () => console.log("Add obs for", encounter.name) };
+                } else if (role === 'charge') {
+                  return { label: 'Assign', action: () => openRoom(encounter) };
+                } else if (role === 'md') {
+                  return { label: 'Review', action: () => console.log("Review", encounter.name) };
+                }
+                return { label: 'View', action: () => console.log("View", encounter.name) };
+              };
+              
+              const primaryConfig = getPrimaryConfig();
+              
+              return (
+                <PatientCardExpandable 
+                  key={encounter.id}
+                  role={role === 'rn' ? 'RN' : role === 'charge' ? 'Charge' : role === 'md' ? 'MD' : 'RN'}
+                  name={encounter.name}
+                  ageSex={ageSex}
+                  status={encounter.lane || 'waiting'}
+                  timer={timer}
+                  complaint={encounter.complaint}
+                  ews={encounter.triageHr ? Math.floor(encounter.triageHr / 30) : undefined}
+                  dob={encounter.dob}
+                  nhi={encounter.nhi}
+                  mrn={encounter.mrn}
+                  alerts={[]}
+                  allergies={[]}
+                  primaryLabel={primaryConfig.label}
+                  onPrimary={primaryConfig.action}
+                  onAddObs={() => console.log("Add obs for", encounter.name)}
+                  onAssignRoom={() => openRoom(encounter)}
+                  onOrderSet={() => console.log("Order set for", encounter.name)}
+                  onOpenFull={() => console.log("Open full chart for", encounter.name)}
+                />
+              );
+            })
           )}
         </div>
       </div>

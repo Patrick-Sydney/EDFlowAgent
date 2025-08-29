@@ -131,58 +131,36 @@ export function IdentityInline({
 // - Tap the card toggles an inline expansion with Identity + Actions + Insights
 // ------------------------------------------------------------------
 export type ExpandableCardProps = {
-  encounter: Encounter;
-  role: Role;
-  onOpenChart?: (patientId: string) => void;
-  onMarkTask?: (patientId: string, taskId: string, status: string) => void;
-  onOrderSet?: (patientId: string, setName: string) => void;
-  onDisposition?: (patientId: string, disp: string) => void;
-  onStartTriage?: (patientId: string) => void;
-  onAssignRoom?: (patientId: string, roomId: string) => void;
+  role: 'RN' | 'Charge' | 'MD';
+  name: string;
+  ageSex?: string;
+  status: string;
+  timer?: string;
+  complaint?: string;
+  ews?: number;
+  dob?: string | null;
+  nhi?: string | null;
+  mrn?: string | null;
+  alerts?: string[];
+  allergies?: string[];
+  primaryLabel?: string;
+  onPrimary?: () => void;
+  onAddObs?: () => void;
+  onAssignRoom?: () => void;
+  onOrderSet?: () => void;
+  onOpenFull?: () => void;
 };
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
-    encounter, role, onOpenChart, onMarkTask, onOrderSet, onDisposition, onStartTriage, onAssignRoom
+    role, name, ageSex, status, timer, complaint, ews, dob, nhi, mrn, 
+    alerts = [], allergies = [], primaryLabel = '+ Obs', 
+    onPrimary, onAddObs, onAssignRoom, onOrderSet, onOpenFull
   } = props;
-  
-  // Extract data from encounter
-  const name = encounter.name || "";
-  const ageSex = `${encounter.age} ${encounter.sex}`;
-  const status = encounter.lane || "waiting";
-  const complaint = encounter.complaint || "";
-  const nhi = encounter.nhi;
-  const mrn = encounter.mrn;
-  const dob = encounter.dob;
-  const alerts: string[] = [];
-  const allergies: string[] = [];
-  
-  // Calculate simple timer (time since arrival)
-  const timer = useMemo(() => {
-    const arrivalTime = new Date(encounter.arrivalTime);
-    const now = new Date();
-    const diffMinutes = Math.floor((now.getTime() - arrivalTime.getTime()) / (1000 * 60));
-    if (diffMinutes < 60) return `${diffMinutes}m`;
-    const hours = Math.floor(diffMinutes / 60);
-    const minutes = diffMinutes % 60;
-    return `${hours}h ${minutes}m`;
-  }, [encounter.arrivalTime]);
-  
-  // Simple EWS calculation (mock for now)
-  const ews = useMemo(() => {
-    // Basic scoring based on available vitals
-    let score = 0;
-    if (encounter.triageHr) {
-      const hr = encounter.triageHr;
-      if (hr <= 40 || hr >= 131) score += 3;
-      else if ((hr >= 41 && hr <= 50) || (hr >= 111 && hr <= 130)) score += 2;
-    }
-    return score > 0 ? score : undefined;
-  }, [encounter.triageHr]);
 
   const [open, setOpen] = useState(false);
   const displayName = useMemo(() => {
-    const s = name.trim();
+    const s = (name || "").trim();
     if (s.length <= 28) return s;
     const parts = s.split(/\s+/);
     return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : s.slice(0,26) + '…';
@@ -209,8 +187,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
           </div>
           <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
-            <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={() => onOpenChart?.(encounter.id)}>
-              {role === 'RN' ? '+ Obs' : role === 'Charge' ? 'Assign' : 'Review'}
+            <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>
+              {primaryLabel}
             </Button>
           </div>
         </div>
@@ -235,22 +213,22 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <div className="rounded-xl border p-3">
             <div className="text-sm font-medium">Quick actions</div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {role === 'rn' && (
+              {role === 'RN' && (
                 <>
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => onOpenChart?.(encounter.id)}>+ Obs</Button>
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={onAddObs}>+ Obs</Button>
                 </>
               )}
-              {role === 'charge' && (
+              {role === 'Charge' && (
                 <>
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => onAssignRoom?.(encounter.id, "")}>Assign room</Button>
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={onAssignRoom}>Assign room</Button>
                 </>
               )}
-              {role === 'md' && (
+              {role === 'MD' && (
                 <>
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => onOrderSet?.(encounter.id, "Chest Pain")}>Order set</Button>
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={onOrderSet}>Order set</Button>
                 </>
               )}
-              <Button size="sm" variant="outline" className="rounded-full" onClick={() => onOpenChart?.(encounter.id)}>Open details</Button>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={onOpenFull}>Open details</Button>
             </div>
           </div>
 
