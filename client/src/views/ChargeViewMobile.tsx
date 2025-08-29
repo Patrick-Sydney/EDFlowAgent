@@ -61,10 +61,9 @@ export default function ChargeViewMobile({
                 const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
                 const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
                 const status = lane.id === 'room' ? (p.roomName ?? 'Rooming') : lane.label;
-                const primaryLabel = 
-                  lane.id === "waiting" ? "Start Triage" :
-                  lane.id === "intriage" ? "Assign Room" :
-                  undefined;
+                const primaryLabel =
+                  lane.id === "waiting"  ? "Start Triage" :
+                  lane.id === "intriage" ? "Assign Room" : undefined;
                 
                 return (
                   <PatientCardExpandable
