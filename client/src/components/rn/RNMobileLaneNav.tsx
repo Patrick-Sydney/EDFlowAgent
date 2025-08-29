@@ -22,14 +22,27 @@ export default function RNMobileLaneNav({
     observers.current?.disconnect();
     const io = new IntersectionObserver(
       (entries) => {
-        const vis = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (vis) setActive((vis.target as HTMLElement).id);
+        // Find the section that's most prominently visible (closest to top)
+        let closestEntry: IntersectionObserverEntry | null = null;
+        let minDistance = Infinity;
+        
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const distance = Math.abs(entry.boundingClientRect.top);
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestEntry = entry;
+            }
+          }
+        });
+        
+        if (closestEntry) {
+          setActive((closestEntry.target as HTMLElement).id);
+        }
       },
       { 
-        rootMargin: `-${stickyOffset + 48}px 0px -50% 0px`, 
-        threshold: [0, 0.1, 0.25, 0.5] 
+        rootMargin: `-${stickyOffset + 48 + 20}px 0px -60% 0px`, 
+        threshold: 0.1
       }
     );
     lanes.forEach((l) => {
