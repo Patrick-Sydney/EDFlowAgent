@@ -1,0 +1,148 @@
+// =============================================
+// FILE: src/state/observations.ts
+// Tiny Zustand store for vitals observations per patient
+// =============================================
+import React, { useCallback } from "react";
+import { create } from "zustand";
+
+export type ObsPoint = {
+  t: string; rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
+  source?: "triage" | "obs" | "device";
+};
+
+type ObsState = {
+  byPatient: Record<string, ObsPoint[]>;
+  setPoints: (patientId: string, points: ObsPoint[]) => void;
+  addObs: (patientId: string, point: ObsPoint) => void;
+};
+
+export const useObsStore = create<ObsState>((set) => ({
+  byPatient: {},
+  setPoints: (patientId, points) => set((s) => ({ byPatient: { ...s.byPatient, [patientId]: [...points].sort((a,b)=>Date.parse(a.t)-Date.parse(b.t)) } })),
+  addObs: (patientId, point) => set((s) => {
+    const list = [...(s.byPatient[patientId] || []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
+    return { byPatient: { ...s.byPatient, [patientId]: list } };
+  }),
+}));
+
+// Hooks that SUBSCRIBE to the specific patient's slice (so UI re-renders)
+export function usePatientObsList(patientId: string): ObsPoint[] {
+  // selector captures patientId; useCallback keeps stable between renders
+  const selector = useCallback((s: ObsState) => s.byPatient[patientId] || [], [patientId]);
+  return useObsStore(selector);
+}
+
+export function usePatientLastVitals(patientId: string): ObsPoint | undefined {
+  const list = usePatientObsList(patientId);
+  return list.length ? list[list.length - 1] : undefined;
+}
+
+
+// =============================================
+// FILE: src/hooks/useVitalsTimeline.ts
+// Timeline hook that prioritizes live store, then seeds/API
+// =============================================
+import { useEffect, useMemo, useState } from "react";
+import { useObsStore, usePatientObsList, ObsPoint } from "@/state/observations";
+
+export type BundleEvent = { t: string; type: 'abx'|'fluids'|'cultures'|'lactate'|'review'|'alert'; label?: string };
+
+export function useVitalsTimeline(patientId: string) {
+  const livePoints = usePatientObsList(patientId); // <- auto-updates on addObs()
+  const [events, setEvents] = useState<BundleEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // First, try to load events + any seed points (without clobbering livePoints)
+    (async () => {
+      setLoading(true);
+      // seeds
+      const win: any = typeof window !== 'undefined' ? (window as any) : {};
+      const seeded = win.EDFLOW?.observations?.[patientId] || win.ED_DEMO?.observations?.[patientId];
+      const seedEvents = seeded?.events || seeded?.bundle || seeded?.markers || [];
+      // also try API for events if you like (optional)
+      setEvents(seedEvents.map((e: any) => ({ t: new Date(e.t || e.time || e.at).toISOString(), type: e.type, label: e.label })));
+      setLoading(false);
+    })();
+  }, [patientId]);
+
+  return { points: livePoints, events, loading };
+}
+
+
+// =============================================
+// FILE: src/components/rn/RNPatientRow.tsx
+// Wrapper row that subscribes to store and feeds PatientCardExpandable
+// =============================================
+import React from "react";
+import PatientCardExpandable from "@/components/patient/PatientCardExpandable";
+import { usePatientLastVitals } from "@/state/observations";
+
+export function RNPatientRow({ p, laneLabel, onStartTriage, onOpenObs, onOpenCard, onOpenVitals }:{
+  p: any; laneLabel: string; onStartTriage:(p:any)=>void; onOpenObs:(p:any)=>void; onOpenCard:(p:any)=>void; onOpenVitals:(p:any)=>void;
+}){
+  const last = usePatientLastVitals(p.id);
+  const minVitals = last ? { rr:last.rr, spo2:last.spo2, hr:last.hr, sbp:last.sbp, temp:last.temp, takenAt:last.t } : undefined;
+  const status = laneLabel === "Room" ? (p.roomName ?? "Rooming") : laneLabel;
+  const primaryLabel = laneLabel === "Waiting" ? "Start Triage" : undefined; // default: no CTA on collapsed
+
+  return (
+    <PatientCardExpandable
+      role="RN"
+      name={p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—'}
+      ageSex={p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : p.sex}
+      status={status}
+      timer={p.waitingFor}
+      complaint={p.chiefComplaint}
+      ews={p.ews}
+      ats={p.ats}
+      minVitals={minVitals}
+      primaryLabel={primaryLabel}
+      onPrimary={primaryLabel ? () => onStartTriage(p) : undefined}
+      onAddObs={() => onOpenObs(p)}
+      onOpenVitals={() => onOpenVitals(p)}
+      onOpenFull={() => onOpenCard(p)}
+    />
+  );
+}
+
+
+// =============================================
+// FILE: src/views/RNViewMobile.tsx (PATCH SNIPPET)
+// Replace the inline map with RNPatientRow so the row subscribes to the store
+// =============================================
+// ... imports
+import { RNPatientRow } from "@/components/rn/RNPatientRow";
+
+// inside your render where you had: lane.patients.map((p)=> <PatientCardCompact .../>)
+{lane.patients.map((p) => (
+  <RNPatientRow
+    key={p.id}
+    p={p}
+    laneLabel={lane.label}
+    onStartTriage={onStartTriage}
+    onOpenObs={onOpenObs}
+    onOpenCard={onOpenCard}
+    onOpenVitals={onOpenVitals}
+  />
+))}
+
+
+// =============================================
+// FILE: src/components/patient/ObsModal.save.ts (CALL THIS FROM YOUR +Obs SAVE)
+// Ensures +Obs writes to the store so UI updates immediately
+// =============================================
+import { useObsStore } from "@/state/observations";
+
+export function saveObsToStore(patientId: string, values: { rr?:number; spo2?:number; hr?:number; sbp?:number; temp?:number; ews?:number; }){
+  useObsStore.getState().addObs(patientId, {
+    t: new Date().toISOString(),
+    rr: values.rr, spo2: values.spo2, hr: values.hr, sbp: values.sbp, temp: values.temp,
+    ews: values.ews, source: "obs",
+  });
+}
+
+// Example usage in your modal's handleSave():
+//   saveObsToStore(patient.id, formValues);
+//   await apiSave(formValues); // optional async; UI already updated
+//   closeModal();
