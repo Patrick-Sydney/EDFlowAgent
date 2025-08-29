@@ -89,7 +89,7 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
             </div>
           ) : (
             encounters.map(encounter => {
-              const ageSex = `${encounter.age} ${encounter.sex}`;
+              const ageSex = encounter.age ? `${encounter.age}${encounter.sex ? ` ${encounter.sex}` : ''}` : encounter.sex;
               const timer = (() => {
                 const arrivalTime = new Date(encounter.arrivalTime);
                 const now = new Date();
@@ -100,19 +100,12 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                 return `${hours}h ${minutes}m`;
               })();
               
-              // Role-specific primary label and action
-              const getPrimaryConfig = () => {
-                if (role === 'rn') {
-                  return { label: '+ Obs', action: () => console.log("Add obs for", encounter.name) };
-                } else if (role === 'charge') {
-                  return { label: 'Assign', action: () => openRoom(encounter) };
-                } else if (role === 'md') {
-                  return { label: 'Review', action: () => console.log("Review", encounter.name) };
-                }
-                return { label: 'View', action: () => console.log("View", encounter.name) };
-              };
-              
-              const primaryConfig = getPrimaryConfig();
+              const currentLane = config.title;
+              const status = currentLane === "Room" ? encounter.room ?? "Rooming" : currentLane;
+              const primaryLabel = currentLane === "Waiting" ? "Start Triage" : "+ Obs";
+              const onPrimary = currentLane === "Waiting" 
+                ? () => openTriage(encounter)
+                : () => console.log("Add obs for", encounter.name);
               
               return (
                 <PatientCardExpandable 
@@ -120,31 +113,31 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                   role={role === 'rn' ? 'RN' : role === 'charge' ? 'Charge' : role === 'md' ? 'MD' : 'RN'}
                   name={encounter.name}
                   ageSex={ageSex}
-                  status={encounter.lane || 'waiting'}
+                  status={status}
                   timer={timer}
                   complaint={encounter.complaint}
                   ews={encounter.triageHr ? Math.floor(encounter.triageHr / 30) : undefined}
                   ats={encounter.ats as 1|2|3|4|5}
-                  dob={null}
-                  nhi={encounter.nhi}
-                  mrn={null}
-                  alerts={[]}
-                  allergies={[]}
                   minVitals={{
-                    rr: 16,
-                    spo2: 98,
-                    hr: 72,
-                    sbp: 120,
-                    temp: 36.5,
-                    takenAt: new Date().toISOString()
+                    rr: encounter.triageRr || undefined,
+                    spo2: encounter.triageSpo2 || undefined,
+                    hr: encounter.triageHr || undefined,
+                    sbp: encounter.triageSbp || undefined,
+                    temp: encounter.triageTemp || undefined,
+                    takenAt: encounter.triageTime || undefined
                   }}
-                  primaryLabel={primaryConfig.label}
-                  onPrimary={primaryConfig.action}
+                  dob={encounter.dob || null}
+                  nhi={encounter.nhi}
+                  mrn={encounter.mrn || null}
+                  alerts={encounter.alerts || []}
+                  allergies={encounter.allergies || []}
+                  primaryLabel={primaryLabel}
+                  onPrimary={onPrimary}
                   onAddObs={() => console.log("Add obs for", encounter.name)}
                   onAssignRoom={() => openRoom(encounter)}
                   onOrderSet={() => console.log("Order set for", encounter.name)}
-                  onOpenFull={() => console.log("Open full chart for", encounter.name)}
                   onOpenVitals={() => console.log("Open vitals timeline for", encounter.name)}
+                  onOpenFull={() => console.log("Open full card for", encounter.name)}
                 />
               );
             })
