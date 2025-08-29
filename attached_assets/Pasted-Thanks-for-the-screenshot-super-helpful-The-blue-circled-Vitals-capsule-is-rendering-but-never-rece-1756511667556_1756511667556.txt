@@ -1,0 +1,157 @@
+Thanks for the screenshot—super helpful. The blue-circled Vitals capsule is rendering but never receives new data, so it keeps showing dashes. Let’s remove the moving parts and wire this with dependency-free, pure React state so it works in Replit without aliases or extra libs.
+
+Below is a drop-in VitalsProvider + tiny patches. It guarantees that saving +Obs immediately updates the expanded card and the timeline.
+
+⸻
+
+1) Add a tiny provider (no libraries)
+
+src/state/VitalsContext.tsx
+
+import React, { createContext, useContext, useMemo, useState } from "react";
+
+export type ObsPoint = {
+  t: string;
+  rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
+  source?: "triage" | "obs" | "device";
+};
+
+type State = Record<string, ObsPoint[]>;
+
+const Ctx = createContext<{
+  state: State;
+  add: (patientId: string, point: ObsPoint) => void;
+}>({ state: {}, add: () => {} });
+
+export function VitalsProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<State>({});
+  const add = (patientId: string, point: ObsPoint) =>
+    setState(s => {
+      const list = [...(s[patientId] || []), point]
+        .sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+      return { ...s, [patientId]: list };
+    });
+  const value = useMemo(() => ({ state, add }), [state]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useVitals(patientId: string) {
+  const { state, add } = useContext(Ctx);
+  const list = state[patientId] || [];
+  const last = list[list.length - 1];
+  return { list, last, add: (p: ObsPoint) => add(patientId, p) };
+}
+
+Wrap your app root once (usually in main.tsx or App.tsx):
+
+import { VitalsProvider } from "./state/VitalsContext";
+
+root.render(
+  <VitalsProvider>
+    <App />
+  </VitalsProvider>
+);
+
+
+⸻
+
+2) Make +Obs Save push into the provider
+
+In your +Obs modal (where you already gather RR/SpO₂/HR/SBP/Temp):
+
+import { useVitals } from "../state/VitalsContext"; // use a relative path
+
+function ObsModal({ patient, onClose, onSaved }: { patient: any; onClose:()=>void; onSaved?:()=>void }) {
+  const { add } = useVitals(patient.id);
+
+  async function handleSave() {
+    // read values from your form state:
+    const point = {
+      t: new Date().toISOString(),
+      rr: form.rr, spo2: form.spo2, hr: form.hr, sbp: form.sbp, temp: form.temp,
+      ews: form.ews, source: "obs" as const,
+    };
+
+    // 1) update UI immediately
+    add(point);
+
+    // 2) (optional) call your API — don't block the UI
+    try { await api.saveObservation(patient.id, point); } catch {}
+
+    onSaved?.();
+    onClose();
+  }
+
+  // ...render
+}
+
+This is the key: updating the shared provider causes any card/timeline that subscribes to this patient to re-render instantly.
+
+⸻
+
+3) Feed the card’s Vitals capsule from the provider
+
+In the RN list where you map patients → cards:
+
+import { useVitals } from "../state/VitalsContext"; // relative path
+
+function RNPatientRow({ p, laneLabel, openObs, openTimeline, openCard }: any) {
+  const { last } = useVitals(p.id);
+  const minVitals = last
+    ? { rr:last.rr, spo2:last.spo2, hr:last.hr, sbp:last.sbp, temp:last.temp, takenAt:last.t }
+    : undefined;
+
+  return (
+    <PatientCardExpandable
+      role="RN"
+      name={p.displayName}
+      status={laneLabel}
+      timer={p.waitingFor}
+      complaint={p.chiefComplaint}
+      ews={p.ews}
+      ats={p.ats}
+      minVitals={minVitals}               // <-- from provider, will update live
+      onAddObs={() => openObs(p)}
+      onOpenVitals={() => openTimeline(p)}
+      onOpenFull={() => openCard(p)}
+    />
+  );
+}
+
+Make sure your RN mobile view renders rows through a component like the above (so it subscribes per patient).
+
+⸻
+
+4) Point the Timeline at the same source
+
+Where you render your timeline drawer/hook:
+
+import { useVitals } from "../state/VitalsContext";
+
+function VitalsTimeline({ patientId }: { patientId: string }) {
+  const { list } = useVitals(patientId); // same live data
+  // ...pass `list` into your chart, optionally mix in seeded/API points
+}
+
+(If you’re using my earlier timeline pack, swap its internal loader to prefer useVitals(patientId).list first.)
+
+⸻
+
+Quick sanity tests (on your phone)
+	1.	Expand a card → Vitals capsule shows dashes (first time).
+	2.	Tap + Obs, enter values, Save → capsule shows the new numbers immediately with the current time.
+	3.	Open Timeline → point is there (because it reads from the same provider).
+	4.	Rotate device / navigate lanes → values persist (provider is at app root).
+
+⸻
+
+If it still doesn’t update
+	•	Confirm the app is wrapped with <VitalsProvider>…</VitalsProvider>.
+	•	Confirm the patientId is identical across modal, card, and provider (log it once).
+	•	Ensure the row subscribes (use useVitals(p.id) inside the row component that renders the card).
+	•	Avoid @/ import aliases on Replit; use relative paths as above.
+	•	Add a quick console in handleSave() to verify it runs.
+
+⸻
+
+This approach avoids Zustand/Redux and Vite path quirks, and it’s the most reliable way to get your +Obs → Vitals loop working right now. If you want, I can also add a tiny toast (“Observations saved”) on successful save for clear feedback.

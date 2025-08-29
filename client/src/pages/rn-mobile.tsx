@@ -2,11 +2,11 @@ import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import RNViewAdapter from "@/views/RNView.adapter";
 import { Lane, PatientLite } from "@/views/RNViewMobile";
-import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
+import { VitalsModalWrapper } from "@/components/VitalsModalWrapper";
 import { Encounter } from "@shared/schema";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { buildObsDefaults } from "@/lib/obsDefaults";
-import { saveObsToStore } from "@/utils/saveObsToStore";
+import { useVitals } from "../state/VitalsContext";
 
 // Convert ED encounters to RN mobile format
 function transformToLanes(encounters: Encounter[]): Lane[] {
@@ -43,7 +43,8 @@ export default function RNMobilePage() {
   const { data: encounters = [] } = useQuery<Encounter[]>({ queryKey: ['/api/encounters'] });
   const [obsModalOpen, setObsModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
-
+  
+  // We'll get patient-specific vitals functions when modal opens
   const lanes = useMemo(() => transformToLanes(encounters), [encounters]);
 
   const handleStartTriage = (patient: PatientLite) => {
@@ -66,34 +67,7 @@ export default function RNMobilePage() {
     console.log("Open vitals for:", patient.displayName);
   };
 
-  const handleSaveObs = async (observations: any[]) => {
-    if (!selectedPatient) return;
-    
-    // Transform observations to our format and save to Zustand store immediately
-    const obsRecord: Record<string, number> = {};
-    observations.forEach(obs => {
-      switch(obs.type) {
-        case 'RR': obsRecord.rr = parseFloat(obs.value); break;
-        case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
-        case 'HR': obsRecord.hr = parseFloat(obs.value); break;
-        case 'BP': 
-          const bpMatch = obs.value.match(/^(\d+)/);
-          if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
-          break;
-        case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
-      }
-    });
-    
-    // Save to store immediately for instant UI update
-    saveObsToStore(selectedPatient.id, obsRecord);
-    
-    // Also save to backend via existing dashboard store
-    await useDashboardStore.getState().addObservation(selectedPatient.id, observations);
-    
-    // Close modal
-    setObsModalOpen(false);
-    setSelectedPatient(null);
-  };
+  // Save handling is now done in VitalsModalWrapper
 
   // Get observation defaults for selected patient
   const obsDefaults = useMemo(() => {
@@ -118,13 +92,16 @@ export default function RNMobilePage() {
         onOpenVitals={handleOpenVitals}
       />
 
-      <ObservationSetModalTouch
+      <VitalsModalWrapper
         open={obsModalOpen}
-        onOpenChange={setObsModalOpen}
+        onOpenChange={(open) => {
+          setObsModalOpen(open);
+          if (!open) setSelectedPatient(null);
+        }}
+        patientId={selectedPatient?.id || null}
         patientName={selectedPatient?.displayName || ""}
         defaults={obsDefaults}
         isFirstObs={isFirstObs}
-        onSave={handleSaveObs}
         recorder="RN Mobile"
         isTriage={selectedPatient ? lanes.find(l => l.patients.some(p => p.id === selectedPatient.id))?.id === "triage" : false}
       />

@@ -1,6 +1,6 @@
 import React from "react";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
-import { usePatientLastVitals } from "@/state/observations";
+import { useVitals } from "../../state/VitalsContext";
 
 export function RNPatientRow({ 
   p, 
@@ -17,7 +17,7 @@ export function RNPatientRow({
   onOpenCard: (p: any) => void; 
   onOpenVitals: (p: any) => void;
 }) {
-  const last = usePatientLastVitals(p.id);
+  const { last } = useVitals(p.id);
   const minVitals = last ? { 
     rr: last.rr, 
     spo2: last.spo2, 
