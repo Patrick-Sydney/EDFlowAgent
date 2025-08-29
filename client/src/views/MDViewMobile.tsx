@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
-import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+import PatientCardExpandable from "@/components/PatientCardExpandable";
 
 export type MDPatient = {
   id: string;
@@ -11,6 +11,7 @@ export type MDPatient = {
   sex?: string;
   chiefComplaint?: string;
   ews?: number;
+  ats?: 1|2|3|4|5;
   roomName?: string | null;
   mdWaiting?: string;
   resultsReady?: boolean;
@@ -71,18 +72,21 @@ export default function MDViewMobile({
                 const { label, fn } = primaryMap[lane.id];
                 
                 return (
-                  <PatientCardCompact
+                  <PatientCardExpandable
                     key={p.id}
+                    role="MD"
                     name={name}
                     ageSex={ageSex}
                     status={status}
                     timer={p.mdWaiting}
                     complaint={p.chiefComplaint}
                     ews={p.ews}
+                    ats={p.ats}
+                    patientId={p.id}
                     primaryLabel={label}
                     onPrimary={() => fn(p)}
-                    onOpen={() => onOpenCard(p)}
-                    onOpenIdentity={onOpenIdentity ? () => onOpenIdentity(p) : undefined}
+                    onOrderSet={() => onOrderSet(p)}
+                    onOpenFull={() => onOpenCard(p)}
                   />
                 );
               })}

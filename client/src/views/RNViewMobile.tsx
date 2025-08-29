@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
-import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+import PatientCardExpandable from "@/components/PatientCardExpandable";
 
 export type PatientLite = {
   id: string;
@@ -9,6 +9,7 @@ export type PatientLite = {
   chiefComplaint?: string;
   waitingFor?: string;       // e.g. "5h 15m waiting"
   ews?: number;
+  ats?: 1|2|3|4|5;
   roomName?: string | null;
 };
 
@@ -43,21 +44,26 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
                 const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
                 const status = lane.label === "Room" ? (p.roomName ?? "Rooming") : lane.label;
                 const primaryLabel = lane.label === "Waiting" ? "Start Triage" : "+ Obs";
-                const onPrimary = () => (lane.label === "Waiting" ? onStartTriage(p) : onOpenObs(p));
                 const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+                
                 return (
-                  <PatientCardCompact
+                  <PatientCardExpandable
                     key={p.id}
+                    role="RN"
                     name={name}
+                    ageSex={ageSex}
                     status={status}
                     timer={p.waitingFor}
                     complaint={p.chiefComplaint}
                     ews={p.ews}
-                    ageSex={ageSex}
+                    ats={p.ats}
+                    patientId={p.id}
                     primaryLabel={primaryLabel}
-                    onPrimary={onPrimary}
-                    onOpen={() => onOpenCard(p)}
-                    onOpenIdentity={onOpenIdentity ? () => onOpenIdentity(p) : undefined}
+                    onPrimary={
+                      lane.label === "Waiting" ? () => onStartTriage(p) : () => onOpenObs(p)
+                    }
+                    onAddObs={() => onOpenObs(p)}
+                    onOpenFull={() => onOpenCard(p)}
                   />
                 );
               })}

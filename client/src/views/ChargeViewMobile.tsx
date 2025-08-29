@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
-import { PatientCardCompact } from "@/components/rn/PatientCardCompact";
+import PatientCardExpandable from "@/components/PatientCardExpandable";
 
 export type ChargePatient = {
   id: string;
@@ -12,6 +12,7 @@ export type ChargePatient = {
   chiefComplaint?: string;
   waitingFor?: string;
   ews?: number;
+  ats?: 1|2|3|4|5;
   roomName?: string | null;
   triageStartedAt?: string | null;
   arrivalAt?: string;
@@ -60,22 +61,32 @@ export default function ChargeViewMobile({
                 const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
                 const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
                 const status = lane.id === 'room' ? (p.roomName ?? 'Rooming') : lane.label;
-                const primaryLabel = lane.id === 'waiting' ? 'Start Triage' : lane.id === 'intriage' ? 'Assign Room' : 'Manage';
-                const onPrimary = () => lane.id === 'waiting' ? onStartTriage(p) : lane.id === 'intriage' ? onAssignRoom(p) : onOpenCard(p);
+                const primaryLabel = 
+                  lane.id === "waiting" ? "Start Triage" :
+                  lane.id === "intriage" ? "Assign Room" :
+                  undefined;
                 
                 return (
-                  <PatientCardCompact
+                  <PatientCardExpandable
                     key={p.id}
+                    role="Charge"
                     name={name}
                     ageSex={ageSex}
                     status={status}
                     timer={p.waitingFor}
                     complaint={p.chiefComplaint}
                     ews={p.ews}
+                    ats={p.ats}
+                    patientId={p.id}
                     primaryLabel={primaryLabel}
-                    onPrimary={onPrimary}
-                    onOpen={() => onOpenCard(p)}
-                    onOpenIdentity={onOpenIdentity ? () => onOpenIdentity(p) : undefined}
+                    onPrimary={
+                      lane.id === "waiting" ? () => onStartTriage(p) :
+                      lane.id === "intriage" ? () => onAssignRoom(p) :
+                      undefined
+                    }
+                    onAssignRoom={() => onAssignRoom(p)}
+                    onAddObs={() => onAddObs(p)}
+                    onOpenFull={() => onOpenCard(p)}
                   />
                 );
               })}
