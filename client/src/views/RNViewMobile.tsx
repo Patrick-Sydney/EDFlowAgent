@@ -16,19 +16,6 @@ export type PatientLite = {
 
 export type Lane = { id: string; label: string; patients: PatientLite[] };
 
-// Helper function to convert ObsPoint to MinVitals
-function getLatestVitals(obsPoint: any): MinVitals | undefined {
-  if (!obsPoint) return undefined;
-  
-  return {
-    rr: obsPoint.rr,
-    spo2: obsPoint.spo2,
-    hr: obsPoint.hr,
-    sbp: obsPoint.sbp,
-    temp: obsPoint.temp,
-    takenAt: obsPoint.t,
-  };
-}
 
 export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard, onOpenIdentity }: {
   lanes: Lane[];
@@ -63,7 +50,15 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
                 const status = lane.label === "Room" ? (p.roomName ?? "Rooming") : lane.label;
                 const primaryLabel = lane.label === "Waiting" ? "Start Triage" : "+ Obs";
                 const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
-                const minVitals = getLatestVitals(getLastVitals(p.id));
+                const last = getLastVitals(p.id);
+                const minVitals = last ? {
+                  rr: last.rr, 
+                  spo2: last.spo2, 
+                  hr: last.hr, 
+                  sbp: last.sbp, 
+                  temp: last.temp, 
+                  takenAt: last.t
+                } : undefined;
                 
                 return (
                   <PatientCardExpandable
