@@ -23,21 +23,22 @@ export default function RNMobileLaneNav({
     const io = new IntersectionObserver(
       (entries) => {
         // Find the section that's most prominently visible (closest to top)
-        let closestEntry: IntersectionObserverEntry | null = null;
-        let minDistance = Infinity;
+        const intersectingEntries = entries.filter(e => e.isIntersecting);
+        if (intersectingEntries.length === 0) return;
         
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const distance = Math.abs(entry.boundingClientRect.top);
-            if (distance < minDistance) {
-              minDistance = distance;
-              closestEntry = entry;
-            }
+        let closestEntry = intersectingEntries[0];
+        let minDistance = Math.abs(intersectingEntries[0].boundingClientRect.top);
+        
+        for (let i = 1; i < intersectingEntries.length; i++) {
+          const distance = Math.abs(intersectingEntries[i].boundingClientRect.top);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestEntry = intersectingEntries[i];
           }
-        });
+        }
         
-        if (closestEntry) {
-          setActive((closestEntry.target as HTMLElement).id);
+        if (closestEntry.target instanceof HTMLElement) {
+          setActive(closestEntry.target.id);
         }
       },
       { 
