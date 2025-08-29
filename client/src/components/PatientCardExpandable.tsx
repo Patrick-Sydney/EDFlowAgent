@@ -1,778 +1,272 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { 
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import React, { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { 
-  Activity,
-  Bell,
-  ClipboardCheck,
-  FileText,
-  HeartPulse,
-  MoreHorizontal,
-  Pill,
-  Stethoscope,
-  Thermometer,
-  TimerReset,
-  XCircle,
-  ChevronDown,
-  UserCircle2,
-  AlertTriangle,
-  ListChecks,
-  TestTubes,
-  BrainCircuit,
-} from "lucide-react";
-
-// Import our existing Encounter type
+import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert } from "lucide-react";
 import { Encounter } from "@/shared/schema";
-// Import sophisticated monitoring system
-import { 
-  computeEwsFromObservations, 
-  cadenceFrom, 
-  secondsUntil,
-  MonitoringPolicy,
-  type PatientLite 
-} from "../utils/monitoring";
-import ObservationSetModalTouch, { type TouchObservation } from "@/components/ObservationSetModalTouch";
-import { buildObsDefaults } from "@/lib/obsDefaults";
-// Import advanced vitals timeline with charting
-import VitalsTimeline from "@/components/VitalsTimeline";
 
-/**
- * Phase‑2 Scaffold: Clickable + Expandable Patient Card
- * - Role aware (Charge RN vs MD)
- * - Shows Triage, Assessment, Vitals timeline, Notes, Diagnostics, Actions, Insights
- * - Light alerts + Task Board per patient
- * - EWS badge auto color from score
- */
-
-// ---------- Types ----------
+// Define Role type for compatibility
 export type Role = "reception" | "charge" | "rn" | "md";
 
-export type ATS = 1 | 2 | 3 | 4 | 5;
-
-export interface Observation {
-  id: string;
-  type: "HR" | "BP" | "Temp" | "RR" | "SpO2" | "GCS" | "Pain";
-  value: string; // store canonical string; parse as needed
-  unit?: string;
-  takenAt: string; // ISO time
-  recordedBy: string;
+// ------------------------------------------------------------------
+// Small inline Identity block (calm, masked identifiers)
+// ------------------------------------------------------------------
+export function maskTail(value?: string | null, visible = 3) {
+  if (!value) return "—";
+  const vis = value.slice(-visible);
+  const mask = "•".repeat(Math.max(0, value.length - visible));
+  return `${mask}${vis}`;
 }
 
-export interface EWS {
-  score: number;
-  riskLevel: "low" | "medium" | "high";
-  calculatedAt: string;
-}
+export function IdentityInline({
+  legalName,
+  preferredName,
+  ageSex,
+  dob,
+  nhi,
+  mrn,
+  alerts = [],
+  allergies = [],
+  onAudit,
+}: {
+  legalName: string;
+  preferredName?: string | null;
+  ageSex?: string;
+  dob?: string | null;          // ISO
+  nhi?: string | null;
+  mrn?: string | null;
+  alerts?: string[];
+  allergies?: string[];
+  onAudit?: (evt: { action: "reveal" | "copy" | "qr_open"; field: string }) => void;
+}) {
+  const [showNHI, setShowNHI] = useState(false);
+  const [showMRN, setShowMRN] = useState(false);
 
-export interface TaskItem {
-  id: string;
-  description: string;
-  dueAt?: string;
-  status: "pending" | "done" | "overdue";
-  source: "auto" | "user" | "orderSet";
-}
+  const dobStr = useMemo(() => (dob ? new Date(dob).toLocaleDateString() : "—"), [dob]);
 
-export interface DiagnosticOrder {
-  id: string;
-  kind: "Lab" | "Imaging" | "ECG";
-  name: string;
-  status: "ordered" | "in-progress" | "resulted" | "canceled";
-  orderedAt: string;
-  resultedAt?: string;
-  summary?: string; // brief result capsule
-}
-
-export interface NoteEntry {
-  id: string;
-  authorRole: Role;
-  author: string;
-  createdAt: string;
-  body: string;
-}
-
-// ---------- Helpers ----------
-const riskColor = (risk: EWS["riskLevel"]) => {
-  switch (risk) {
-    case "low":
-      return "bg-green-600";
-    case "medium":
-      return "bg-yellow-500";
-    case "high":
-      return "bg-red-600";
-  }
-};
-
-const statusBadge = (s: TaskItem["status"]) => {
-  if (s === "pending") return <Badge variant="secondary">Pending</Badge>;
-  if (s === "overdue") return <Badge className="bg-red-600">Overdue</Badge>;
-  return <Badge className="bg-green-600">Done</Badge>;
-};
-
-const fmtTime = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString() : "—");
-
-// Basic EWS color inference if only score is available
-const ewsToRisk = (score: number): EWS["riskLevel"] => {
-  if (score >= 7) return "high";
-  if (score >= 4) return "medium";
-  return "low";
-};
-
-// Convert Encounter to observations including both triage vitals and additional observations from journey
-const encounterToObservations = (encounter: Encounter) => {
-  const observations: Observation[] = [];
-  const triageTimestamp = new Date(encounter.arrivalTime).toISOString();
-  
-  // Add triage vitals (original vitals from ED arrival/triage process)
-  if (encounter.triageHr) observations.push({ id: `hr-triage-${encounter.id}`, type: "HR", value: encounter.triageHr.toString(), unit: "bpm", takenAt: triageTimestamp, recordedBy: "Triage", phase: "triage" });
-  if (encounter.triageRr) observations.push({ id: `rr-triage-${encounter.id}`, type: "RR", value: encounter.triageRr.toString(), unit: "/min", takenAt: triageTimestamp, recordedBy: "Triage", phase: "triage" });
-  if (encounter.triageBpSys && encounter.triageBpDia) observations.push({ id: `bp-triage-${encounter.id}`, type: "BP", value: `${encounter.triageBpSys}/${encounter.triageBpDia}`, unit: "mmHg", takenAt: triageTimestamp, recordedBy: "Triage", phase: "triage" });
-  if (encounter.triageTemp) observations.push({ id: `temp-triage-${encounter.id}`, type: "Temp", value: encounter.triageTemp.toString(), unit: "°C", takenAt: triageTimestamp, recordedBy: "Triage", phase: "triage" });
-  if (encounter.triageSpo2) observations.push({ id: `spo2-triage-${encounter.id}`, type: "SpO2", value: encounter.triageSpo2.toString(), unit: "%", takenAt: triageTimestamp, recordedBy: "Triage", phase: "triage" });
-  if (encounter.triagePain) observations.push({ id: `pain-triage-${encounter.id}`, type: "Pain", value: encounter.triagePain.toString(), unit: "/10", takenAt: triageTimestamp, recordedBy: "Triage", phase: "triage" });
-  
-  // Add comprehensive observation history from patient journey
-  const observationHistory = (encounter as any)._observationHistory;
-  if (observationHistory && Array.isArray(observationHistory)) {
-    observationHistory.forEach((obs: any) => {
-      if (obs.type && obs.value && obs.takenAt) {
-        observations.push({
-          id: obs.id,
-          type: obs.type,
-          value: obs.value,
-          unit: obs.unit || "",
-          takenAt: obs.takenAt,
-          recordedBy: obs.recordedBy || "Staff"
-        });
-      }
-    });
-  }
-  
-  // Remove duplicates based on ID
-  const uniqueObservations = observations.filter((obs, index, self) => 
-    index === self.findIndex(o => o.id === obs.id)
-  );
-  
-  return uniqueObservations;
-};
-
-// Calculate EWS from vital signs using sophisticated monitoring system
-const calculateEWS = (observations: Observation[]): EWS => {
-  if (observations.length === 0) {
-    return {
-      score: 0,
-      riskLevel: "low",
-      calculatedAt: new Date().toISOString()
-    };
-  }
-  
-  try {
-    const ewsResult = computeEwsFromObservations(observations);
-    return {
-      score: ewsResult.score,
-      riskLevel: ewsResult.band,
-      calculatedAt: ewsResult.calculatedAt
-    };
-  } catch (error) {
-    // Fallback to basic scoring if monitoring system fails
-    let score = 0;
-    observations.forEach(obs => {
-      const value = parseFloat(obs.value.split('/')[0]);
-      switch (obs.type) {
-        case "HR":
-          if (value <= 40 || value >= 131) score += 3;
-          else if ((value >= 41 && value <= 50) || (value >= 111 && value <= 130)) score += 2;
-          break;
-        case "RR":
-          if (value <= 8 || value >= 25) score += 3;
-          break;
-        case "SpO2":
-          if (value <= 91) score += 3;
-          break;
-      }
-    });
-    
-    return {
-      score,
-      riskLevel: ewsToRisk(score),
-      calculatedAt: new Date().toISOString()
-    };
-  }
-};
-
-// Generate tasks based on encounter status
-const generateTasks = (encounter: Encounter): TaskItem[] => {
-  const tasks: TaskItem[] = [];
-  const now = new Date();
-  
-  // Basic task generation based on lane and status
-  if (encounter.lane === "triage") {
-    tasks.push({
-      id: `triage-complete-${encounter.id}`,
-      description: "Complete triage assessment",
-      dueAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(), // 15 min
-      status: "pending",
-      source: "auto"
-    });
-  }
-  
-  if (encounter.lane === "roomed") {
-    tasks.push({
-      id: `vitals-${encounter.id}`,
-      description: "Repeat vital signs",
-      dueAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(), // 30 min
-      status: "pending",
-      source: "auto"
-    });
-  }
-  
-  if (encounter.lane === "diagnostics") {
-    tasks.push({
-      id: `results-${encounter.id}`,
-      description: "Check diagnostic results",
-      dueAt: new Date(now.getTime() + 60 * 60 * 1000).toISOString(), // 1 hour
-      status: encounter.resultsStatus === "complete" ? "done" : "pending",
-      source: "auto"
-    });
-  }
-  
-  return tasks;
-};
-
-// ---------- Progressive Disclosure Logic ----------
-
-type Stage = 'arrival' | 'triage' | 'roomed' | 'observation' | 'dispo';
-type Lane = "waiting" | "triage" | "roomed";
-
-const deriveLane = (loc: string): Lane => {
-  const x = (loc || "").toLowerCase();
-  if (x.includes("triage")) return "triage";
-  if (x.includes("room")) return "roomed";
-  return "waiting";
-};
-
-const stageFor = (encounter: Encounter): Stage => {
-  if (!encounter.ats) return 'arrival';
-  const location = encounter.room || encounter.lane || '';
-  if (location.toLowerCase().includes('triage')) return 'triage';
-  if (location.toLowerCase().startsWith('obs')) return 'observation';
-  if (encounter.disposition) return 'dispo';
-  if (encounter.room) return 'roomed';
-  return 'arrival';
-};
-
-// Role-based actions per stage
-const canPerform = {
-  reception: { arrival: [], triage: [], roomed: [], observation: [], dispo: [] },
-  rn: { 
-    arrival: ['startTriage'], 
-    triage: ['completeTriage'], 
-    roomed: ['tasks', 'vitals'], 
-    observation: ['tasks', 'vitals'], 
-    dispo: [] 
-  },
-  charge: { 
-    arrival: ['startTriage'], 
-    triage: ['assignRoom'], 
-    roomed: ['changeRoom'], 
-    observation: ['changeRoom'], 
-    dispo: [] 
-  },
-  md: { 
-    arrival: [], 
-    triage: [], 
-    roomed: ['orders', 'results', 'dispo'], 
-    observation: ['orders', 'results', 'dispo'], 
-    dispo: ['dispo'] 
-  },
-} as const;
-
-export interface PatientCardExpandableProps {
-  role: Role;
-  encounter: Encounter;
-  onOpenChart?: (patientId: string) => void;
-  onMarkTask?: (patientId: string, taskId: string, status: TaskItem["status"]) => void;
-  onOrderSet?: (patientId: string, setName: "Sepsis" | "Stroke" | "Chest Pain") => void;
-  onDisposition?: (patientId: string, disp: "Admit" | "Discharge" | "Refer") => void;
-  onStartTriage?: (patientId: string) => void;
-  onAssignRoom?: (patientId: string, roomId: string) => void;
-  availableRooms?: { id: string; name: string; suitability?: string }[];
-}
-
-const QuickBadge: React.FC<{ label: string; className?: string; title?: string; icon?: React.ReactNode }>= ({ label, className = "", title, icon }) => (
-  <div title={title} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium bg-muted ${className}`}>
-    {icon}
-    <span>{label}</span>
-  </div>
-);
-
-export default function PatientCardExpandable({ role, encounter, onOpenChart, onMarkTask, onOrderSet, onDisposition, onStartTriage, onAssignRoom, availableRooms }: PatientCardExpandableProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [obsOpen, setObsOpen] = useState(false);
-  
-  const stage = useMemo(() => stageFor(encounter), [encounter]);
-  const lane = useMemo(() => deriveLane(encounter.room || encounter.lane), [encounter.room, encounter.lane]);
-  const observations = useMemo(() => encounterToObservations(encounter), [encounter]);
-  const ews = useMemo(() => calculateEWS(observations), [observations]);
-  const defaults = useMemo(() => buildObsDefaults(observations as any), [observations]);
-  const tasks = useMemo(() => {
-    // Use monitoring tasks if available, otherwise generate mock tasks
-    const monitoringTasks = (encounter as any)._monitoringTasks || [];
-    return monitoringTasks.length > 0 ? monitoringTasks : generateTasks(encounter);
-  }, [encounter]);
-  const lastObs = useMemo(() => observations.slice().sort((a,b)=>a.takenAt.localeCompare(b.takenAt)).at(-1), [observations]);
-  const overdueCount = useMemo(() => tasks.filter(t=>t.status==='overdue').length, [tasks]);
-  const pendingTasks = useMemo(() => tasks.filter(t=>t.status==='pending').length, [tasks]);
-  
-  // Mock data for demo purposes (needs to be defined before usage)
-  const notes: NoteEntry[] = [
-    {
-      id: `note-1-${encounter.id}`,
-      authorRole: "rn",
-      author: "Jane Smith RN",
-      createdAt: new Date(encounter.arrivalTime).toISOString(),
-      body: encounter.triageNotes || "Initial assessment completed. Patient stable."
-    }
-  ];
-
-  const diagnostics: DiagnosticOrder[] = encounter.lane === "diagnostics" || encounter.lane === "review" ? [
-    {
-      id: `lab-${encounter.id}`,
-      kind: "Lab",
-      name: "CBC, BMP, Lactate",
-      status: encounter.resultsStatus === "complete" ? "resulted" : "in-progress",
-      orderedAt: new Date(encounter.arrivalTime).toISOString(),
-      summary: encounter.resultsStatus === "complete" ? "WBC 12.5, Lactate 2.1" : undefined
-    }
-  ] : [];
-  
-  // Progressive disclosure flags - cleaner approach using boolean flags
-  const hasEwsInputs = observations.some(o => ['HR', 'BP', 'RR', 'SpO2', 'Temp'].includes(o.type));
-  const showEwsBadge = stage !== 'arrival' && hasEwsInputs;
-  const showLastObs = stage !== 'arrival';
-  const showTaskBadge = stage !== 'arrival' && tasks.some(t => t.status !== 'done');
-  const showTriageTab = stage === 'triage';
-  const showAssessmentTab = stage === 'roomed' || stage === 'observation' || stage === 'dispo';
-  const showVitalsTab = stage !== 'arrival';
-  const showNotesTab = notes.length > 0 && stage !== 'arrival';
-  const showDiagnosticsTab = diagnostics.length > 0 || (role === 'md' && (stage === 'roomed' || stage === 'observation'));
-  const showTasksTab = tasks.length > 0 || stage !== 'arrival';
-  const showOrdersTab = role === 'md' && (stage === 'roomed' || stage === 'observation');
-  const showDispoTab = role === 'md' && (stage === 'dispo' || encounter.lane === 'ready');
-  
-  // Find next observation task from monitoring system
-  const nextObs = tasks.find(t => (/repeat\s*obs/i.test(t.description) || t.description.toLowerCase().includes('observation')) && t.status !== 'done');
-  
-  // Intelligent observation cadence from monitoring system
-  const obsPolicy = useMemo(() => {
-    if (!hasEwsInputs) return null;
-    try {
-      const ewsResult = computeEwsFromObservations(observations);
-      const cadenceMinutes = cadenceFrom(ewsResult, encounter.ats as any, { 
-        suspectedSepsis: encounter.isolationRequired === "true" 
-      });
-      return { cadenceMinutes, nextDue: cadenceMinutes };
-    } catch {
-      return null;
-    }
-  }, [observations, encounter.ats, encounter.isolationRequired, hasEwsInputs]);
-  
-  // Visual priority ring for high-priority patients
-  const cardRing = useMemo(() => {
-    if (overdueCount > 0 && ews.riskLevel === 'high') return 'ring-2 ring-red-500/40';
-    if (overdueCount > 0) return 'ring-1 ring-amber-400/40';
-    if (ews.riskLevel === 'high') return 'ring-1 ring-red-400/30';
-    return '';
-  }, [overdueCount, ews]);
-
-  // Accessibility: expand/collapse with Enter/Space
-  const onKeyToggle: React.KeyboardEventHandler<HTMLDivElement> = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      setExpanded(prev => !prev);
-    }
+  const copy = async (text: string, field: string) => {
+    try { await navigator.clipboard.writeText(text); onAudit?.({ action: "copy", field }); } catch {}
   };
 
   return (
-    <Card className={`w-full border-2 hover:border-primary/50 transition-colors rounded-2xl ${cardRing}`}>
-      {/* Header Row (Clickable) */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded(!expanded)}
-        onKeyDown={onKeyToggle}
-        className="flex items-center justify-between gap-3 p-4 cursor-pointer"
-        aria-expanded={expanded}
-        aria-controls={`patient-${encounter.id}-body`}
-        data-testid={`card-patient-${encounter.id}`}
-      >
-        <div className="flex items-center gap-4 min-w-0">
-          <UserCircle2 className="h-8 w-8" />
+    <div className="rounded-xl border p-3 bg-background">
+      <div className="text-sm font-medium">Identity</div>
+      <div className="mt-1 text-xs text-muted-foreground">{legalName}{preferredName ? ` — Pref: ${preferredName}` : ''}</div>
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-xs text-muted-foreground">Age / Sex</div>
+          <div className="text-sm font-medium">{ageSex ?? '—'}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground">DOB</div>
+          <div className="text-sm font-medium">{dobStr}</div>
+        </div>
+      </div>
+      <Separator className="my-3"/>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs text-muted-foreground">NHI</div>
+            <div className="font-mono text-sm">{showNHI ? (nhi ?? '—') : maskTail(nhi ?? undefined)}</div>
+          </div>
+          <div className="flex items-center gap-1">
+            {nhi && (
+              <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={()=>{ setShowNHI(v=>!v); onAudit?.({ action: "reveal", field: "NHI" }); }}>
+                {showNHI ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+              </Button>
+            )}
+            {nhi && (
+              <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={()=> copy(nhi, 'NHI')}>
+                <Copy className="h-4 w-4"/>
+              </Button>
+            )}
+            {nhi && (
+              <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={()=> onAudit?.({ action: 'qr_open', field: 'NHI' })}>
+                <QrCode className="h-4 w-4"/>
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs text-muted-foreground">MRN</div>
+            <div className="font-mono text-sm">{showMRN ? (mrn ?? '—') : maskTail(mrn ?? undefined)}</div>
+          </div>
+          <div className="flex items-center gap-1">
+            {mrn && (
+              <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={()=>{ setShowMRN(v=>!v); onAudit?.({ action: "reveal", field: "MRN" }); }}>
+                {showMRN ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+              </Button>
+            )}
+            {mrn && (
+              <Button size="icon" variant="outline" className="h-8 w-8 rounded-full" onClick={()=> copy(mrn, 'MRN')}>
+                <Copy className="h-4 w-4"/>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+      {(allergies.length || alerts.length) ? (
+        <div className="mt-3 space-y-2">
+          {!!allergies.length && (
+            <div className="flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-rose-600"/><span className="text-sm">Allergies:</span>
+              <div className="flex flex-wrap gap-1">{allergies.map(a => <Badge key={a} variant="secondary">{a}</Badge>)}</div>
+            </div>
+          )}
+          {!!alerts.length && (
+            <div className="flex items-center gap-2"><Info className="h-4 w-4 text-amber-600"/><span className="text-sm">Alerts:</span>
+              <div className="flex flex-wrap gap-1">{alerts.map(a => <Badge key={a} variant="outline">{a}</Badge>)}</div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+// ------------------------------------------------------------------
+// Expandable patient card (phone‑first)
+// - Header looks like PatientCardCompact
+// - Tap the card toggles an inline expansion with Identity + Actions + Insights
+// ------------------------------------------------------------------
+export type ExpandableCardProps = {
+  encounter: Encounter;
+  role: Role;
+  onOpenChart?: (patientId: string) => void;
+  onMarkTask?: (patientId: string, taskId: string, status: string) => void;
+  onOrderSet?: (patientId: string, setName: string) => void;
+  onDisposition?: (patientId: string, disp: string) => void;
+  onStartTriage?: (patientId: string) => void;
+  onAssignRoom?: (patientId: string, roomId: string) => void;
+};
+
+export default function PatientCardExpandable(props: ExpandableCardProps) {
+  const {
+    encounter, role, onOpenChart, onMarkTask, onOrderSet, onDisposition, onStartTriage, onAssignRoom
+  } = props;
+  
+  // Extract data from encounter
+  const name = encounter.name || "";
+  const ageSex = `${encounter.age} ${encounter.sex}`;
+  const status = encounter.lane || "waiting";
+  const complaint = encounter.complaint || "";
+  const nhi = encounter.nhi;
+  const mrn = encounter.mrn;
+  const dob = encounter.dob;
+  const alerts: string[] = [];
+  const allergies: string[] = [];
+  
+  // Calculate simple timer (time since arrival)
+  const timer = useMemo(() => {
+    const arrivalTime = new Date(encounter.arrivalTime);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - arrivalTime.getTime()) / (1000 * 60));
+    if (diffMinutes < 60) return `${diffMinutes}m`;
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  }, [encounter.arrivalTime]);
+  
+  // Simple EWS calculation (mock for now)
+  const ews = useMemo(() => {
+    // Basic scoring based on available vitals
+    let score = 0;
+    if (encounter.triageHr) {
+      const hr = encounter.triageHr;
+      if (hr <= 40 || hr >= 131) score += 3;
+      else if ((hr >= 41 && hr <= 50) || (hr >= 111 && hr <= 130)) score += 2;
+    }
+    return score > 0 ? score : undefined;
+  }, [encounter.triageHr]);
+
+  const [open, setOpen] = useState(false);
+  const displayName = useMemo(() => {
+    const s = name.trim();
+    if (s.length <= 28) return s;
+    const parts = s.split(/\s+/);
+    return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : s.slice(0,26) + '…';
+  }, [name]);
+
+  return (
+    <div className="rounded-2xl border bg-card p-3">
+      {/* Header row */}
+      <button className="w-full text-left" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}> 
+        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-lg truncate">{encounter.name} <span className="text-muted-foreground">• {encounter.age} {encounter.sex}</span></CardTitle>
-              {/* Only show ATS after triage started */}
-              {encounter.ats && <Badge variant="outline">ATS {encounter.ats}</Badge>}
-              {/* Only show EWS when computed and past arrival stage */}
-              {showEwsBadge && (
-                <div className={`text-white text-xs px-2 py-1 rounded ${riskColor(ews.riskLevel)}`}>
-                  EWS {ews.score}
-                </div>
-              )}
-              {encounter.isolationRequired === "true" && (
-                <QuickBadge icon={<AlertTriangle className="h-3 w-3"/>} label="Isolation" className="bg-red-50" />
+            <div className="flex items-center gap-2 min-w-0">
+              <User className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div title={name} className="font-semibold text-lg truncate max-w-[58vw] sm:max-w-[40ch]">{displayName}</div>
+              {typeof ews === 'number' && <Badge variant="outline" className="shrink-0 text-xs">EWS {ews}</Badge>}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+              {ageSex && <span className="shrink-0">{ageSex}</span>}
+              <span className="rounded-full bg-muted px-2 py-0.5 shrink-0">{status}</span>
+              {timer && (
+                <span className="flex items-center gap-1 min-w-0"><Clock className="h-3 w-3" /><span className="truncate">{timer}</span></span>
               )}
             </div>
-            
-            {/* Stage-appropriate secondary information */}
-            <div className="text-sm text-muted-foreground truncate">
-              {stage === 'arrival' && (
+            {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
+          </div>
+          <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+            <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={() => onOpenChart?.(encounter.id)}>
+              {role === 'RN' ? '+ Obs' : role === 'Charge' ? 'Assign' : 'Review'}
+            </Button>
+          </div>
+        </div>
+      </button>
+
+      {/* Expandable content */}
+      <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[1200px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className="space-y-3">
+          {/* Identity */}
+          <IdentityInline 
+            legalName={name} 
+            ageSex={ageSex} 
+            dob={dob ?? undefined} 
+            nhi={nhi ?? undefined} 
+            mrn={mrn ?? undefined} 
+            alerts={alerts} 
+            allergies={allergies} 
+            onAudit={(e)=> console.log("Identity audit:", e)} 
+          />
+
+          {/* Role-specific quick actions */}
+          <div className="rounded-xl border p-3">
+            <div className="text-sm font-medium">Quick actions</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {role === 'rn' && (
                 <>
-                  {encounter.complaint} • NHI: {encounter.nhi} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()}
-                  {encounter.isolationRequired === "true" && " • Isolation Required"}
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => onOpenChart?.(encounter.id)}>+ Obs</Button>
                 </>
               )}
-              {stage !== 'arrival' && (
+              {role === 'charge' && (
                 <>
-                  {encounter.complaint} • NHI: {encounter.nhi} • Arrived {new Date(encounter.arrivalTime).toLocaleTimeString()} • {encounter.room || encounter.lane}
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => onAssignRoom?.(encounter.id, "")}>Assign room</Button>
                 </>
               )}
+              {role === 'md' && (
+                <>
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => onOrderSet?.(encounter.id, "Chest Pain")}>Order set</Button>
+                </>
+              )}
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => onOpenChart?.(encounter.id)}>Open details</Button>
             </div>
-            
-            {/* Progressive badges based on stage */}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {/* Show triage timer for arrival stage */}
-              {stage === 'arrival' && (
-                <QuickBadge icon={<TimerReset className="h-3 w-3"/>} label="Triage due" className="bg-amber-100" />
-              )}
-              
-              {/* Show obs timer for roomed/observation stages */}
-              {showLastObs && lastObs && (
-                <QuickBadge icon={<Activity className="h-3 w-3"/>} label={`Last obs ${fmtTime(lastObs.takenAt)}`} />
-              )}
-              
-              {/* Next observation time from monitoring system */}
-              {nextObs && nextObs.dueAt && (stage === 'roomed' || stage === 'observation') && (
-                <QuickBadge 
-                  icon={<Thermometer className="h-3 w-3"/>} 
-                  label={`Next obs ${new Date(nextObs.dueAt).toLocaleTimeString()}`}
-                  className={nextObs.status === 'overdue' ? "bg-red-100" : "bg-blue-100"}
-                  title={`Monitoring task: ${nextObs.description}`}
-                />
-              )}
-              
-              {/* Intelligent observation cadence from monitoring system (fallback) */}
-              {!nextObs && obsPolicy && (stage === 'roomed' || stage === 'observation') && (
-                <QuickBadge 
-                  icon={<Thermometer className="h-3 w-3"/>} 
-                  label={`Next obs ${obsPolicy.cadenceMinutes}min`}
-                  className={obsPolicy.cadenceMinutes <= 15 ? "bg-amber-100" : "bg-blue-100"}
-                  title={`Based on EWS ${ews.score} - ${ews.riskLevel} priority`}
-                />
-              )}
-              
-              {/* Show tasks only when they exist and relevant */}
-              {showTaskBadge && (
-                <QuickBadge icon={<ListChecks className="h-3 w-3"/>} label={`${pendingTasks} tasks`} />
-              )}
-              
-              {/* Always show overdue count when > 0 */}
-              {overdueCount > 0 && (
-                <QuickBadge icon={<Bell className="h-3 w-3"/>} className="bg-red-100" label={`${overdueCount} overdue`} />
-              )}
-              
-              {/* Show disposition for dispo stage */}
-              {stage === 'dispo' && encounter.disposition && (
-                <QuickBadge icon={<ClipboardCheck className="h-3 w-3"/>} label={encounter.disposition} className="bg-green-100" />
-              )}
+          </div>
+
+          {/* Insights placeholder (lightweight) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border p-3">
+              <div className="text-xs text-muted-foreground">EWS trend</div>
+              <div className="text-sm">{typeof ews === 'number' ? `Last ${ews}` : '—'}</div>
+            </div>
+            <div className="rounded-xl border p-3">
+              <div className="text-xs text-muted-foreground">Tasks due</div>
+              <div className="text-sm">None</div>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Progressive disclosure actions - max 2 primary actions per stage */}
-          {stage === 'arrival' && (role === 'rn' || role === 'charge') && (
-            <Button size="sm" className="min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); onStartTriage?.(encounter.id); }} data-testid={`button-start-triage-${encounter.id}`}>Start Triage</Button>
-          )}
-          
-          {(role === 'rn' || role === 'charge') && (
-            <Button size="sm" variant="outline" className="min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); setObsOpen(true); }} data-testid={`button-add-obs-${encounter.id}`}>+ Obs</Button>
-          )}
-          
-          {stage === 'triage' && role === 'charge' && (
-            <Button size="sm" variant="secondary" className="min-h-[44px] px-4" onClick={(e)=> { e.stopPropagation(); onAssignRoom?.(encounter.id, ""); }} data-testid={`button-assign-room-${encounter.id}`}>Assign Room</Button>
-          )}
-          
-          {stage === 'roomed' && role === 'md' && (
-            <Button size="sm" className="min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); onOrderSet?.("Chest Pain", encounter.id); }} data-testid={`button-quick-orders-${encounter.id}`}>Quick Orders</Button>
-          )}
-          
-          {stage === 'dispo' && role === 'md' && (
-            <Button size="sm" className="bg-medical-green hover:bg-green-700 text-white min-h-[44px] px-4" onClick={(e)=>{ e.stopPropagation(); onDisposition?.(encounter.id, "Discharge"); }} data-testid={`button-disposition-${encounter.id}`}>Disposition</Button>
-          )}
-        </div>
       </div>
-
-      {/* Body */}
-      {expanded && (
-        <div id={`patient-${encounter.id}-body`} className="px-4 pb-4">
-          <Separator className="mb-3"/>
-          <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="flex flex-wrap">
-              <TabsTrigger value="overview" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-overview-${encounter.id}`}>Overview</TabsTrigger>
-              {showTriageTab && <TabsTrigger value="triage" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-triage-${encounter.id}`}>Triage</TabsTrigger>}
-              {showAssessmentTab && <TabsTrigger value="assessment" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-assessment-${encounter.id}`}>Assessment</TabsTrigger>}
-              {showVitalsTab && <TabsTrigger value="vitals" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-vitals-${encounter.id}`}>Vitals</TabsTrigger>}
-              {showNotesTab && <TabsTrigger value="notes" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-notes-${encounter.id}`}>Notes</TabsTrigger>}
-              {showDiagnosticsTab && <TabsTrigger value="diagnostics" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-diagnostics-${encounter.id}`}>Diagnostics</TabsTrigger>}
-              {showTasksTab && <TabsTrigger value="tasks" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-tasks-${encounter.id}`}>Tasks</TabsTrigger>}
-              {showOrdersTab && <TabsTrigger value="orders" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-orders-${encounter.id}`}>Quick Orders</TabsTrigger>}
-              {showDispoTab && <TabsTrigger value="disposition" className="min-h-[44px] px-3 sm:px-4" data-testid={`tab-disposition-${encounter.id}`}>Disposition</TabsTrigger>}
-            </TabsList>
-
-            {/* OVERVIEW */}
-            <TabsContent value="overview">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
-                <Card className="lg:col-span-5">
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><HeartPulse className="h-4 w-4"/>EWS & Trends</CardTitle></CardHeader>
-                  <CardContent>
-                    {showEwsBadge ? (
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <div className={`text-white rounded-lg px-3 py-2 ${riskColor(ews.riskLevel)}`} data-testid={`ews-score-${encounter.id}`}>EWS {ews.score}</div>
-                          <div className="text-sm text-muted-foreground">{ews.riskLevel} risk</div>
-                          <div className="text-sm text-muted-foreground">• {fmtTime(ews.calculatedAt)}</div>
-                        </div>
-                        {obsPolicy && (
-                          <div className="mt-2 text-sm">
-                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${obsPolicy.cadenceMinutes <= 15 ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
-                              <Thermometer className="h-3 w-3" />
-                              Next obs due in {obsPolicy.cadenceMinutes} minutes
-                            </div>
-                            <div className="text-muted-foreground text-xs mt-1">
-                              Policy: {ews.riskLevel} EWS
-                              {encounter.ats && encounter.ats <= 2 && " • ATS " + encounter.ats + " priority"}
-                              {encounter.isolationRequired === "true" && " • Sepsis watch"}
-                            </div>
-                          </div>
-                        )}
-                        <div className="mt-3 text-sm text-muted-foreground">(Sparkline placeholder for HR/BP/Temp/RR/SpO₂ over last 6h)</div>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">
-                        EWS will appear once enough vitals are captured (HR, BP, RR, SpO₂, Temp)
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-                <Card className="lg:col-span-7">
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><ListChecks className="h-4 w-4"/>Active Tasks</CardTitle></CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-40 pr-2">
-                      <ul className="space-y-2">
-                        {tasks.map(t => (
-                          <li key={t.id} className="flex items-center justify-between rounded-md border p-2" data-testid={`task-item-${t.id}`}>
-                            <div className="flex items-center gap-2 min-w-0">
-                              <ClipboardCheck className="h-4 w-4"/>
-                              <div className="min-w-0">
-                                <div className="text-sm truncate">{t.description}</div>
-                                <div className="text-xs text-muted-foreground">Due {fmtTime(t.dueAt)} • {t.source}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {statusBadge(t.status)}
-                              <Button size="sm" variant="outline" onClick={()=>onMarkTask?.(encounter.id, t.id, t.status === 'done' ? 'pending' : 'done')} data-testid={`button-task-${t.id}`}>{t.status==='done' ? 'Undo' : 'Done'}</Button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            {/* TRIAGE */}
-            {showTriageTab && (
-              <TabsContent value="triage">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Stethoscope className="h-4 w-4"/>Triage Summary</CardTitle></CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div><strong>ATS:</strong> {encounter.ats}</div>
-                    <div><strong>Chief complaint:</strong> {encounter.complaint}</div>
-                    <div><strong>Arrived:</strong> {new Date(encounter.arrivalTime).toLocaleString()}</div>
-                    {encounter.triageNotes && <div><strong>Notes:</strong> {encounter.triageNotes}</div>}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-
-            {/* ASSESSMENT */}
-            {showAssessmentTab && (
-              <TabsContent value="assessment">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Assessment</CardTitle></CardHeader>
-                  <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                    <div>
-                      <Label>History</Label>
-                      <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
-                    </div>
-                    <div>
-                      <Label>Exam</Label>
-                      <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
-                    </div>
-                    <div>
-                      <Label>Impression</Label>
-                      <div className="mt-1 rounded-md border p-2 min-h-[64px] whitespace-pre-wrap">—</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-
-            {/* VITALS */}
-            {showVitalsTab && (
-              <TabsContent value="vitals">
-                <VitalsTimeline
-                  observations={observations as any}
-                  arrival={encounter.arrivalTime}
-                  showChartDefault
-                />
-              </TabsContent>
-            )}
-
-            {/* NOTES */}
-            {showNotesTab && (
-              <TabsContent value="notes">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4"/>Notes</CardTitle></CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {notes.slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(n => (
-                      <li key={n.id} className="rounded-md border p-2" data-testid={`note-${n.id}`}>
-                        <div className="text-xs text-muted-foreground">{n.author} • {n.authorRole} • {new Date(n.createdAt).toLocaleString()}</div>
-                        <div className="text-sm whitespace-pre-wrap mt-1">{n.body}</div>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-                <CardFooter className="gap-2">
-                  <Input placeholder="Add a note (prototype)" data-testid={`input-note-${encounter.id}`} />
-                  <Button size="sm" data-testid={`button-save-note-${encounter.id}`}>Save</Button>
-                </CardFooter>
-              </Card>
-            </TabsContent>
-            )}
-
-            {/* DIAGNOSTICS */}
-            {showDiagnosticsTab && (
-              <TabsContent value="diagnostics">
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><TestTubes className="h-4 w-4"/>Diagnostics</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
-                    <div className="grid grid-cols-6 gap-2 px-3 py-2 text-xs font-semibold bg-muted/50">
-                      <div>Kind</div><div>Name</div><div>Status</div><div>Ordered</div><div>Resulted</div><div>Result</div>
-                    </div>
-                    <ScrollArea className="max-h-56">
-                      <ul>
-                        {diagnostics.map(d => (
-                          <li key={d.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm border-t" data-testid={`diagnostic-${d.id}`}>
-                            <div>{d.kind}</div>
-                            <div>{d.name}</div>
-                            <div>{d.status}</div>
-                            <div>{fmtTime(d.orderedAt)}</div>
-                            <div>{fmtTime(d.resultedAt)}</div>
-                            <div className="truncate" title={d.summary}>{d.summary ?? "—"}</div>
-                          </li>
-                        ))}
-                      </ul>
-                    </ScrollArea>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            )}
-
-            {/* TASKS */}
-            {showTasksTab && (
-              <TabsContent value="tasks">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><ClipboardCheck className="h-4 w-4"/>Task Board</CardTitle></CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {tasks.map(t => (
-                        <li key={t.id} className="flex items-center justify-between rounded-md border p-2" data-testid={`task-detail-${t.id}`}>
-                          <div className="min-w-0">
-                            <div className="text-sm truncate">{t.description}</div>
-                            <div className="text-xs text-muted-foreground">Due {fmtTime(t.dueAt)} • {t.source}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {statusBadge(t.status)}
-                            <Button size="sm" variant="outline" onClick={()=>onMarkTask?.(encounter.id, t.id, t.status === 'done' ? 'pending' : 'done')} data-testid={`button-task-detail-${t.id}`}>{t.status==='done' ? 'Undo' : 'Done'}</Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-
-            {/* MD‑ONLY: QUICK ORDERS */}
-            {showOrdersTab && (
-              <TabsContent value="orders">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Pill className="h-4 w-4"/>Quick Order Sets</CardTitle></CardHeader>
-                  <CardContent className="flex flex-wrap gap-2">
-                    {["Sepsis","Stroke","Chest Pain"].map((setName)=> (
-                      <Button key={setName} variant="secondary" onClick={()=>onOrderSet?.(encounter.id, setName as any)} data-testid={`button-order-${setName.toLowerCase().replace(' ', '-')}-${encounter.id}`}>{setName}</Button>
-                    ))}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-
-            {/* MD‑ONLY: DISPOSITION */}
-            {showDispoTab && (
-              <TabsContent value="disposition">
-                <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><XCircle className="h-4 w-4"/>Disposition</CardTitle></CardHeader>
-                  <CardContent className="flex flex-wrap gap-2">
-                    {["Admit","Discharge","Refer"].map(d => (
-                      <Button key={d} onClick={()=>onDisposition?.(encounter.id, d as any)} data-testid={`button-disposition-${d.toLowerCase()}-${encounter.id}`}>{d}</Button>
-                    ))}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-          </Tabs>
-        </div>
-      )}
-      
-      {/* Touch-optimized Observation Modal */}
-      <ObservationSetModalTouch
-        open={obsOpen}
-        onOpenChange={setObsOpen}
-        patientName={`${encounter.name} • ${encounter.age} ${encounter.sex}`}
-        recorder={role.toUpperCase()}
-        isTriage={stage === 'triage'}
-        defaults={defaults}
-        onSave={(observations: TouchObservation[]) => {
-          console.log("Add observations for", encounter.id, observations);
-          // TODO: Integrate with your store/API to save observations
-        }}
-      />
-    </Card>
+    </div>
   );
 }
