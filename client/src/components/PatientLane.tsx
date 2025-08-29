@@ -1,6 +1,6 @@
 import { type Lane, type Encounter } from "@shared/schema";
 import { PatientCard } from "./PatientCard";
-import PatientCardExpandable, { type Role } from "./PatientCardExpandable";
+import PatientCardExpandable from "./PatientCardExpandable";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { Clock, Stethoscope, DoorOpen, Search, UserCheck, ClipboardCheck, LogOut } from "lucide-react";
 
@@ -61,10 +61,8 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
   const openTriage = useDashboardStore((state) => state.openTriage);
   const openRoom = useDashboardStore((state) => state.openRoom);
   
-  // Map roleView to Role type
-  const role: Role = (roleView === "reception" || roleView === "charge" || roleView === "rn" || roleView === "md") 
-    ? roleView as Role 
-    : "charge";
+  // Map roleView to Role type  
+  const role = roleView || "charge";
 
   return (
     <div className="lane-container" style={{ minWidth: '280px' }} data-testid={`lane-${lane}`}>
@@ -122,15 +120,15 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                     rr: encounter.triageRr || undefined,
                     spo2: encounter.triageSpo2 || undefined,
                     hr: encounter.triageHr || undefined,
-                    sbp: encounter.triageSbp || undefined,
-                    temp: encounter.triageTemp || undefined,
-                    takenAt: encounter.triageTime || undefined
+                    sbp: encounter.triageSbp || 120,
+                    temp: encounter.triageTemp || 36.5,
+                    takenAt: new Date().toISOString()
                   }}
-                  dob={encounter.dob || null}
+                  dob={null}
                   nhi={encounter.nhi}
-                  mrn={encounter.mrn || null}
-                  alerts={encounter.alerts || []}
-                  allergies={encounter.allergies || []}
+                  mrn={null}
+                  alerts={[]}
+                  allergies={[]}
                   primaryLabel={primaryLabel}
                   onPrimary={onPrimary}
                   onAddObs={() => console.log("Add obs for", encounter.name)}

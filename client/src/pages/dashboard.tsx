@@ -57,6 +57,27 @@ export default function Dashboard() {
       setDemoMode(config.demoMode);
     }
     
+    // Seed demo vitals data for timeline testing
+    if (typeof window !== 'undefined') {
+      (window as any).ED_DEMO = {
+        observations: {
+          'a431685d-7e3a-4e9e-8a84-123456789abc': {
+            observations: [
+              { t: '2025-08-29T10:00:00+12:00', rr: 22, spo2: 94, hr: 118, sbp: 102, temp: 38.1, source: 'triage', ews: 5 },
+              { t: '2025-08-29T10:30:00+12:00', rr: 24, spo2: 92, hr: 124, sbp: 98, temp: 38.4, source: 'obs', ews: 6 },
+              { t: '2025-08-29T11:15:00+12:00', rr: 20, spo2: 96, hr: 110, sbp: 104, temp: 37.9, source: 'obs', ews: 4 },
+            ],
+            events: [
+              { t: '2025-08-29T10:10:00+12:00', type: 'cultures', label: 'Blood cultures' },
+              { t: '2025-08-29T10:20:00+12:00', type: 'lactate', label: 'Lactate' },
+              { t: '2025-08-29T10:25:00+12:00', type: 'abx', label: 'Antibiotics' },
+              { t: '2025-08-29T10:28:00+12:00', type: 'fluids', label: 'Fluids 30 mL/kg' },
+            ]
+          }
+        }
+      };
+    }
+    
     // Start SSE connection
     sseManager.connect();
 
