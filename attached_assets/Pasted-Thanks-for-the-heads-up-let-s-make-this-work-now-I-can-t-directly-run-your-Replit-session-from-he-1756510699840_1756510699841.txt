@@ -1,0 +1,66 @@
+Thanks for the heads-up — let’s make this work now. I can’t directly run your Replit session from here, but I’ve packaged a **robust wiring fix** that removes the usual pitfalls and guarantees that **RN → +Obs → Patient card (expanded) vitals** update instantly.
+
+I just added a canvas pack: **“Obs wiring fix — live +Obs updates on RN mobile (store + hooks + row)”** with these pieces:
+
+### What’s inside (and why it fixes it)
+
+1. **Zustand store (`src/state/observations.ts`)**
+
+   * Holds `byPatient: { [id]: ObsPoint[] }`
+   * `addObs(patientId, point)` updates the list **and** triggers re-renders for subscribers.
+   * Hooks that **subscribe to one patient** so your UI actually updates:
+
+     * `usePatientObsList(patientId)`
+
+     * `usePatientLastVitals(patientId)`
+
+   > Your earlier pattern (`const getLast = useObsStore(s => s.getLastVitals)`) doesn’t re-render because the selector returns a **stable function**, not the **changing data**. The new hooks subscribe to the right slice.
+
+2. **RN row wrapper (`src/components/rn/RNPatientRow.tsx`)**
+
+   * Subscribes to `usePatientLastVitals(p.id)` and feeds `minVitals` into `PatientCardExpandable`.
+   * This ensures the **Vitals capsule** in the expanded card moves immediately after a save.
+
+3. **RN view patch (`src/views/RNViewMobile.tsx`)**
+
+   * Swap your inline map for `<RNPatientRow …/>` so each row reacts to store updates.
+
+4. **One-liner save helper (`saveObsToStore`)**
+
+   * Call this **in your +Obs modal’s save** before/alongside your API call:
+
+   ```ts
+   saveObsToStore(patient.id, { rr, spo2, hr, sbp, temp, ews });
+   ```
+
+   * The UI updates instantly; your API can resolve later.
+
+---
+
+### How to wire quickly
+
+1. Copy the three files/patches from the canvas into your repo.
+2. In your **+Obs modal** `handleSave`, call:
+
+   ```ts
+   import { saveObsToStore } from "@/components/patient/ObsModal.save";
+   saveObsToStore(patient.id, formValues);  // immediate UI update
+   await apiSave(formValues);               // optional server save
+   closeModal();
+   ```
+3. In **RNViewMobile**, use the `RNPatientRow` wrapper as shown in the patch.
+
+### Sanity test (on phone)
+
+* Expand a patient with no vitals → capsule shows dashes.
+* Tap **+ Obs**, enter values, Save → capsule **immediately** shows RR/SpO₂/HR/SBP/Temp with the new **time**.
+* Open **Timeline** (if you’re using my timeline pack) → the point is present.
+
+### If Replit still “can’t resolve module” (common)
+
+* Make sure your alias is set, or use **relative paths** as a quick unblock:
+
+  * `import { useObsStore } from "../../state/observations";`
+* Ensure the files are under **`src/`** (Vite won’t compile outside).
+
+If you paste any specific error message, I’ll zero in on that spot. But with this store + row subscription fix, **+Obs → Patient card** should be solid.

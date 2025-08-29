@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
-import PatientCardExpandable, { MinVitals } from "@/components/PatientCardExpandable";
-import { useObsStore } from "@/state/observations";
+import { RNPatientRow } from "@/components/rn/RNPatientRow";
 
 export type PatientLite = {
   id: string;
@@ -17,20 +16,18 @@ export type PatientLite = {
 export type Lane = { id: string; label: string; patients: PatientLite[] };
 
 
-export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard, onOpenIdentity }: {
+export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCard, onOpenVitals, onOpenIdentity }: {
   lanes: Lane[];
   onStartTriage: (p: PatientLite) => void;
   onOpenObs: (p: PatientLite) => void;
   onOpenCard: (p: PatientLite) => void;
+  onOpenVitals: (p: PatientLite) => void;
   onOpenIdentity?: (p: PatientLite) => void;
 }) {
   const pills: LanePill[] = useMemo(
     () => lanes.map((l) => ({ id: l.id, label: l.label, count: l.patients.length })),
     [lanes]
   );
-
-  // Use the observations store
-  const getLastVitals = useObsStore(state => state.getLastVitals);
 
   return (
     <div className="pb-24">
@@ -45,43 +42,17 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
               </h2>
             </div>
             <div className="mt-3 space-y-3">
-              {lane.patients.map((p) => {
-                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
-                const status = lane.label === "Room" ? (p.roomName ?? "Rooming") : lane.label;
-                const primaryLabel = lane.label === "Waiting" ? "Start Triage" : "+ Obs";
-                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
-                const last = getLastVitals(p.id);
-                const minVitals = last ? {
-                  rr: last.rr, 
-                  spo2: last.spo2, 
-                  hr: last.hr, 
-                  sbp: last.sbp, 
-                  temp: last.temp, 
-                  takenAt: last.t
-                } : undefined;
-                
-                return (
-                  <PatientCardExpandable
-                    key={p.id}
-                    role="RN"
-                    name={name}
-                    ageSex={ageSex}
-                    status={status}
-                    timer={p.waitingFor}
-                    complaint={p.chiefComplaint}
-                    ews={p.ews}
-                    ats={p.ats}
-                    patientId={p.id}
-                    minVitals={minVitals}
-                    primaryLabel={primaryLabel}
-                    onPrimary={
-                      lane.label === "Waiting" ? () => onStartTriage(p) : () => onOpenObs(p)
-                    }
-                    onAddObs={() => onOpenObs(p)}
-                    onOpenFull={() => onOpenCard(p)}
-                  />
-                );
-              })}
+              {lane.patients.map((p) => (
+                <RNPatientRow
+                  key={p.id}
+                  p={p}
+                  laneLabel={lane.label}
+                  onStartTriage={onStartTriage}
+                  onOpenObs={onOpenObs}
+                  onOpenCard={onOpenCard}
+                  onOpenVitals={onOpenVitals}
+                />
+              ))}
             </div>
           </section>
         ))}

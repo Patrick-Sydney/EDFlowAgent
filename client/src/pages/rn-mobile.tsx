@@ -6,6 +6,7 @@ import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
 import { Encounter } from "@shared/schema";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { buildObsDefaults } from "@/lib/obsDefaults";
+import { saveObsToStore } from "@/utils/saveObsToStore";
 
 // Convert ED encounters to RN mobile format
 function transformToLanes(encounters: Encounter[]): Lane[] {
@@ -60,10 +61,33 @@ export default function RNMobilePage() {
     console.log("Open patient card for:", patient.displayName);
   };
 
+  const handleOpenVitals = (patient: PatientLite) => {
+    // Would open vitals timeline/drawer
+    console.log("Open vitals for:", patient.displayName);
+  };
+
   const handleSaveObs = async (observations: any[]) => {
     if (!selectedPatient) return;
     
-    // Add observations to store
+    // Transform observations to our format and save to Zustand store immediately
+    const obsRecord: Record<string, number> = {};
+    observations.forEach(obs => {
+      switch(obs.type) {
+        case 'RR': obsRecord.rr = parseFloat(obs.value); break;
+        case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
+        case 'HR': obsRecord.hr = parseFloat(obs.value); break;
+        case 'BP': 
+          const bpMatch = obs.value.match(/^(\d+)/);
+          if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
+          break;
+        case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
+      }
+    });
+    
+    // Save to store immediately for instant UI update
+    saveObsToStore(selectedPatient.id, obsRecord);
+    
+    // Also save to backend via existing dashboard store
     await useDashboardStore.getState().addObservation(selectedPatient.id, observations);
     
     // Close modal
@@ -91,6 +115,7 @@ export default function RNMobilePage() {
         onStartTriage={handleStartTriage}
         onOpenObs={handleOpenObs}
         onOpenCard={handleOpenCard}
+        onOpenVitals={handleOpenVitals}
       />
 
       <ObservationSetModalTouch
