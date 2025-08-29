@@ -29,15 +29,15 @@ export default function RNViewMobile({ lanes, onStartTriage, onOpenObs, onOpenCa
     <div className="pb-24">
       <RNMobileLaneNav lanes={pills} stickyOffset={56} />
 
-      <div className="mx-3 space-y-6 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
+      <div className="mx-3 space-y-8 md:grid md:grid-cols-2 md:gap-6 md:space-y-0">
         {lanes.map((lane) => (
-          <section key={lane.id} id={lane.id} className="scroll-mt-20">
-            <div className="sticky top-[calc(env(safe-area-inset-top)+72px)] z-20 bg-background/80 backdrop-blur border-b px-1 py-1.5">
-              <h2 className="text-[15px] font-semibold">
+          <section key={lane.id} id={lane.id} className="scroll-mt-16">
+            <div className="sticky top-[calc(env(safe-area-inset-top)+104px)] z-20 bg-background border-b border-border px-2 py-2">
+              <h2 className="text-base font-semibold">
                 {lane.label} <span className="text-muted-foreground">({lane.patients.length})</span>
               </h2>
             </div>
-            <div className="mt-2 space-y-3">
+            <div className="mt-3 space-y-3">
               {lane.patients.map((p) => {
                 const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
                 const status = lane.label === "Room" ? (p.roomName ?? "Rooming") : lane.label;

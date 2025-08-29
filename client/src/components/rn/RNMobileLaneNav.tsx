@@ -27,7 +27,10 @@ export default function RNMobileLaneNav({
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
         if (vis) setActive((vis.target as HTMLElement).id);
       },
-      { rootMargin: `-${Math.max(stickyOffset - 12, 0)}px 0px -60% 0px`, threshold: 0.01 }
+      { 
+        rootMargin: `-${stickyOffset + 48}px 0px -50% 0px`, 
+        threshold: [0, 0.1, 0.25, 0.5] 
+      }
     );
     lanes.forEach((l) => {
       const el = document.getElementById(l.id);
@@ -39,24 +42,37 @@ export default function RNMobileLaneNav({
 
   return (
     <div
-      className="sticky z-30 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70"
+      className="sticky z-30 bg-background border-b border-border"
       style={{ top: `calc(env(safe-area-inset-top) + ${stickyOffset}px)` }}
     >
-      <div className="flex gap-8 overflow-x-auto px-3 py-2 no-scrollbar">
+      <div className="flex gap-3 overflow-x-auto px-3 py-3 no-scrollbar">
         {lanes.map((l) => (
           <button
             key={l.id}
             className={clsx(
-              "shrink-0 rounded-full px-3 py-2 text-sm border",
-              active === l.id ? "bg-primary text-primary-foreground" : "bg-muted"
+              "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors",
+              "flex items-center gap-2 border min-h-[36px]",
+              active === l.id 
+                ? "bg-primary text-primary-foreground border-primary" 
+                : "bg-background hover:bg-muted border-border"
             )}
-            onClick={() =>
-              document.getElementById(l.id)?.scrollIntoView({ behavior: "smooth", block: "start" })
-            }
+            onClick={() => {
+              const element = document.getElementById(l.id);
+              if (element) {
+                const headerHeight = stickyOffset + 48; // header + nav height
+                const elementPosition = element.offsetTop - headerHeight;
+                window.scrollTo({ 
+                  top: elementPosition, 
+                  behavior: "smooth" 
+                });
+              }
+            }}
             aria-label={`Go to ${l.label}`}
           >
-            <span>{l.label}</span>
-            <span className="ml-2 text-xs rounded-full bg-background/60 px-1.5">{l.count}</span>
+            <span className="whitespace-nowrap">{l.label}</span>
+            <span className="text-xs rounded-full bg-muted-foreground/20 text-muted-foreground px-2 py-0.5 min-w-[20px] text-center">
+              {l.count}
+            </span>
           </button>
         ))}
       </div>
