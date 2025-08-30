@@ -53,6 +53,7 @@ export default function RNMobilePage() {
   };
 
   const handleOpenObs = (patient: PatientLite) => {
+    console.log("RN Mobile handleOpenObs called with:", patient);
     setSelectedPatient(patient);
     setObsModalOpen(true);
   };
@@ -105,6 +106,9 @@ export default function RNMobilePage() {
         recorder="RN Mobile"
         isTriage={selectedPatient ? lanes.find(l => l.patients.some(p => p.id === selectedPatient.id))?.id === "triage" : false}
       />
+      
+      {/* Debug logging */}
+      {console.log("RN Mobile render - selectedPatient:", selectedPatient, "obsModalOpen:", obsModalOpen)}
     </div>
   );
 }

@@ -308,6 +308,7 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
 
   // Debug logging
   console.log("ObservationSetModalTouch DEBUG:", { patientId, patientName, cleanPatientName, open });
+  console.log("ObservationSetModalTouch patientId type:", typeof patientId, "value:", patientId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
