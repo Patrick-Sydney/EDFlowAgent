@@ -1,7 +1,7 @@
 import React from "react";
 import { X, Loader2 } from "lucide-react";
 import EWSChipLive from "../patient/EWSChipLive";
-import { useVitalsLast } from "../../stores/vitalsStore";
+import { useVitalsList } from "../../stores/vitalsStore";
 
 /**
  * Mobile-first sticky header for the Record Observations modal.
@@ -27,7 +27,8 @@ export default function ObsModalHeaderMobile({
   isSaving?: boolean;
   onClose: () => void;
 }) {
-  const last = useVitalsLast(patientId);
+  const list = useVitalsList(patientId);
+  const last = list.length ? list[list.length - 1] : undefined;
   const lastStr = last?.t
     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;

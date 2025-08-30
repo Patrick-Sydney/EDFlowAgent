@@ -1,0 +1,206 @@
+Good catch. Both issues scream “two different stores” in memory:
+	•	Live EWS stopped → the header is reading from a different instance of the vitals store than the +Obs save is writing to.
+	•	“No observations yet” while the timeline shows data → again, wrong store instance (or it mounted before hydration).
+
+Here’s a tiny fix-it patch that forces a single, global vitals store no matter how it’s imported, and also tweaks the header to read the list correctly.
+
+⸻
+
+Save as eds-vitals-singleton-hotfix.patch
+
+diff --git a/client/src/stores/vitalsStore.ts b/client/src/stores/vitalsStore.ts
+index 5555555..9aaaaaa 100644
+--- a/client/src/stores/vitalsStore.ts
++++ b/client/src/stores/vitalsStore.ts
+@@ -1,7 +1,9 @@
+ import { useSyncExternalStore } from "react";
+ 
+ export type ObsPoint = {
+   t: string;
+   rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
+   source?: "triage" | "obs" | "device";
+ };
+ 
+ const normalizeId = (id: unknown) => String(id ?? "");
+ const LS_KEY = "edflow_vitals_v1";
+ let saveTimer: any = null;
+ 
+ class VitalsStore {
+   private data = new Map<string, ObsPoint[]>();
+   private listeners = new Set<() => void>();
+@@
+ }
+ 
+-export const vitalsStore = new VitalsStore();
+-// Hydrate once on module import
+-try { vitalsStore.hydrateFromLocal(); } catch {}
++// ---- SINGLETON SAFETY ---------------------------------------------
++// Ensure one shared instance across the whole app, even with mixed import paths.
++// We stash it on window so duplicate module copies still reuse the same store.
++function getSingleton(): VitalsStore {
++  // @ts-ignore
++  const w = typeof window !== "undefined" ? (window as any) : undefined;
++  if (!w) {
++    const s = new VitalsStore();
++    try { s.hydrateFromLocal(); } catch {}
++    return s;
++  }
++  if (!w.__EDFLOW_VITALS__) {
++    w.__EDFLOW_VITALS__ = new VitalsStore();
++    try { w.__EDFLOW_VITALS__.hydrateFromLocal(); } catch {}
++  }
++  return w.__EDFLOW_VITALS__;
++}
++export const vitalsStore: VitalsStore = getSingleton();
++// ------------------------------------------------------------------
+ 
+ export function useVitalsList(patientId: string | number) {
+   const id = String(patientId ?? "");
+   return useSyncExternalStore(
+     vitalsStore.subscribe,
+     () => vitalsStore.list(id),
+     () => vitalsStore.list(id)
+   );
+ }
+ 
+ export function useVitalsLast(patientId: string | number) {
+   const list = useVitalsList(patientId);
+   return list[list.length - 1];
+ }
+diff --git a/client/src/components/patient/EWSChipLive.tsx b/client/src/components/patient/EWSChipLive.tsx
+index 7777777..7bbbbbb 100644
+--- a/client/src/components/patient/EWSChipLive.tsx
++++ b/client/src/components/patient/EWSChipLive.tsx
+@@ -1,15 +1,16 @@
+ import React from "react";
+-import { useVitalsLast } from "../../stores/vitalsStore";
++import { useVitalsLast } from "../../stores/vitalsStore"; // keep this RELATIVE import
+ 
+ export default function EWSChipLive({
+   patientId,
+   fallback,
+ }: {
+   patientId: string | number;
+   fallback?: number;
+ }) {
+   const last = useVitalsLast(patientId);
+   const ews = (last?.ews ?? fallback);
+   return (
+     <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
+       EWS {ews ?? "—"}
+     </span>
+   );
+ }
+diff --git a/client/src/components/obs/ObsModalHeaderMobile.tsx b/client/src/components/obs/ObsModalHeaderMobile.tsx
+index 68b2bd2..68b2bd3 100644
+--- a/client/src/components/obs/ObsModalHeaderMobile.tsx
++++ b/client/src/components/obs/ObsModalHeaderMobile.tsx
+@@ -1,10 +1,10 @@
+ import React from "react";
+ import { X, Loader2 } from "lucide-react";
+ import EWSChipLive from "../patient/EWSChipLive"; // adjust to your path if needed
+-import { useVitalsLast } from "../../stores/vitalsStore"; // adjust to your path if needed
++import { useVitalsList } from "../../stores/vitalsStore"; // use LIST to compute last/empty accurately
+ 
+ export default function ObsModalHeaderMobile({
+   patientId,
+   patientName,
+   ageSex,
+   cohort = "Adult",
+   dirty = false,
+   isSaving = false,
+   onClose,
+ }: {
+@@ -20,12 +20,14 @@ export default function ObsModalHeaderMobile({
+   isSaving?: boolean;
+   onClose: () => void;
+ }) {
+-  const last = useVitalsLast(patientId);
+-  const lastStr = last?.t
++  const list = useVitalsList(patientId);
++  const last = list.length ? list[list.length - 1] : undefined;
++  const lastStr = last?.t
+     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+     : null;
+ 
+   return (
+     <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
+       <div className="px-4 py-3 flex items-center justify-between gap-3">
+         <div className="min-w-0">
+           <div className="flex items-center gap-2 text-xs text-muted-foreground">
+             <span className="rounded-full border px-2 py-0.5">{cohort}</span>
+             {ageSex && <span className="truncate">{ageSex}</span>}
+             {dirty && (
+               <span className="rounded-full border px-2 py-0.5">Unsaved</span>
+             )}
+             {isSaving && (
+               <span className="inline-flex items-center gap-1 text-xs"><Loader2 className="h-3 w-3 animate-spin"/>Saving…</span>
+             )}
+           </div>
+ 
+           <div className="mt-0.5 flex items-center gap-2 min-w-0">
+             <h1 className="font-semibold truncate max-w-[60vw] sm:max-w-[40ch]" title={patientName}>{patientName}</h1>
+             <EWSChipLive patientId={patientId} />
+           </div>
+ 
+-          <div className="mt-0.5 text-[11px] text-muted-foreground">
+-            {lastStr ? (
+-              <>Last obs {lastStr}</>
+-            ) : (
+-              <>No observations yet</>
+-            )}
+-          </div>
++          <div className="mt-0.5 text-[11px] text-muted-foreground">
++            {lastStr ? <>Last obs {lastStr}</> : <>No observations yet</>}
++          </div>
+         </div>
+ 
+         <button
+           aria-label="Close"
+           onClick={onClose}
+           className="shrink-0 rounded-full p-2 hover:bg-muted active:bg-muted/80"
+         >
+           <X className="h-5 w-5" />
+         </button>
+       </div>
+     </div>
+   );
+ }
+
+
+⸻
+
+How to apply in Replit
+	1.	Open the Shell.
+	2.	Make a branch and apply:
+
+git checkout -b fix/vitals-singleton-header
+printf "%s\n" 'PASTE THE PATCH CONTENTS HERE' > eds-vitals-singleton-hotfix.patch
+git apply --reject --whitespace=fix eds-vitals-singleton-hotfix.patch
+git add -A
+git commit -m "Vitals: enforce singleton store; header reads live list; restore live EWS"
+
+(If you get any *.rej, open them—the patch only edits these files.)
+
+	3.	Very important: ensure every import of the store is relative and consistent:
+	•	Search your project for: from "@/stores/vitalsStore" or from "@/*vitalsStore*"
+	•	Replace with: from "../../stores/vitalsStore" (or the correct relative path from that file)
+	•	Mixed alias vs relative imports can create duplicate module copies.
+	4.	Restart your dev server to clear stale HMR.
+
+⸻
+
+Quick test (phone)
+	•	Open Record Obs → header shows EWS (live) and a correct Last obs time.
+	•	Save +Obs → EWS chip bumps immediately; “Last obs” updates without refresh.
+	•	Close with the X (no footer overlap).
+
+If anything still looks off, run these two logs once:
+
+// in +Obs save
+console.log("SAVE →", patient.id);
+
+// in ObsModalHeaderMobile
+console.log("HEADER READ →", patientId, "list length:", useVitalsList(patientId).length);
+
+If the IDs match and length > 0, the UI will reflect it. If they differ (e.g., "42" vs 42), convert both to strings at the call sites.

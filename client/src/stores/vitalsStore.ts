@@ -86,9 +86,25 @@ class VitalsStore {
   }
 }
 
-export const vitalsStore = new VitalsStore();
-// Hydrate once on module import
-try { vitalsStore.hydrateFromLocal(); } catch {}
+// ---- SINGLETON SAFETY ---------------------------------------------
+// Ensure one shared instance across the whole app, even with mixed import paths.
+// We stash it on window so duplicate module copies still reuse the same store.
+function getSingleton(): VitalsStore {
+  // @ts-ignore
+  const w = typeof window !== "undefined" ? (window as any) : undefined;
+  if (!w) {
+    const s = new VitalsStore();
+    try { s.hydrateFromLocal(); } catch {}
+    return s;
+  }
+  if (!w.__EDFLOW_VITALS__) {
+    w.__EDFLOW_VITALS__ = new VitalsStore();
+    try { w.__EDFLOW_VITALS__.hydrateFromLocal(); } catch {}
+  }
+  return w.__EDFLOW_VITALS__;
+}
+export const vitalsStore: VitalsStore = getSingleton();
+// ------------------------------------------------------------------
 
 export function useVitalsList(patientId: string | number) {
   const id = String(patientId ?? "");
