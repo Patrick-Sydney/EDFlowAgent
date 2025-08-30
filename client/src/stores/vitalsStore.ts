@@ -52,6 +52,7 @@ class VitalsStore {
     const id = normalizeId(patientId);
     const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
     console.log("VitalsStore.add:", id, point, "total points:", list.length);
+    console.log("VitalsStore.data state:", Array.from(this.data.entries()));
     this.data.set(id, list); this.emit();
     this.persist();
   }

@@ -306,6 +306,9 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
     return patientName.split('•')[0].trim();
   }, [patientName]);
 
+  // Debug logging
+  console.log("ObservationSetModalTouch DEBUG:", { patientId, patientName, cleanPatientName });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto max-h-[100vh] flex flex-col overflow-hidden">
