@@ -1,0 +1,160 @@
+Thanks for sticking with this. Here’s what I understand you want:
+
+* **RN (phone) flow:** When you tap **+ Obs** on a patient card, the **Obs modal opens**. When you **save**, the **expanded patient card** (blue-circled Vitals capsule) **immediately shows the new numbers** (RR/SpO₂/HR/SBP/Temp) **without a reload**, and the **timeline** uses the same fresh data.
+* Also: **Charge / In Triage** still needs the **Assign Room** CTA (restored).
+
+You’re seeing the Vitals capsule stay as dashes, so the save isn’t reaching the card.
+
+Below is the **simplest, no-dependencies fix** that will work even with Replit quirks. It uses a tiny **window event** to push the new observation from the modal straight into the card—no stores, no aliases.
+
+---
+
+## 1) Emit an event when +Obs saves
+
+In your **Obs modal save handler** (right after you compute the values), add:
+
+```ts
+// after you build `point`
+const point = {
+  t: new Date().toISOString(),
+  rr: form.rr, spo2: form.spo2, hr: form.hr, sbp: form.sbp, temp: form.temp,
+  ews: form.ews, source: "obs" as const,
+};
+
+// fire-and-forget to update any open cards & timeline
+window.dispatchEvent(
+  new CustomEvent("edflow:obs:saved", {
+    detail: { patientId: patient.id, point }
+  })
+);
+
+// (optional) also append to demo seed so timeline sees it too
+const w: any = window as any;
+w.ED_DEMO ??= {};
+w.ED_DEMO.observations ??= {};
+w.ED_DEMO.observations[patient.id] ??= { observations: [], events: [] };
+w.ED_DEMO.observations[patient.id].observations.push(point);
+
+// then run your API save; do NOT block UI on it
+// await api.saveObservation(patient.id, point);
+```
+
+> This guarantees the UI is notified the moment you press **Save**.
+
+---
+
+## 2) Make the patient card listen and update its Vitals capsule
+
+Add a **`patientId`** prop to your card and listen for the event:
+
+```tsx
+// in PatientCardExpandable props
+type ExpandableCardProps = {
+  patientId: string;                        // NEW
+  minVitals?: { rr?:number; spo2?:number; hr?:number; sbp?:number; temp?:number; takenAt?:string };
+  // ...
+};
+
+// inside the component:
+const [liveVitals, setLiveVitals] = useState(minVitals);
+
+useEffect(() => { setLiveVitals(minVitals); }, [minVitals?.takenAt]);
+
+useEffect(() => {
+  function onObsSaved(e: any) {
+    const { patientId, point } = e.detail || {};
+    if (patientId !== props.patientId) return;
+    setLiveVitals({
+      rr: point.rr, spo2: point.spo2, hr: point.hr, sbp: point.sbp, temp: point.temp, takenAt: point.t,
+    });
+  }
+  window.addEventListener("edflow:obs:saved", onObsSaved);
+  return () => window.removeEventListener("edflow:obs:saved", onObsSaved);
+}, [props.patientId]);
+
+// when rendering the capsule, feed `liveVitals` instead of `minVitals`
+<VitalsCapsule vitals={liveVitals} onOpenTimeline={onOpenVitals} onAddObs={onAddObs} />
+```
+
+And when you render the card, pass the id:
+
+```tsx
+<PatientCardExpandable
+  patientId={p.id}                  // ← NEW
+  // ...everything else
+/>
+```
+
+This keeps the card completely independent of any global state library and updates instantly on every save.
+
+---
+
+## 3) Make sure the +Obs button really opens the modal
+
+Where you render the **Vitals** section (the blue-circled area), ensure `onAddObs` is passed down:
+
+```tsx
+<PatientCardExpandable
+  // ...
+  onAddObs={() => openObsModal(p)}   // this must exist
+/>
+```
+
+And in the capsule component:
+
+```tsx
+{onAddObs && <Button size="sm" className="rounded-full" onClick={(e)=>{e.stopPropagation(); onAddObs();}}>+ Obs</Button>}
+```
+
+(`stopPropagation()` prevents the card from collapsing when you tap the button.)
+
+---
+
+## 4) (Optional) Timeline uses the same live data
+
+If you’re using my timeline pack, drop this at the top of the hook/component so it **adds live points** as they come in:
+
+```ts
+useEffect(() => {
+  function onObsSaved(e:any){ 
+    const { patientId: pid, point } = e.detail || {};
+    if (pid !== patientId) return;
+    setLocalPoints((prev)=> [...prev, point].sort((a,b)=>Date.parse(a.t)-Date.parse(b.t)));
+  }
+  window.addEventListener("edflow:obs:saved", onObsSaved);
+  return () => window.removeEventListener("edflow:obs:saved", onObsSaved);
+}, [patientId]);
+```
+
+---
+
+## 5) Restore **Assign Room** (Charge / In Triage)
+
+Ensure your Charge view sets the label/handler for that lane:
+
+```tsx
+const primaryLabel =
+  lane.id === "waiting"  ? "Start Triage" :
+  lane.id === "intriage" ? "Assign Room" : undefined;
+
+<PatientCardExpandable
+  patientId={p.id}
+  role="Charge"
+  primaryLabel={primaryLabel}
+  onPrimary={
+    lane.id === "waiting"  ? () => onStartTriage(p) :
+    lane.id === "intriage" ? () => onAssignRoom(p) : undefined
+  }
+  onAssignRoom={() => onAssignRoom(p)}
+/>
+```
+
+---
+
+### Why this should work for you now
+
+* **No new libraries**, no path aliases, no provider setup required.
+* **Event → card** is a direct pipe; if the modal fires, the card will update.
+* Easy to **console.log**: add a `console.log("obs:saved", patientId, point)` in the modal and another in the card’s listener to verify wiring.
+
+If it *still* shows dashes after these exact changes, it means the **modal isn’t firing** or the **patientId differs**. Drop a `console.log` in both places to compare the id and we’ll spot it immediately.
