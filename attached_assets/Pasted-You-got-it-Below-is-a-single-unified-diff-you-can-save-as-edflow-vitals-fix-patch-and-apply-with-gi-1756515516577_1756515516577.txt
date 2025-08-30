@@ -1,0 +1,324 @@
+You got it. Below is a single unified diff you can save as edflow-vitals-fix.patch and apply with git apply in Replit.
+This patch adds a small, dependency-free vitals store and two “live” components that read from it:
+	•	client/src/stores/vitalsStore.ts — singleton store using useSyncExternalStore
+	•	client/src/components/patient/VitalsCapsuleLive.tsx — chips that update instantly after +Obs
+	•	client/src/components/patient/VitalsTimelineDrawerLive.tsx — timeline that reads the same store, with Close in the header (no sticky footer)
+	•	client/src/components/patient/ObsSaveToStore.ts — one-liner helper you call in the +Obs modal handleSave()
+
+After applying, you’ll do three small edits in your app (not big refactors) — steps are just below.
+
+⸻
+
+edflow-vitals-fix.patch
+
+diff --git a/client/src/stores/vitalsStore.ts b/client/src/stores/vitalsStore.ts
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/client/src/stores/vitalsStore.ts
+@@ -0,0 +1,94 @@
++import { useSyncExternalStore } from "react";
++
++export type ObsPoint = {
++  t: string;
++  rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
++  source?: "triage" | "obs" | "device";
++};
++
++const normalizeId = (id: unknown) => String(id ?? "");
++
++class VitalsStore {
++  private data = new Map<string, ObsPoint[]>();
++  private listeners = new Set<() => void>();
++
++  subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
++  private emit() { this.listeners.forEach(fn => fn()); }
++
++  list(patientId: string) { return this.data.get(normalizeId(patientId)) ?? []; }
++  last(patientId: string) { const l = this.list(patientId); return l[l.length - 1]; }
++
++  add(patientId: string | number, point: ObsPoint) {
++    const id = normalizeId(patientId);
++    const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
++    this.data.set(id, list); this.emit();
++  }
++
++  bulkUpsert(patientId: string | number, points: ObsPoint[]) {
++    const id = normalizeId(patientId);
++    const merged = [...this.list(id), ...points].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
++    const byKey = new Map<string, ObsPoint>();
++    for (const p of merged) byKey.set(p.t, p);
++    this.data.set(id, Array.from(byKey.values())); this.emit();
++  }
++}
++
++export const vitalsStore = new VitalsStore();
++
++export function useVitalsList(patientId: string | number) {
++  const id = String(patientId ?? "");
++  return useSyncExternalStore(
++    vitalsStore.subscribe,
++    () => vitalsStore.list(id),
++    () => vitalsStore.list(id)
++  );
++}
++
++export function useVitalsLast(patientId: string | number) {
++  const list = useVitalsList(patientId);
++  return list[list.length - 1];
++}
+diff --git a/client/src/components/patient/VitalsCapsuleLive.tsx b/client/src/components/patient/VitalsCapsuleLive.tsx
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/client/src/components/patient/VitalsCapsuleLive.tsx
+@@ -0,0 +1,67 @@
++import React from "react";
++import { useVitalsLast } from "../../stores/vitalsStore";
++
++export default function VitalsCapsuleLive({
++  patientId,
++  onOpenTimeline,
++  onAddObs,
++}: {
++  patientId: string | number;
++  onOpenTimeline?: () => void;
++  onAddObs?: () => void;
++}) {
++  const last = useVitalsLast(patientId);
++
++  const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
++    <div className="rounded-lg border p-2 text-center">
++      <div className="text-[11px] text-muted-foreground">{label}</div>
++      <div className="text-sm font-medium">
++        {val == null ? "—" : val}{val == null || !unit ? "" : ` ${unit}`}
++      </div>
++    </div>
++  );
++
++  return (
++    <div className="rounded-xl border p-3">
++      <div className="flex items-center justify-between">
++        <div className="text-sm font-medium">Vitals</div>
++        <div className="flex gap-2">
++          {onOpenTimeline && (
++            <button className="rounded-full border px-3 py-2 text-sm" onClick={onOpenTimeline}>Timeline</button>
++          )}
++          {onAddObs && (
++            <button className="rounded-full bg-primary text-primary-foreground px-3 py-2 text-sm" onClick={onAddObs}>+ Obs</button>
++          )}
++        </div>
++      </div>
++      <div className="mt-2 grid grid-cols-5 gap-2">
++        <Item label="RR"   val={last?.rr}   unit="/m"   />
++        <Item label="SpO₂" val={last?.spo2} unit="%"    />
++        <Item label="HR"   val={last?.hr}   unit="bpm"  />
++        <Item label="SBP"  val={last?.sbp}  unit="mmHg" />
++        <Item label="Temp" val={last?.temp} unit="°C"   />
++      </div>
++      {last?.t && (
++        <div className="mt-2 text-[11px] text-muted-foreground">
++          Last set {new Date(last.t).toLocaleTimeString()}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/VitalsTimelineDrawerLive.tsx b/client/src/components/patient/VitalsTimelineDrawerLive.tsx
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/client/src/components/patient/VitalsTimelineDrawerLive.tsx
+@@ -0,0 +1,151 @@
++import React from "react";
++import { X } from "lucide-react";
++import { useVitalsList, vitalsStore, ObsPoint } from "../../stores/vitalsStore";
++import {
++  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
++} from "recharts";
++
++function formatTime(ts: string) {
++  const d = new Date(ts);
++  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
++}
++
++function MiniChart({ data, dataKey, yDomain, unit }: {
++  data: ObsPoint[]; dataKey: keyof ObsPoint; yDomain: [number, number]; unit: string;
++}) {
++  return (
++    <div className="h-28 w-full">
++      <ResponsiveContainer>
++        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
++          <CartesianGrid strokeDasharray="3 3" vertical={false} />
++          <XAxis dataKey="t" tickFormatter={formatTime} minTickGap={24} tick={{ fontSize: 11 }} />
++          <YAxis domain={yDomain} width={36} tick={{ fontSize: 11 }} />
++          <Tooltip labelFormatter={(l) => formatTime(String(l))} formatter={(v) => [`${v} ${unit}`, unit]} />
++          <Line type="monotone" dataKey={dataKey as any} dot={{ r: 2 }} strokeWidth={2} />
++        </LineChart>
++      </ResponsiveContainer>
++    </div>
++  );
++}
++
++export default function VitalsTimelineDrawerLive({
++  open, onOpenChange, patientId, patientName, onAddObs,
++}: {
++  open: boolean; onOpenChange: (o: boolean) => void;
++  patientId: string | number; patientName?: string;
++  onAddObs?: () => void;
++}) {
++  const points = useVitalsList(patientId);
++  const has = (k: keyof ObsPoint) => points.some(p => typeof p[k] === "number");
++
++  async function importFromServer() {
++    try {
++      const res = await fetch(`/api/observations?patientId=${patientId}`);
++      if (res.ok) {
++        const json = await res.json();
++        const items: ObsPoint[] =
++          json?.observations || json?.points || Array.isArray(json) ? (json.observations ?? json.points ?? json) : [];
++        vitalsStore.bulkUpsert(patientId, items);
++      }
++    } catch {}
++  }
++
++  if (!open) return null;
++  return (
++    <div className="fixed inset-0 z-50 bg-black/20">
++      <div className="fixed inset-x-0 bottom-0 sm:inset-0 sm:m-auto sm:max-w-[720px] sm:h-[90vh] bg-background rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden flex flex-col">
++        <div className="flex items-center justify-between px-4 py-3 border-b">
++          <div className="text-base font-semibold">Vitals timeline — {patientName ?? ""}</div>
++          <button aria-label="Close" onClick={() => onOpenChange(false)} className="p-2 rounded-full hover:bg-muted">
++            <X className="h-5 w-5" />
++          </button>
++        </div>
++
++        <div className="px-4 py-2 flex items-center gap-2 border-b">
++          {onAddObs && <button className="rounded-full bg-primary text-primary-foreground px-3 py-2 text-sm" onClick={onAddObs}>+ Obs</button>}
++          <button className="rounded-full border px-3 py-2 text-sm" onClick={importFromServer}>Import</button>
++        </div>
++
++        <div className="p-4 overflow-y-auto">
++          {points.length === 0 ? (
++            <div className="text-sm text-muted-foreground">No observations yet.</div>
++          ) : (
++            <div className="space-y-3">
++              {has("rr")   && <MiniChart data={points} dataKey="rr"   yDomain={[6,40]}   unit="/m"   />}
++              {has("spo2") && <MiniChart data={points} dataKey="spo2" yDomain={[80,100]} unit="%"    />}
++              {has("hr")   && <MiniChart data={points} dataKey="hr"   yDomain={[40,160]} unit="bpm"  />}
++              {has("sbp")  && <MiniChart data={points} dataKey="sbp"  yDomain={[70,200]} unit="mmHg" />}
++              {has("temp") && <MiniChart data={points} dataKey="temp" yDomain={[34,41]}  unit="°C"    />}
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/ObsSaveToStore.ts b/client/src/components/patient/ObsSaveToStore.ts
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/client/src/components/patient/ObsSaveToStore.ts
+@@ -0,0 +1,21 @@
++import { vitalsStore, ObsPoint } from "../../stores/vitalsStore";
++
++export function saveObsToStore(patientId: string | number, values: {
++  rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
++}) {
++  const point: ObsPoint = {
++    t: new Date().toISOString(),
++    rr: values.rr, spo2: values.spo2, hr: values.hr, sbp: values.sbp, temp: values.temp, ews: values.ews,
++    source: "obs",
++  };
++  vitalsStore.add(patientId, point);
++}
++
++// Example usage in your +Obs modal:
++// import { saveObsToStore } from "./ObsSaveToStore";
++// async function handleSave() {
++//   saveObsToStore(patient.id, formValues); // instant UI update
++//   try { await api.saveObservation(patient.id, formValues); } catch {}
++//   onClose();
++// }
++
+
+
+⸻
+
+How to apply this in Replit
+	1.	Open the Shell in your Replit workspace.
+	2.	Make a branch and apply the patch:
+
+git checkout -b fix/vitals-live
+printf "%s\n" 'PASTE THE WHOLE PATCH ABOVE HERE' > edflow-vitals-fix.patch
+git apply --reject --whitespace=fix edflow-vitals-fix.patch
+git add -A
+git commit -m "Vitals: singleton store, live chips, timeline header close, +Obs helper"
+
+If you see any *.rej files, open them in the editor — they only happen if the paths don’t exist. The patch only adds files, so this should be clean.
+
+	3.	Wire in three tiny edits (one-time):
+A) Use the live capsule in the expanded patient card
+	•	Open your expanded patient card component (where the vitals chips render).
+	•	Replace the old capsule with:
+
+import VitalsCapsuleLive from "@/components/patient/VitalsCapsuleLive"; // or relative: "../patient/VitalsCapsuleLive"
+
+<VitalsCapsuleLive
+  patientId={patient.id}
+  onOpenTimeline={() => setTimelineOpen(true)}
+  onAddObs={() => openObsModal(patient)}
+/>
+
+(Use a relative import if your @ alias isn’t set.)
+B) Make the timeline use the live drawer
+	•	Wherever you show the timeline, import and use:
+
+import VitalsTimelineDrawerLive from "@/components/patient/VitalsTimelineDrawerLive";
+
+<VitalsTimelineDrawerLive
+  open={openTL}
+  onOpenChange={setOpenTL}
+  patientId={patient.id}
+  patientName={patient.displayName}
+  onAddObs={() => openObsModal(patient)}
+/>
+
+
+C) Update the +Obs modal save
+	•	In your +Obs modal file, at the top:
+
+import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
+
+
+	•	In handleSave():
+
+saveObsToStore(patient.id, { rr, spo2, hr, sbp, temp, ews }); // instant UI update
+// then your existing API save (non-blocking)
+
+
+	4.	Run the app (pnpm dev or your existing run button).
+	•	Expand a card → chips show dashes initially.
+	•	Tap + Obs, save → chips update immediately.
+	•	Open Timeline → same point is visible immediately.
+	•	The Close (X) is in the header; no sticky footer in the way.
+	5.	When happy:
+
+git push -u origin fix/vitals-live
+# Make a PR and merge to main from GitHub
+
+
+
+⸻
+
+Notes
+	•	All imports in the new files are relative (../../...) to avoid alias issues in Replit.
+	•	The store is a module singleton, so it works with or without React Context and avoids “multiple provider” bugs.
+	•	If you keep your previous timeline component, you can still wire it to the store by replacing its data source with:
+
+const points = useVitalsList(patientId);
+
+
+
+If anything fails to compile, paste me the exact error and I’ll adjust the patch paths quickly.

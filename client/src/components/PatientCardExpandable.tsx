@@ -3,8 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
-import { VitalsTimelineDrawer } from "./VitalsTimelineDrawer";
-import VitalsCapsuleLive from "./VitalsCapsuleLive";
+import VitalsTimelineDrawerLive from "./patient/VitalsTimelineDrawerLive";
+import VitalsCapsuleLive from "./patient/VitalsCapsuleLive";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -126,48 +126,6 @@ export function IdentityInline({
 // Vitals capsule (last known values + open timeline)
 // ------------------------------------------------------------------
 export type MinVitals = { rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; takenAt?: string };
-
-function VitalsCapsule({ 
-  patientId, 
-  fallback, 
-  onOpenTimeline, 
-  onAddObs 
-}: { 
-  patientId: string; 
-  fallback?: MinVitals; 
-  onOpenTimeline?: () => void; 
-  onAddObs?: () => void; 
-}) {
-  const { last } = useVitals(String(patientId)); // ← live subscription
-  const vitals = last
-    ? { rr: last.rr, spo2: last.spo2, hr: last.hr, sbp: last.sbp, temp: last.temp, takenAt: last.t }
-    : fallback;
-  const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
-    <div className="rounded-lg border p-2 text-center">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium">{val ?? '—'}{val!=null && unit ? ` ${unit}` : ''}</div>
-    </div>
-  );
-  return (
-    <div className="rounded-xl border p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium flex items-center gap-1"><ActivitySquare className="h-4 w-4"/>Vitals</div>
-        <div className="flex gap-2">
-          {onOpenTimeline && <Button size="sm" variant="outline" className="rounded-full" onClick={onOpenTimeline}>Timeline</Button>}
-          {onAddObs && <Button size="sm" className="rounded-full" onClick={onAddObs}>+ Obs</Button>}
-        </div>
-      </div>
-      <div className="mt-2 grid grid-cols-5 gap-2">
-        <Item label="RR" val={vitals?.rr} unit="/m"/>
-        <Item label="SpO₂" val={vitals?.spo2} unit="%"/>
-        <Item label="HR" val={vitals?.hr} unit="bpm"/>
-        <Item label="SBP" val={vitals?.sbp} unit="mmHg"/>
-        <Item label="Temp" val={vitals?.temp} unit="°C"/>
-      </div>
-      {vitals?.takenAt && <div className="mt-2 text-[11px] text-muted-foreground">Last set {new Date(vitals.takenAt).toLocaleTimeString()}</div>}
-    </div>
-  );
-}
 
 // ------------------------------------------------------------------
 // Expandable patient card (phone‑first)
@@ -304,7 +262,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
       </div>
 
       {/* Vitals Timeline Drawer */}
-      <VitalsTimelineDrawer
+      <VitalsTimelineDrawerLive
         open={openTL}
         onOpenChange={setOpenTL}
         patientId={patientId || ""}

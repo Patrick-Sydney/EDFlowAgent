@@ -2,8 +2,6 @@ import React from "react";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
 import { useVitalsLast } from "../../stores/vitalsStore";
 
-const normalizeId = (id: unknown) => String(id ?? "");
-
 export function RNPatientRow({ 
   p, 
   laneLabel, 
@@ -35,7 +33,7 @@ export function RNPatientRow({
   return (
     <PatientCardExpandable
       role="RN"
-      patientId={normalizeId(p.id)}
+      patientId={p.id}
       name={p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—'}
       ageSex={p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : p.sex}
       status={status}

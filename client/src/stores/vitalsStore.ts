@@ -1,4 +1,3 @@
-// src/stores/vitalsStore.ts
 import { useSyncExternalStore } from "react";
 
 export type ObsPoint = {
@@ -38,27 +37,25 @@ class VitalsStore {
     return this.cache.get(id)!.last;
   }
 
-  add(patientId: string, point: ObsPoint) {
+  add(patientId: string | number, point: ObsPoint) {
     const id = normalizeId(patientId);
-    const list = [...(this.data.get(id) ?? []), point].sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
     this.data.set(id, list); this.emit();
   }
 
-  bulkUpsert(patientId: string, points: ObsPoint[]) {
+  bulkUpsert(patientId: string | number, points: ObsPoint[]) {
     const id = normalizeId(patientId);
-    const merged = [...this.list(id), ...points].sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
-    // de-dupe by timestamp
-    const dedup: ObsPoint[] = [];
-    const seen = new Set(merged.map(p => p.t));
-    for (const p of merged) if (!dedup.find(d => d.t === p.t)) dedup.push(p);
-    this.data.set(id, dedup); this.emit();
+    const merged = [...this.list(id), ...points].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
+    const byKey = new Map<string, ObsPoint>();
+    for (const p of merged) byKey.set(p.t, p);
+    this.data.set(id, Array.from(byKey.values())); this.emit();
   }
 }
 
 export const vitalsStore = new VitalsStore();
 
 export function useVitalsList(patientId: string | number) {
-  const id = normalizeId(patientId);
+  const id = String(patientId ?? "");
   return useSyncExternalStore(
     vitalsStore.subscribe,
     () => vitalsStore.list(id),
@@ -67,7 +64,7 @@ export function useVitalsList(patientId: string | number) {
 }
 
 export function useVitalsLast(patientId: string | number) {
-  const id = normalizeId(patientId);
+  const id = String(patientId ?? "");
   return useSyncExternalStore(
     vitalsStore.subscribe,
     () => vitalsStore.last(id),

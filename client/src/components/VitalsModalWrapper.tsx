@@ -1,6 +1,6 @@
 import React from "react";
 import ObservationSetModalTouch from "./ObservationSetModalTouch";
-import { vitalsStore, ObsPoint } from "../stores/vitalsStore";
+import { saveObsToStore } from "./patient/ObsSaveToStore";
 import { useDashboardStore } from "../stores/dashboardStore";
 
 export function VitalsModalWrapper({
@@ -41,17 +41,7 @@ export function VitalsModalWrapper({
     });
     
     // 1) Instant UI update
-    const point: ObsPoint = {
-      t: new Date().toISOString(),
-      rr: obsRecord.rr,
-      spo2: obsRecord.spo2,
-      hr: obsRecord.hr,
-      sbp: obsRecord.sbp,
-      temp: obsRecord.temp,
-      source: "obs",
-    };
-    
-    vitalsStore.add(patientId, point);
+    saveObsToStore(patientId, obsRecord);
     
     // Debug logging
     console.log("save for", patientId, point);
