@@ -1,0 +1,230 @@
+Thanks for sticking with it. From the symptoms:
+
+* Timeline only updates after a hard refresh → your chart reads from **fetch/seeds**, not the same state the **+Obs** modal writes to.
+* Vitals chips never change → the chips aren’t subscribed to a **single live source**.
+* Close button “in the way” → the drawer uses a sticky footer that iOS positions over the charts.
+
+Let’s fix all three with a **single-source-of-truth store** (no providers, no aliases, no libs) and a simpler drawer header. This will work even in a finicky Replit session.
+
+---
+
+# A. One singleton store for vitals (uses `useSyncExternalStore`)
+
+Create **`src/stores/vitalsStore.ts`**:
+
+```ts
+// src/stores/vitalsStore.ts
+import { useSyncExternalStore } from "react";
+
+export type ObsPoint = {
+  t: string;
+  rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
+  source?: "triage" | "obs" | "device";
+};
+
+const normalizeId = (id: unknown) => String(id ?? "");
+
+class VitalsStore {
+  private data = new Map<string, ObsPoint[]>();
+  private listeners = new Set<() => void>();
+
+  subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
+  private emit() { this.listeners.forEach(fn => fn()); }
+
+  list(patientId: string) { return this.data.get(normalizeId(patientId)) ?? []; }
+  last(patientId: string) { const l = this.list(patientId); return l[l.length - 1]; }
+
+  add(patientId: string, point: ObsPoint) {
+    const id = normalizeId(patientId);
+    const list = [...(this.data.get(id) ?? []), point].sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    this.data.set(id, list); this.emit();
+  }
+
+  bulkUpsert(patientId: string, points: ObsPoint[]) {
+    const id = normalizeId(patientId);
+    const merged = [...this.list(id), ...points].sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+    // de-dupe by timestamp
+    const dedup: ObsPoint[] = [];
+    const seen = new Set(merged.map(p => p.t));
+    for (const p of merged) if (!dedup.find(d => d.t === p.t)) dedup.push(p);
+    this.data.set(id, dedup); this.emit();
+  }
+}
+
+export const vitalsStore = new VitalsStore();
+
+export function useVitalsList(patientId: string | number) {
+  const id = normalizeId(patientId);
+  return useSyncExternalStore(
+    vitalsStore.subscribe,
+    () => vitalsStore.list(id),
+    () => vitalsStore.list(id)
+  );
+}
+
+export function useVitalsLast(patientId: string | number) {
+  const list = useVitalsList(patientId);
+  return list[list.length - 1];
+}
+```
+
+This is a **module-level singleton**. Anything that imports from it shares the same state—no Context/Provider needed (so no “multiple provider” issues).
+
+---
+
+# B. Wire the **+Obs modal** to the store
+
+In your +Obs modal’s save handler (use **relative imports**):
+
+```ts
+// in ObsModal.tsx (or similar)
+import { vitalsStore, ObsPoint } from "../stores/vitalsStore";
+
+async function handleSave() {
+  const point: ObsPoint = {
+    t: new Date().toISOString(),
+    rr: form.rr, spo2: form.spo2, hr: form.hr, sbp: form.sbp, temp: form.temp,
+    ews: computedEws, source: "obs",
+  };
+
+  // 1) Instant UI update
+  vitalsStore.add(patient.id, point);
+
+  // 2) Optional server save (do not block the UI)
+  try { await api.saveObservation(patient.id, point); } catch {}
+
+  onClose();
+}
+```
+
+---
+
+# C. Make the **Vitals chips** read from the same store
+
+Replace the capsule’s value source with the live hook:
+
+```tsx
+// inside PatientCard expandable content
+import { useVitalsLast } from "../../stores/vitalsStore";
+
+function VitalsCapsule({ patientId, onOpenTimeline, onAddObs }:{
+  patientId: string | number; onOpenTimeline?: () => void; onAddObs?: () => void;
+}) {
+  const last = useVitalsLast(patientId); // ← live, re-renders after +Obs
+
+  const Item = ({ label, val, unit }:{ label:string; val?:number; unit?:string }) => (
+    <div className="rounded-lg border p-2 text-center">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium">{val == null ? "—" : val}{val == null || !unit ? "" : ` ${unit}`}</div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl border p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">Vitals</div>
+        <div className="flex gap-2">
+          {onOpenTimeline && <button className="btn btn-outline" onClick={onOpenTimeline}>Timeline</button>}
+          {onAddObs && <button className="btn" onClick={onAddObs}>+ Obs</button>}
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-5 gap-2">
+        <Item label="RR"   val={last?.rr}   unit="/m"  />
+        <Item label="SpO₂" val={last?.spo2} unit="%"   />
+        <Item label="HR"   val={last?.hr}   unit="bpm" />
+        <Item label="SBP"  val={last?.sbp}  unit="mmHg"/>
+        <Item label="Temp" val={last?.temp} unit="°C"  />
+      </div>
+      {last?.t && <div className="mt-2 text-[11px] text-muted-foreground">Last set {new Date(last.t).toLocaleTimeString()}</div>}
+    </div>
+  );
+}
+```
+
+And in the card, **pass the patientId**:
+
+```tsx
+<VitalsCapsule
+  patientId={p.id}
+  onOpenTimeline={() => openVitalsTimeline(p)}
+  onAddObs={() => openObsModal(p)}
+/>
+```
+
+(You can delete any old `minVitals` prop; it’s no longer needed.)
+
+---
+
+# D. Make the **Timeline** use the same store (instant update)
+
+Stop polling/refreshing for pilot; draw from the store and optionally “import” seeds/API once.
+
+```tsx
+import { useVitalsList, vitalsStore } from "../stores/vitalsStore";
+
+function VitalsTimelineDrawer({ patientId, patientName, onAddObs, open, onOpenChange }:{
+  patientId: string | number; patientName?: string; onAddObs?: () => void;
+  open: boolean; onOpenChange:(o:boolean)=>void;
+}) {
+  const points = useVitalsList(patientId);
+
+  // optional: one-shot “Import” from server if you have historical data
+  async function importFromServer() {
+    const res = await fetch(`/api/observations?patientId=${patientId}`).catch(()=>null);
+    const json = res && res.ok ? await res.json() : null;
+    if (json?.observations?.length) vitalsStore.bulkUpsert(patientId as string, json.observations);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="p-0 sm:max-w-[720px] w-[100vw] h-[90vh] rounded-none sm:rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div className="text-base font-semibold">Vitals timeline — {patientName}</div>
+          <button aria-label="Close" onClick={() => onOpenChange(false)} className="p-2 rounded-full hover:bg-muted">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-4 py-2 flex items-center gap-2 border-b">
+          {onAddObs && <Button size="sm" onClick={onAddObs}>+ Obs</Button>}
+          <Button size="sm" variant="outline" onClick={importFromServer}>Import</Button>
+        </div>
+
+        <div className="p-4 overflow-y-auto max-h-[calc(90vh-112px)]">
+          {points.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No observations yet.</div>
+          ) : (
+            <VitalsTimelineChart points={points} />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+* **Close button** is now in the header; no sticky footer → fixes the “button in the middle” issue.
+* Timeline renders **immediately** after +Obs because it reads the same store.
+
+---
+
+# E. Quick debugging checklist (do once)
+
+1. Search your project for **`vitalsStore.add(`** — confirm it’s called in the +Obs save.
+2. Log once in the modal:
+   `console.log("save for", patient.id, point)`
+   and in the capsule:
+   `console.log("chips for", patientId, useVitalsLast(patientId))`
+   → the **same id** must appear in both logs.
+3. Ensure **every import is relative** (e.g., `"../stores/vitalsStore"`), not `"@/..."` (Replit often fails aliases).
+4. Remove any old Context/Provider you added for vitals so there’s only the **singleton store**.
+
+---
+
+## What you should see after this
+
+* Tap **+ Obs** → **chips update instantly** (no refresh).
+* Open **Timeline** → new point already drawn.
+* **Close** sits in the header and doesn’t overlap the charts.
+
+If you still get stuck, paste the **two console logs** (save + chips) and the **exact import paths** you’re using for the store; that will pinpoint any remaining mismatch in seconds.

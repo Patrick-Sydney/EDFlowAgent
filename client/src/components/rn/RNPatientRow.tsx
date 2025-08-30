@@ -1,6 +1,8 @@
 import React from "react";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
-import { useVitals, normalizeId } from "../../state/VitalsContext";
+import { useVitalsLast } from "../../stores/vitalsStore";
+
+const normalizeId = (id: unknown) => String(id ?? "");
 
 export function RNPatientRow({ 
   p, 
@@ -17,7 +19,7 @@ export function RNPatientRow({
   onOpenCard: (p: any) => void; 
   onOpenVitals: (p: any) => void;
 }) {
-  const { last } = useVitals(normalizeId(p.id));
+  const last = useVitalsLast(p.id);
   const minVitals = last ? { 
     rr: last.rr, 
     spo2: last.spo2, 

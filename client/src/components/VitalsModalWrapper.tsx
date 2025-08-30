@@ -1,7 +1,7 @@
 import React from "react";
 import ObservationSetModalTouch from "./ObservationSetModalTouch";
-import { useVitals, normalizeId } from "../state/VitalsContext";
-import { useDashboardStore } from "@/stores/dashboardStore";
+import { vitalsStore, ObsPoint } from "../stores/vitalsStore";
+import { useDashboardStore } from "../stores/dashboardStore";
 
 export function VitalsModalWrapper({
   open,
@@ -22,9 +22,6 @@ export function VitalsModalWrapper({
   isTriage: boolean;
   recorder: string;
 }) {
-  // Use the context only when we have a patient ID
-  const vitalsHook = useVitals(normalizeId(patientId || ""));
-
   const handleSave = async (observations: any[]) => {
     if (!patientId) return;
     
@@ -43,23 +40,23 @@ export function VitalsModalWrapper({
       }
     });
     
-    // 1) Update UI immediately with context
-    const point = {
+    // 1) Instant UI update
+    const point: ObsPoint = {
       t: new Date().toISOString(),
       rr: obsRecord.rr,
       spo2: obsRecord.spo2,
       hr: obsRecord.hr,
       sbp: obsRecord.sbp,
       temp: obsRecord.temp,
-      source: "obs" as const,
+      source: "obs",
     };
     
-    vitalsHook.add(point);
+    vitalsStore.add(patientId, point);
     
     // Debug logging
-    console.log("SAVING OBS FOR", normalizeId(patientId || ""), point);
+    console.log("save for", patientId, point);
     
-    // 2) Save to backend (non-blocking)
+    // 2) Optional server save (do not block the UI)
     try {
       await useDashboardStore.getState().addObservation(patientId, observations);
     } catch (error) {

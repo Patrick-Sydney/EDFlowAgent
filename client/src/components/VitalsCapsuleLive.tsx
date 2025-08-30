@@ -1,6 +1,6 @@
 import React from "react";
-import { useVitals, normalizeId } from "../state/VitalsContext";
-import { Button } from "@/components/ui/button";
+import { useVitalsLast } from "../stores/vitalsStore";
+import { Button } from "./ui/button";
 import { ActivitySquare } from "lucide-react";
 
 export default function VitalsCapsuleLive({
@@ -12,11 +12,7 @@ export default function VitalsCapsuleLive({
   onOpenTimeline?: () => void;
   onAddObs?: () => void;
 }) {
-  const { list } = useVitals(normalizeId(patientId));     // ← live subscription
-  const last = list[list.length - 1];
-  
-  // Debug logging
-  console.log("CAPSULE READ FOR", normalizeId(patientId), { last });
+  const last = useVitalsLast(patientId);
 
   const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
     <div className="rounded-lg border p-2 text-center">
