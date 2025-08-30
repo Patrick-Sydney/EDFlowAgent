@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
 import { VitalsTimelineDrawer } from "./VitalsTimelineDrawer";
+import { useVitals } from "../state/VitalsContext";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -126,7 +127,21 @@ export function IdentityInline({
 // ------------------------------------------------------------------
 export type MinVitals = { rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; takenAt?: string };
 
-function VitalsCapsule({ vitals, onOpenTimeline, onAddObs }: { vitals?: MinVitals; onOpenTimeline?: () => void; onAddObs?: () => void; }) {
+function VitalsCapsule({ 
+  patientId, 
+  fallback, 
+  onOpenTimeline, 
+  onAddObs 
+}: { 
+  patientId: string; 
+  fallback?: MinVitals; 
+  onOpenTimeline?: () => void; 
+  onAddObs?: () => void; 
+}) {
+  const { last } = useVitals(String(patientId)); // ← live subscription
+  const vitals = last
+    ? { rr: last.rr, spo2: last.spo2, hr: last.hr, sbp: last.sbp, temp: last.temp, takenAt: last.t }
+    : fallback;
   const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
     <div className="rounded-lg border p-2 text-center">
       <div className="text-[11px] text-muted-foreground">{label}</div>
@@ -176,7 +191,7 @@ export type ExpandableCardProps = {
   allergies?: string[];
   role: 'RN' | 'Charge' | 'MD';
   minVitals?: MinVitals;     // last known vitals for capsule
-  patientId?: string;        // for timeline integration
+  patientId: string;         // for timeline integration and live vitals
   onPrimary?: () => void;
   primaryLabel?: string;
   onOrderSet?: () => void;       // MD quick order set
@@ -244,7 +259,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <IdentityInline legalName={name} ageSex={ageSex} dob={dob ?? undefined} nhi={nhi ?? undefined} mrn={mrn ?? undefined} alerts={alerts} allergies={allergies} onAudit={(e)=>{/* wire to audit */}} />
 
           {/* Vitals Capsule (restores quick vitals & access to timeline) */}
-          <VitalsCapsule vitals={minVitals} onOpenTimeline={() => setOpenTL(true)} onAddObs={onAddObs} />
+          <VitalsCapsule 
+            patientId={patientId} 
+            fallback={minVitals} 
+            onOpenTimeline={() => setOpenTL(true)} 
+            onAddObs={onAddObs} 
+          />
 
           {/* Role-specific quick actions */}
           <div className="rounded-xl border p-3">

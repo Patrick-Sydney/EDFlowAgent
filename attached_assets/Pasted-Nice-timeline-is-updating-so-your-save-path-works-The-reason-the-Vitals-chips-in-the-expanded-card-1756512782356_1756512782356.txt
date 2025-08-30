@@ -1,0 +1,122 @@
+Nice—timeline is updating, so your save path works. The reason the Vitals chips in the expanded card still show dashes is they’re not subscribed to the same live data; they’re only reading the minVitals prop they got when the card first rendered.
+
+Easiest fix: make the Vitals capsule subscribe directly to the same source the timeline uses (your VitalsContext/store), instead of relying on a parent prop. Then it will update instantly after + Obs.
+
+⸻
+
+Patch 1 — Make the Vitals capsule live
+
+Change the capsule to read by patientId (and use minVitals only as a fallback).
+
+// PatientCardExpandable.tsx (or wherever VitalsCapsule lives)
+import { useVitals } from "../state/VitalsContext"; // use a relative path
+
+type MinVitals = { rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; takenAt?: string };
+
+function VitalsCapsule({
+  patientId,
+  fallback,
+  onOpenTimeline,
+  onAddObs,
+}: {
+  patientId: string;
+  fallback?: MinVitals;
+  onOpenTimeline?: () => void;
+  onAddObs?: () => void;
+}) {
+  const { last } = useVitals(String(patientId)); // ← live subscription
+  const v = last
+    ? { rr: last.rr, spo2: last.spo2, hr: last.hr, sbp: last.sbp, temp: last.temp, takenAt: last.t }
+    : fallback;
+
+  const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
+    <div className="rounded-lg border p-2 text-center">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium">{val ?? "—"}{val != null && unit ? ` ${unit}` : ""}</div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl border p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">Vitals</div>
+        <div className="flex gap-2">
+          {onOpenTimeline && <button className="btn btn-outline" onClick={onOpenTimeline}>Timeline</button>}
+          {onAddObs && <button className="btn" onClick={onAddObs}>+ Obs</button>}
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-5 gap-2">
+        <Item label="RR"   val={v?.rr}   unit="/m" />
+        <Item label="SpO₂" val={v?.spo2} unit="%" />
+        <Item label="HR"   val={v?.hr}   unit="bpm" />
+        <Item label="SBP"  val={v?.sbp}  unit="mmHg" />
+        <Item label="Temp" val={v?.temp} unit="°C" />
+      </div>
+      {v?.takenAt && <div className="mt-2 text-[11px] text-muted-foreground">Last set {new Date(v.takenAt).toLocaleTimeString()}</div>}
+    </div>
+  );
+}
+
+Update the card to pass patientId:
+
+// in PatientCardExpandable props
+patientId: string; // NEW
+
+// where you render the capsule inside the expand:
+<VitalsCapsule
+  patientId={patientId}
+  fallback={minVitals}            // optional; used before any obs exist
+  onOpenTimeline={onOpenVitals}
+  onAddObs={onAddObs}
+/>
+
+When mapping RN patients → cards:
+
+<PatientCardExpandable
+  patientId={p.id}                // ← important
+  // (you can drop minVitals now, or keep as fallback)
+  // ...
+/>
+
+Root cause explained: the timeline subscribed to live data, the capsule didn’t. Subscribing the capsule fixes it.
+
+⸻
+
+Patch 2 — Fix the “Close” button floating in the timeline drawer
+
+Let’s simplify and prevent iOS sticky quirks. Use the X in the header and remove the sticky footer.
+
+// VitalsTimelineDrawer
+import { X } from "lucide-react";
+
+<DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[720px] sm:rounded-2xl rounded-none h-[90vh] flex flex-col">
+  <div className="flex items-center justify-between px-4 pt-4 pb-2">
+    <h2 className="text-base font-semibold">Vitals timeline — {patientName}</h2>
+    <button aria-label="Close" onClick={() => onOpenChange(false)} className="p-2 rounded-full hover:bg-muted">
+      <X className="h-5 w-5" />
+    </button>
+  </div>
+
+  <div className="px-4 pb-3 flex items-center gap-2">
+    <button className="btn">+ Obs</button>
+    <button className="btn btn-outline" onClick={refresh}>Refresh</button>
+  </div>
+
+  <ScrollArea className="flex-1 px-4 pb-6">
+    {/* charts… */}
+  </ScrollArea>
+</DialogContent>
+
+(We remove the sticky-bottom <div> entirely.)
+
+⸻
+
+Quick checks
+	1.	Confirm your app is wrapped with <VitalsProvider> once at the root.
+	2.	Ensure the same patientId string is used in:
+	•	ObsModal save (useVitals(patient.id).add(point))
+	•	PatientCardExpandable patientId
+	•	VitalsTimelineDrawer patientId
+	3.	After saving + Obs, the chips should update instantly (no refresh needed).
+
+If you still see dashes after this patch, print console.log('card patientId', patientId) in the card and console.log('obs saved for', patient.id) in the modal to confirm the IDs match exactly (string vs number mismatches can bite).

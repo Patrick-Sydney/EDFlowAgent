@@ -33,6 +33,7 @@ export function RNPatientRow({
   return (
     <PatientCardExpandable
       role="RN"
+      patientId={p.id}
       name={p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—'}
       ageSex={p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : p.sex}
       status={status}
