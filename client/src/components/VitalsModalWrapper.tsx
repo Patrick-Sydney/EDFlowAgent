@@ -44,7 +44,7 @@ export function VitalsModalWrapper({
     saveObsToStore(patientId, obsRecord);
     
     // Debug logging
-    console.log("save for", patientId, point);
+    console.log("save for", patientId, obsRecord);
     
     // 2) Optional server save (do not block the UI)
     try {
