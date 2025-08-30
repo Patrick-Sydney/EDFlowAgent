@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDashboardStore } from "@/stores/dashboardStore";
+import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
 import { Activity, Thermometer } from "lucide-react";
 
 /**
@@ -43,6 +44,22 @@ export function ObservationDemo() {
       { id: `spo2-${Date.now()+4}`, type: "SpO2" as const, value: "89", unit: "%", takenAt: timestamp, recordedBy: "Demo" }
     ];
     
+    // Transform and save to vitals store for instant UI update
+    const obsRecord: Record<string, number> = {};
+    observations.forEach(obs => {
+      switch(obs.type) {
+        case 'RR': obsRecord.rr = parseFloat(obs.value); break;
+        case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
+        case 'HR': obsRecord.hr = parseFloat(obs.value); break;
+        case 'BP': 
+          const bpMatch = obs.value.match(/^(\d+)/);
+          if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
+          break;
+        case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
+      }
+    });
+    saveObsToStore(demoPatient.id, obsRecord);
+    
     await addObservation(demoPatient.id, observations);
   };
   
@@ -57,6 +74,22 @@ export function ObservationDemo() {
       { id: `rr-${Date.now()+3}`, type: "RR" as const, value: "16", unit: "/min", takenAt: timestamp, recordedBy: "Demo" },
       { id: `spo2-${Date.now()+4}`, type: "SpO2" as const, value: "98", unit: "%", takenAt: timestamp, recordedBy: "Demo" }
     ];
+    
+    // Transform and save to vitals store for instant UI update
+    const obsRecord: Record<string, number> = {};
+    observations.forEach(obs => {
+      switch(obs.type) {
+        case 'RR': obsRecord.rr = parseFloat(obs.value); break;
+        case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
+        case 'HR': obsRecord.hr = parseFloat(obs.value); break;
+        case 'BP': 
+          const bpMatch = obs.value.match(/^(\d+)/);
+          if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
+          break;
+        case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
+      }
+    });
+    saveObsToStore(demoPatient.id, obsRecord);
     
     await addObservation(demoPatient.id, observations);
   };
