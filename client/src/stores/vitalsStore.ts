@@ -51,7 +51,7 @@ class VitalsStore {
   add(patientId: string | number, point: ObsPoint) {
     const id = normalizeId(patientId);
     const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
-    console.log("VitalsStore.add:", id, point, "total points:", list.length, "singleton check:", typeof window !== "undefined" && (window as any).__EDFLOW_VITALS__ === this);
+    console.log("VitalsStore.add:", id, point, "total points:", list.length);
     this.data.set(id, list); this.emit();
     this.persist();
   }
@@ -93,17 +93,14 @@ function getSingleton(): VitalsStore {
   // @ts-ignore
   const w = typeof window !== "undefined" ? (window as any) : undefined;
   if (!w) {
-    console.log("VitalsStore: Server-side, creating new instance");
     const s = new VitalsStore();
     try { s.hydrateFromLocal(); } catch {}
     return s;
   }
   if (!w.__EDFLOW_VITALS__) {
-    console.log("VitalsStore: Creating singleton instance");
     w.__EDFLOW_VITALS__ = new VitalsStore();
     try { w.__EDFLOW_VITALS__.hydrateFromLocal(); } catch {}
   } else {
-    console.log("VitalsStore: Reusing existing singleton");
   }
   return w.__EDFLOW_VITALS__;
 }
