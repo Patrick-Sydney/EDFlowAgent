@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
 import VitalsTimelineDrawerLive from "./patient/VitalsTimelineDrawerLive";
 import VitalsCapsuleLive from "./patient/VitalsCapsuleLive";
+import EWSChipLive from "./patient/EWSChipLive";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -190,7 +191,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <User className="h-4 w-4 text-muted-foreground shrink-0" />
               <div title={name} className="font-semibold text-lg truncate max-w-[52vw] sm:max-w-[40ch]">{displayName}</div>
               {/* Chips live here; calm outline to avoid noise */}
-              {typeof ews === 'number' && <Badge variant="outline" className="shrink-0 text-xs">EWS {ews}</Badge>}
+              <EWSChipLive patientId={patientId} fallback={ews} />
               {typeof ats === 'number' && <Badge variant="outline" className="shrink-0 text-xs">ATS {ats}</Badge>}
             </div>
             <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">

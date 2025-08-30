@@ -6,6 +6,7 @@ import { Activity, ListChecks } from "lucide-react";
 import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
+import EWSChipLive from "@/components/patient/EWSChipLive";
 
 export type Role = "reception" | "charge" | "rn" | "md";
 export type ATS = 1|2|3|4|5;
@@ -29,7 +30,7 @@ export default function LanePatientTile({ patient, role, onAddObservations }:{ p
         {lastObs && <div className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground"><Activity className="h-3 w-3"/>Last obs {new Date(lastObs.takenAt).toLocaleTimeString()}</div>}
       </div>
       <div className="flex items-center gap-2">
-        <Badge className={patient.ews.riskLevel==='high' ? 'bg-red-600' : patient.ews.riskLevel==='medium' ? 'bg-yellow-500' : 'bg-green-600'}>EWS {patient.ews.score}</Badge>
+        <EWSChipLive patientId={patient.id} fallback={patient.ews.score} />
         {(role==='rn' || role==='charge') && (
           <Button size="sm" onClick={()=>setOpen(true)}>+ Obs</Button>
         )}

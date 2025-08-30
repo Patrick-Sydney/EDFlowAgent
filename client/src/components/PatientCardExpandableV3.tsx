@@ -30,6 +30,7 @@ import {
 import VitalsTimeline, { Observation as Obs, CareEvent } from "@/components/VitalsTimeline";
 import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
 import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
+import EWSChipLive from "@/components/patient/EWSChipLive";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 
 // ---------- Types ----------
@@ -243,7 +244,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
             <div className="flex items-center gap-2">
               <CardTitle className="text-lg truncate">{patient.name} <span className="text-muted-foreground">• {patient.age} {patient.sex}</span></CardTitle>
               {patient.ats ? <Badge variant="outline">ATS {patient.ats}</Badge> : null}
-              {showEwsBadge && patient.ews && (<div className={`text-white text-xs px-2 py-1 rounded ${riskColor(patient.ews.riskLevel)}`}>EWS {patient.ews.score}</div>)}
+              {showEwsBadge && (<EWSChipLive patientId={patient.id} fallback={patient.ews?.score} />)}
               {patient.covid && <QuickBadge label={`COVID ${patient.covid.toUpperCase()}`} className="bg-red-50" />}
             </div>
             <div className="text-sm text-muted-foreground truncate">{patient.chiefComplaint}{stage!=='arrival' && <> • Arrived {new Date(patient.arrival).toLocaleTimeString()}</>} • {patient.location}</div>
@@ -288,7 +289,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
                       <div className="flex items-center gap-3">
                         {patient.ews && (
                           <>
-                            <div className={`text-white rounded-lg px-3 py-2 ${riskColor(patient.ews.riskLevel)}`}>EWS {patient.ews.score}</div>
+                            <EWSChipLive patientId={patient.id} fallback={patient.ews.score} />
                             <div className="text-sm text-muted-foreground">as of {fmtTime(patient.ews.calculatedAt)}</div>
                           </>
                         )}
