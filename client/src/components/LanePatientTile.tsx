@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Activity, ListChecks } from "lucide-react";
-import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
+import ObservationSetModalTouch, { type TouchObservation } from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
 import EWSChipLive from "@/components/patient/EWSChipLive";
@@ -40,6 +40,7 @@ export default function LanePatientTile({ patient, role, onAddObservations }:{ p
         open={open}
         onOpenChange={setOpen}
         patientName={`${patient.name} • ${patient.age} ${patient.sex}`}
+        patientId={patient.id}
         defaults={defaults}
         recorder={role.toUpperCase()}
         isTriage={/triage/i.test(patient.location)}

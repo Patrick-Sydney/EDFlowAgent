@@ -103,11 +103,11 @@ export const NumberPad: React.FC<{ onInput: (ch: string) => void; onBackspace: (
 // ------------------------------------------------------------
 // Colour-banded Slider (finger-first) with halo effect
 // ------------------------------------------------------------
-interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number; hideThumb?: boolean; }
+interface SliderBandProps { bands?: Band[]; min: number; max: number; value?: number; onChange: (n: number) => void; step?: number; hideThumb?: boolean; previousValue?: number; }
 
 const pct = (v: number, min: number, max: number) => ((v - min) / (max - min)) * 100;
 
-const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChange, step = 1, hideThumb }) => {
+const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChange, step = 1, hideThumb, previousValue }) => {
   const railRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -138,12 +138,20 @@ const ColorSlider: React.FC<SliderBandProps> = ({ bands, min, max, value, onChan
   }, [dragging]);
 
   const thumbLeft = useMemo(() => pct(value ?? min, min, max), [value, min, max]);
+  const previousLeft = useMemo(() => previousValue != null ? pct(previousValue, min, max) : null, [previousValue, min, max]);
 
   return (
     <div className="select-none">
       <div ref={railRef} className="relative h-8 rounded-full overflow-hidden bg-muted shadow-inner"
            onMouseDown={(e)=>{ setDragging(true); onPos(e.clientX); vibe(5); }}
            onTouchStart={(e)=>{ setDragging(true); onPos(e.touches[0].clientX); vibe(5); }}>
+        {/* previous value reference line */}
+        {previousLeft != null && (
+          <div 
+            style={{ left: `${previousLeft}%` }} 
+            className="absolute top-0 bottom-0 w-0.5 bg-gray-400 opacity-60 pointer-events-none"
+          />
+        )}
         {/* thumb halo (on-drag only) */}
         {dragging && bands && (() => {
           const v = value ?? min;
@@ -188,11 +196,12 @@ interface RangeInputTouchProps {
   keypadDecimal?: boolean;
   min: number; max: number; step?: number;
   hideThumb?: boolean;
+  previousValue?: number;
 }
 
 const ptsBadge = (pts: 0|1|2|3) => (<Badge variant="outline">+{pts}</Badge>);
 
-export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, unit, value, placeholder, bands, onChange, keypadDecimal, min, max, step = 1, hideThumb }) => {
+export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, unit, value, placeholder, bands, onChange, keypadDecimal, min, max, step = 1, hideThumb, previousValue }) => {
   const [showPad, setShowPad] = useState(false);
   const nVal = parseNum(value);
   const points = bandPoints(nVal, bands);
@@ -218,7 +227,7 @@ export const RangeInputTouch: React.FC<RangeInputTouchProps> = ({ icon, label, u
         <div className="flex items-center gap-2">{ptsBadge(points)}<button className="rounded-xl border px-3 py-2 text-xl min-w-[96px] text-right" onClick={()=>{ setShowPad(true); vibe(10); }}>{value ?? <span className="text-muted-foreground">{placeholder ?? '—'}</span>}</button></div>
       </div>
       <div className="mt-2">
-        <ColorSlider bands={bands} min={min} max={max} value={nVal} onChange={setFromSlider} step={step} hideThumb={hideThumb} />
+        <ColorSlider bands={bands} min={min} max={max} value={nVal} onChange={setFromSlider} step={step} hideThumb={hideThumb} previousValue={previousValue} />
       </div>
 
       {showPad && (
@@ -243,9 +252,11 @@ export const ACVPUChips: React.FC<{ value?: 'A'|'C'|'V'|'P'|'U'; onChange: (v: '
 // Observation Set Modal – full‑screen, finger‑first
 // ------------------------------------------------------------
 export interface TouchObservation { id?: string; type: 'RR'|'SpO2'|'HR'|'BP'|'Temp'|'ACVPU'|'O2'; value: string; unit?: string; takenAt: string; recordedBy: string; phase?: 'triage'|'obs' }
-export interface ObservationSetModalTouchProps { open: boolean; onOpenChange: (o: boolean) => void; patientName: string; defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; onSave: (observations: TouchObservation[]) => void; recorder: string; isTriage?: boolean; isFirstObs?: boolean; }
+export interface ObservationSetModalTouchProps { open: boolean; onOpenChange: (o: boolean) => void; patientName: string; patientId?: string | number; defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; onSave: (observations: TouchObservation[]) => void; recorder: string; isTriage?: boolean; isFirstObs?: boolean; }
 
-export default function ObservationSetModalTouch({ open, onOpenChange, patientName, defaults, onSave, recorder, isTriage, isFirstObs }: ObservationSetModalTouchProps) {
+import { useVitalsLast } from "../stores/vitalsStore";
+
+export default function ObservationSetModalTouch({ open, onOpenChange, patientName, patientId, defaults, onSave, recorder, isTriage, isFirstObs }: ObservationSetModalTouchProps) {
   const [rr, setRR] = useState<string|undefined>(defaults?.RR);
   const [spo2, setSpO2] = useState<string|undefined>(defaults?.SpO2);
   const [hr, setHR] = useState<string|undefined>(defaults?.HR);
@@ -255,6 +266,9 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   const [o2Device, setO2Device] = useState<string|undefined>(defaults?.O2 ?? 'Room air');
   const [o2Lpm, setO2Lpm] = useState<string|undefined>();
   const [scale2, setScale2] = useState<boolean>(false);
+
+  // Get previous vitals for reference lines
+  const lastVitals = useVitalsLast(patientId || "");
 
   useEffect(()=>{ if(!open) return; vibe(10); }, [open]);
 
@@ -286,21 +300,17 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto max-h-[100vh] flex flex-col overflow-hidden">
-        <DialogHeader className="p-3 pb-1">
-          <DialogTitle className="text-lg">Record Observations</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">{patientName}</DialogDescription>
+        <DialogHeader className="px-3 py-2 flex flex-row items-center justify-between space-y-0">
+          <div>
+            <DialogTitle className="text-lg">Record Observations - {patientName}</DialogTitle>
+          </div>
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">EWS {total}</Badge>
         </DialogHeader>
         <Separator />
 
-        {/* Live EWS total */}
-        <div className="px-3 py-2 flex items-center gap-2">
-          <Badge variant="outline">EWS {total}</Badge>
-          <span className="text-xs text-muted-foreground">Live total (updates as you slide/type)</span>
-        </div>
-
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <div className="space-y-2">
-            <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} hideThumb={isFirstObs} />
+            <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} hideThumb={isFirstObs} previousValue={lastVitals?.rr} />
 
             <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between">
@@ -324,7 +334,7 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
                 </div>
               )}
               <div className="mt-2">
-                <RangeInputTouch label="SpO₂" unit="%" value={spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} min={70} max={100} step={1} hideThumb={isFirstObs} />
+                <RangeInputTouch label="SpO₂" unit="%" value={spo2} onChange={setSpO2} bands={NZ_POLICY.spo2_scale1} min={70} max={100} step={1} hideThumb={isFirstObs} previousValue={lastVitals?.spo2} />
               </div>
               <div className="mt-2 flex items-center gap-2">
                 <button onClick={()=>setScale2(v=>!v)} className={`h-10 rounded-xl border px-3 ${scale2? 'bg-primary text-primary-foreground':''}`}>SpO₂ Scale 2</button>
@@ -332,17 +342,17 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
               </div>
             </div>
 
-            <RangeInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} onChange={setHR} bands={NZ_POLICY.hr} min={30} max={200} step={1} hideThumb={isFirstObs} />
+            <RangeInputTouch icon={<HeartPulse className="h-5 w-5"/>} label="Heart Rate" unit="bpm" value={hr} onChange={setHR} bands={NZ_POLICY.hr} min={30} max={200} step={1} hideThumb={isFirstObs} previousValue={lastVitals?.hr} />
 
             <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Gauge className="h-5 w-5"/>Blood Pressure</div></div>
               <div className="mt-2">
-                <RangeInputTouch label="SBP" unit="mmHg" value={sbp} onChange={setSBP} bands={NZ_POLICY.sbp} min={60} max={220} step={2} hideThumb={isFirstObs} />
+                <RangeInputTouch label="SBP" unit="mmHg" value={sbp} onChange={setSBP} bands={NZ_POLICY.sbp} min={60} max={220} step={2} hideThumb={isFirstObs} previousValue={lastVitals?.sbp} />
                 <div className="text-xs text-muted-foreground mt-1">Scoring uses SBP only</div>
               </div>
             </div>
 
-            <RangeInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} onChange={setTemp} bands={NZ_POLICY.temp} min={32} max={42} step={0.1} keypadDecimal hideThumb={isFirstObs} />
+            <RangeInputTouch icon={<Thermometer className="h-5 w-5"/>} label="Temperature" unit="°C" value={temp} onChange={setTemp} bands={NZ_POLICY.temp} min={32} max={42} step={0.1} keypadDecimal hideThumb={isFirstObs} previousValue={lastVitals?.temp} />
 
             <div className="rounded-xl border p-2 bg-background">
               <div className="flex items-center justify-between"><div className="flex items-center gap-2 text-base font-medium"><Brain className="h-5 w-5"/>Level of Consciousness</div><Badge variant="outline">+{acvpuPts}</Badge></div>

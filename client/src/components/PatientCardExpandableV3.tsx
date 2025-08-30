@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 
 import VitalsTimeline, { Observation as Obs, CareEvent } from "@/components/VitalsTimeline";
-import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
+import ObservationSetModalTouch, { type TouchObservation } from "@/components/ObservationSetModalTouch";
 import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
 import EWSChipLive from "@/components/patient/EWSChipLive";
 import { buildObsDefaults } from "@/lib/obsDefaults";
@@ -472,6 +472,7 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
             open={obsOpen}
             onOpenChange={setObsOpen}
             patientName={`${patient.name} • ${patient.age} ${patient.sex}`}
+            patientId={patient.id}
             recorder={role.toUpperCase()}
             isTriage={stage==='triage'}
             defaults={defaults}

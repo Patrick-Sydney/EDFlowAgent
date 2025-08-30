@@ -63,6 +63,7 @@ export function VitalsModalWrapper({
       open={open}
       onOpenChange={onOpenChange}
       patientName={patientName}
+      patientId={patientId || undefined}
       defaults={defaults}
       isFirstObs={isFirstObs}
       onSave={handleSave}
