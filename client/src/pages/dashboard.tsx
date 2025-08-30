@@ -19,6 +19,7 @@ import ChargeViewMobile, { ChargeLane, ChargePatient } from "@/views/ChargeViewM
 import MDViewMobile, { MDLane, MDPatient } from "@/views/MDViewMobile";
 import ObservationSetModalTouch from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
+import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
 import AppHeaderMobile, { Role } from "@/components/app/AppHeaderMobile";
 import PatientIdentitySheet, { PatientIdentity } from "@/components/PatientIdentitySheet";
 import { useToast } from "@/hooks/use-toast";
@@ -221,7 +222,23 @@ export default function Dashboard() {
   const handleSaveObs = async (observations: any[]) => {
     if (!selectedPatient) return;
     
-    // Add observations to store
+    // Transform and save to vitals store for instant UI update
+    const obsRecord: Record<string, number> = {};
+    observations.forEach(obs => {
+      switch(obs.type) {
+        case 'RR': obsRecord.rr = parseFloat(obs.value); break;
+        case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
+        case 'HR': obsRecord.hr = parseFloat(obs.value); break;
+        case 'BP': 
+          const bpMatch = obs.value.match(/^(\d+)/);
+          if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
+          break;
+        case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
+      }
+    });
+    saveObsToStore(selectedPatient.id, obsRecord);
+    
+    // Also save to API
     await useDashboardStore.getState().addObservation(selectedPatient.id, observations);
     
     setObsModalOpen(false);
