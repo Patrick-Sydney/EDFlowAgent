@@ -1,15 +1,21 @@
 import { vitalsStore, ObsPoint } from "../../stores/vitalsStore";
+import { calcEWSFromLatest } from "../../utils/ews";
 
-// Optional NEWS/EWS computation fallback.
-// If your modal already computes EWS, it will be used; otherwise we try window.EDFLOW.calcEWS(values).
+// EWS computation fallback using the existing EWS calculation system.
 function calcEWSFallback(values: { rr?:number; spo2?:number; hr?:number; sbp?:number; temp?:number; }) {
-  // Call your existing calculator if exposed globally.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win: any = typeof window !== "undefined" ? (window as any) : {};
-  if (typeof win.EDFLOW?.calcEWS === "function") {
-    try { return Number(win.EDFLOW.calcEWS(values)); } catch {}
+  try {
+    const result = calcEWSFromLatest({
+      RR: values.rr,
+      SpO2: values.spo2,
+      HR: values.hr,
+      SBP: values.sbp,
+      Temp: values.temp
+    });
+    return result.score;
+  } catch (error) {
+    console.warn("EWS calculation failed:", error);
+    return undefined;
   }
-  return undefined; // leave undefined if you prefer not to guess
 }
 
 export function saveObsToStore(patientId: string | number, values: {
@@ -17,6 +23,7 @@ export function saveObsToStore(patientId: string | number, values: {
 }) {
   const nowIso = new Date().toISOString();
   const ews = values.ews ?? calcEWSFallback(values);
+  console.log("saveObsToStore:", patientId, "vitals:", values, "calculated EWS:", ews);
   const point: ObsPoint = {
     t: nowIso,
     rr: values.rr, spo2: values.spo2, hr: values.hr, sbp: values.sbp, temp: values.temp,
