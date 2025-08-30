@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
 import { VitalsTimelineDrawer } from "./VitalsTimelineDrawer";
-import { useVitals } from "../state/VitalsContext";
+import VitalsCapsuleLive from "./VitalsCapsuleLive";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -259,9 +259,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <IdentityInline legalName={name} ageSex={ageSex} dob={dob ?? undefined} nhi={nhi ?? undefined} mrn={mrn ?? undefined} alerts={alerts} allergies={allergies} onAudit={(e)=>{/* wire to audit */}} />
 
           {/* Vitals Capsule (restores quick vitals & access to timeline) */}
-          <VitalsCapsule 
+          <VitalsCapsuleLive 
             patientId={patientId} 
-            fallback={minVitals} 
             onOpenTimeline={() => setOpenTL(true)} 
             onAddObs={onAddObs} 
           />

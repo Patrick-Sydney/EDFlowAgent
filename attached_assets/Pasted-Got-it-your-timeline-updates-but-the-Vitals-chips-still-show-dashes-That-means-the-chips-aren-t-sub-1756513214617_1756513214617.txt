@@ -1,0 +1,159 @@
+Got it—your timeline updates but the Vitals chips still show dashes. That means the chips aren’t subscribed to the same live source (or they’re using a different patientId). Here’s a bullet-proof fix you can apply now.
+
+⸻
+
+1) Make the capsule subscribe (no props)
+
+Replace your capsule with this live version that ignores stale props and reads from the shared provider.
+
+// VitalsCapsuleLive.tsx
+import React from "react";
+import { useVitals, normalizeId } from "@/state/VitalsContext";
+
+export default function VitalsCapsuleLive({
+  patientId,
+  onOpenTimeline,
+  onAddObs,
+}: {
+  patientId: string | number;
+  onOpenTimeline?: () => void;
+  onAddObs?: () => void;
+}) {
+  const { list } = useVitals(normalizeId(patientId));     // ← live subscription
+  const last = list[list.length - 1];
+
+  const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
+    <div className="rounded-lg border p-2 text-center">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium">
+        {val == null ? "—" : val}{val == null || !unit ? "" : ` ${unit}`}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl border p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">Vitals</div>
+        <div className="flex gap-2">
+          {onOpenTimeline && <button className="btn btn-outline" onClick={onOpenTimeline}>Timeline</button>}
+          {onAddObs && <button className="btn" onClick={onAddObs}>+ Obs</button>}
+        </div>
+      </div>
+
+      <div className="mt-2 grid grid-cols-5 gap-2">
+        <Item label="RR"   val={last?.rr}   unit="/m" />
+        <Item label="SpO₂" val={last?.spo2} unit="%"  />
+        <Item label="HR"   val={last?.hr}   unit="bpm"/>
+        <Item label="SBP"  val={last?.sbp}  unit="mmHg"/>
+        <Item label="Temp" val={last?.temp} unit="°C"  />
+      </div>
+
+      {last?.t && (
+        <div className="mt-2 text-[11px] text-muted-foreground">
+          Last set {new Date(last.t).toLocaleTimeString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+Update your expanded card to use it:
+
+// PatientCardExpandable (inside expanded content)
+<VitalsCapsuleLive
+  patientId={patientId}                 // REQUIRED
+  onOpenTimeline={onOpenVitals}
+  onAddObs={onAddObs}
+/>
+
+Remove/ignore the old minVitals prop so we don’t read stale values.
+
+⸻
+
+2) Ensure the same patientId everywhere
+
+Add a tiny normaliser & a console warning to your provider so mismatches are obvious.
+
+// state/VitalsContext.tsx
+export const normalizeId = (id: unknown) => String(id ?? "");
+
+export function VitalsProvider({ children }: { children: React.ReactNode }) {
+  // dev guard: spot multiple providers (which would isolate state)
+  if (import.meta.env.DEV) {
+    // @ts-ignore
+    window.__VITALS_PROVIDER_CNT__ = (window.__VITALS_PROVIDER_CNT__ || 0) + 1;
+    // @ts-ignore
+    if (window.__VITALS_PROVIDER_CNT__ > 1) console.warn("Multiple VitalsProvider instances detected");
+  }
+  // ...rest stays the same
+}
+
+Use normalizeId in all three places:
+	•	+Obs save:
+
+const { add } = useVitals(normalizeId(patient.id));
+add({ t: new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source: "obs" });
+
+
+	•	Vitals capsule (above) and Timeline:
+
+const { list } = useVitals(normalizeId(patientId));
+
+
+	•	When rendering the card:
+
+<PatientCardExpandable patientId={normalizeId(p.id)} ... />
+
+
+
+This eliminates the classic "123" vs 123 key mismatch.
+
+⸻
+
+3) Make sure there’s only one provider
+
+Wrap your app once at the root (not inside a lane or drawer):
+
+// main.tsx or App.tsx
+import { VitalsProvider } from "@/state/VitalsContext";
+
+root.render(
+  <VitalsProvider>
+    <App />
+  </VitalsProvider>
+);
+
+If you see the console warning “Multiple VitalsProvider instances detected”, move extra providers out.
+
+⸻
+
+4) Fix the Timeline “Close” button in the middle
+
+Use an X in the header only; remove the sticky footer (iOS quirk):
+
+// In VitalsTimelineDrawer
+<button aria-label="Close" onClick={() => onOpenChange(false)} className="p-2 rounded-full hover:bg-muted">
+  <X className="h-5 w-5" />
+</button>
+
+Delete the bottom sticky Close div.
+
+⸻
+
+Quick test (on your phone)
+	1.	Open a card → expand → chips show dashes initially.
+	2.	Tap + Obs, save HR etc.
+	3.	Chips update immediately; time label appears.
+	4.	Open Timeline → same point visible.
+	5.	Check console: no “Multiple providers” warning; no extra providers mounted.
+
+If the chips still don’t move, log these once:
+
+// in +Obs save
+console.log("SAVING OBS FOR", normalizeId(patient.id), point);
+
+// in VitalsCapsuleLive
+console.log("CAPSULE READ FOR", normalizeId(patientId), { last });
+
+If the IDs differ, that’s the culprit—use normalizeId everywhere as above and it will snap into place.

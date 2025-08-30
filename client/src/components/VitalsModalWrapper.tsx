@@ -1,6 +1,6 @@
 import React from "react";
 import ObservationSetModalTouch from "./ObservationSetModalTouch";
-import { useVitals } from "../state/VitalsContext";
+import { useVitals, normalizeId } from "../state/VitalsContext";
 import { useDashboardStore } from "@/stores/dashboardStore";
 
 export function VitalsModalWrapper({
@@ -23,7 +23,7 @@ export function VitalsModalWrapper({
   recorder: string;
 }) {
   // Use the context only when we have a patient ID
-  const vitalsHook = useVitals(patientId || "");
+  const vitalsHook = useVitals(normalizeId(patientId || ""));
 
   const handleSave = async (observations: any[]) => {
     if (!patientId) return;
@@ -55,6 +55,9 @@ export function VitalsModalWrapper({
     };
     
     vitalsHook.add(point);
+    
+    // Debug logging
+    console.log("SAVING OBS FOR", normalizeId(patientId || ""), point);
     
     // 2) Save to backend (non-blocking)
     try {

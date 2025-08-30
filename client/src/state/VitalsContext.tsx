@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 
+export const normalizeId = (id: unknown) => String(id ?? "");
+
 export type ObsPoint = {
   t: string;
   rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
@@ -14,6 +16,14 @@ const Ctx = createContext<{
 }>({ state: {}, add: () => {} });
 
 export function VitalsProvider({ children }: { children: React.ReactNode }) {
+  // dev guard: spot multiple providers (which would isolate state)
+  if (import.meta.env.DEV) {
+    // @ts-ignore
+    window.__VITALS_PROVIDER_CNT__ = (window.__VITALS_PROVIDER_CNT__ || 0) + 1;
+    // @ts-ignore
+    if (window.__VITALS_PROVIDER_CNT__ > 1) console.warn("Multiple VitalsProvider instances detected");
+  }
+  
   const [state, setState] = useState<State>({});
   const add = (patientId: string, point: ObsPoint) =>
     setState(s => {
