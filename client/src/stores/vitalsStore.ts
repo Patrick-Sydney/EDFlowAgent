@@ -7,6 +7,8 @@ export type ObsPoint = {
 };
 
 const normalizeId = (id: unknown) => String(id ?? "");
+const LS_KEY = "edflow_vitals_v1";
+let saveTimer: any = null;
 
 class VitalsStore {
   private data = new Map<string, ObsPoint[]>();
@@ -42,6 +44,7 @@ class VitalsStore {
     const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
     console.log("VitalsStore.add:", id, point, "total points:", list.length);
     this.data.set(id, list); this.emit();
+    this.persist();
   }
 
   bulkUpsert(patientId: string | number, points: ObsPoint[]) {
@@ -50,10 +53,33 @@ class VitalsStore {
     const byKey = new Map<string, ObsPoint>();
     for (const p of merged) byKey.set(p.t, p);
     this.data.set(id, Array.from(byKey.values())); this.emit();
+    this.persist();
+  }
+
+  hydrateFromLocal() {
+    try {
+      const raw = typeof localStorage !== "undefined" ? localStorage.getItem(LS_KEY) : null;
+      if (!raw) return;
+      const obj = JSON.parse(raw) as Record<string, ObsPoint[]>;
+      Object.entries(obj).forEach(([k, v]) => this.data.set(k, v));
+      this.emit();
+    } catch {}
+  }
+
+  private persist() {
+    if (typeof localStorage === "undefined") return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const obj: Record<string, ObsPoint[]> = {};
+      this.data.forEach((v, k) => { obj[k] = v; });
+      try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch {}
+    }, 120);
   }
 }
 
 export const vitalsStore = new VitalsStore();
+// Hydrate once on module import
+try { vitalsStore.hydrateFromLocal(); } catch {}
 
 export function useVitalsList(patientId: string | number) {
   const id = String(patientId ?? "");

@@ -1,0 +1,345 @@
+Great—let’s tighten the Patient Card and make vitals/EWS **live** and **persistent**.
+
+Below is a single unified patch you can apply in Replit. It does three things:
+
+1. **Slim Identity** block (no duplicate name/age/sex): `IdentitySlim.tsx`
+2. **EWS chip that auto-updates** after +Obs: `EWSChipLive.tsx`
+3. **Persistence** of observations across refresh (localStorage) and **auto-EWS** on save if not provided.
+
+It also upgrades the existing `vitalsStore.ts` and `ObsSaveToStore.ts`.
+
+---
+
+### Save this as `edflow-insights-pack.patch`
+
+```diff
+diff --git a/client/src/stores/vitalsStore.ts b/client/src/stores/vitalsStore.ts
+index 1111111..5555555 100644
+--- a/client/src/stores/vitalsStore.ts
++++ b/client/src/stores/vitalsStore.ts
+@@ -1,33 +1,45 @@
+ import { useSyncExternalStore } from "react";
+ 
+ export type ObsPoint = {
+   t: string;
+   rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
+   source?: "triage" | "obs" | "device";
+ };
+ 
+-const normalizeId = (id: unknown) => String(id ?? "");
++const normalizeId = (id: unknown) => String(id ?? "");
++const LS_KEY = "edflow_vitals_v1";
++let saveTimer: any = null;
+ 
+ class VitalsStore {
+   private data = new Map<string, ObsPoint[]>();
+   private listeners = new Set<() => void>();
+ 
+   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
+   private emit() { this.listeners.forEach(fn => fn()); }
+ 
+   list(patientId: string) { return this.data.get(normalizeId(patientId)) ?? []; }
+   last(patientId: string) { const l = this.list(patientId); return l[l.length - 1]; }
+ 
+   add(patientId: string | number, point: ObsPoint) {
+     const id = normalizeId(patientId);
+     const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
+     this.data.set(id, list); this.emit();
++    this.persist();
+   }
+ 
+   bulkUpsert(patientId: string | number, points: ObsPoint[]) {
+     const id = normalizeId(patientId);
+     const merged = [...this.list(id), ...points].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
+     const byKey = new Map<string, ObsPoint>();
+     for (const p of merged) byKey.set(p.t, p);
+-    this.data.set(id, Array.from(byKey.values())); this.emit();
++    this.data.set(id, Array.from(byKey.values())); this.emit();
++    this.persist();
++  }
++
++  hydrateFromLocal() {
++    try {
++      const raw = typeof localStorage !== "undefined" ? localStorage.getItem(LS_KEY) : null;
++      if (!raw) return;
++      const obj = JSON.parse(raw) as Record<string, ObsPoint[]>;
++      Object.entries(obj).forEach(([k, v]) => this.data.set(k, v));
++      this.emit();
++    } catch {}
++  }
++
++  private persist() {
++    if (typeof localStorage === "undefined") return;
++    if (saveTimer) clearTimeout(saveTimer);
++    saveTimer = setTimeout(() => {
++      const obj: Record<string, ObsPoint[]> = {};
++      for (const [k, v] of this.data.entries()) obj[k] = v;
++      try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch {}
++    }, 120);
+   }
+ }
+ 
+ export const vitalsStore = new VitalsStore();
++// Hydrate once on module import
++try { vitalsStore.hydrateFromLocal(); } catch {}
+ 
+ export function useVitalsList(patientId: string | number) {
+   const id = String(patientId ?? "");
+   return useSyncExternalStore(
+     vitalsStore.subscribe,
+     () => vitalsStore.list(id),
+     () => vitalsStore.list(id)
+   );
+ }
+ 
+ export function useVitalsLast(patientId: string | number) {
+   const list = useVitalsList(patientId);
+   return list[list.length - 1];
+ }
+diff --git a/client/src/components/patient/ObsSaveToStore.ts b/client/src/components/patient/ObsSaveToStore.ts
+index 4444444..6666666 100644
+--- a/client/src/components/patient/ObsSaveToStore.ts
++++ b/client/src/components/patient/ObsSaveToStore.ts
+@@ -1,21 +1,53 @@
+-import { vitalsStore, ObsPoint } from "../../stores/vitalsStore";
++import { vitalsStore, ObsPoint } from "../../stores/vitalsStore";
+ 
+-export function saveObsToStore(patientId: string | number, values: {
+-  rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
+-}) {
+-  const point: ObsPoint = {
+-    t: new Date().toISOString(),
+-    rr: values.rr, spo2: values.spo2, hr: values.hr, sbp: values.sbp, temp: values.temp, ews: values.ews,
+-    source: "obs",
+-  };
+-  vitalsStore.add(patientId, point);
+-}
++// Optional NEWS/EWS computation fallback.
++// If your modal already computes EWS, it will be used; otherwise we try window.EDFLOW.calcEWS(values).
++function calcEWSFallback(values: { rr?:number; spo2?:number; hr?:number; sbp?:number; temp?:number; }) {
++  // Call your existing calculator if exposed globally.
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  const win: any = typeof window !== "undefined" ? (window as any) : {};
++  if (typeof win.EDFLOW?.calcEWS === "function") {
++    try { return Number(win.EDFLOW.calcEWS(values)); } catch {}
++  }
++  return undefined; // leave undefined if you prefer not to guess
++}
+ 
+-// Example usage in your +Obs modal:
+-// import { saveObsToStore } from "./ObsSaveToStore";
+-// async function handleSave() {
+-//   saveObsToStore(patient.id, formValues); // instant UI update
+-//   try { await api.saveObservation(patient.id, formValues); } catch {}
+-//   onClose();
+-// }
++export function saveObsToStore(patientId: string | number, values: {
++  rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
++}) {
++  const nowIso = new Date().toISOString();
++  const ews = values.ews ?? calcEWSFallback(values);
++  const point: ObsPoint = {
++    t: nowIso,
++    rr: values.rr, spo2: values.spo2, hr: values.hr, sbp: values.sbp, temp: values.temp,
++    ews, source: "obs",
++  };
++  vitalsStore.add(patientId, point);
++}
++
++// Example usage in your +Obs modal:
++// import { saveObsToStore } from "./ObsSaveToStore";
++// async function handleSave() {
++//   saveObsToStore(patient.id, { rr, spo2, hr, sbp, temp, ews }); // instant UI update + persistence
++//   try { await api.saveObservation(patient.id, { rr, spo2, hr, sbp, temp, ews }); } catch {}
++//   onClose();
++// }
+diff --git a/client/src/components/patient/EWSChipLive.tsx b/client/src/components/patient/EWSChipLive.tsx
+new file mode 100644
+index 0000000..7777777
+--- /dev/null
++++ b/client/src/components/patient/EWSChipLive.tsx
+@@ -0,0 +1,49 @@
++import React from "react";
++import { useVitalsLast } from "../../stores/vitalsStore";
++
++export default function EWSChipLive({
++  patientId,
++  fallback,
++}: {
++  patientId: string | number;
++  fallback?: number;
++}) {
++  const last = useVitalsLast(patientId);
++  const ews = (last?.ews ?? fallback);
++  return (
++    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
++      EWS {ews ?? "—"}
++    </span>
++  );
++}
+diff --git a/client/src/components/patient/IdentitySlim.tsx b/client/src/components/patient/IdentitySlim.tsx
+new file mode 100644
+index 0000000..8888888
+--- /dev/null
++++ b/client/src/components/patient/IdentitySlim.tsx
+@@ -0,0 +1,92 @@
++import React, { useState } from "react";
++import { Eye, EyeOff, Copy, QrCode, ShieldAlert, Info } from "lucide-react";
++
++export function maskTail(value?: string | null, visible = 3) {
++  if (!value) return "—";
++  const vis = value.slice(-visible);
++  const mask = "•".repeat(Math.max(0, value.length - visible));
++  return `${mask}${vis}`;
++}
++
++export default function IdentitySlim({
++  nhi, mrn, alerts = [], allergies = [], onAudit,
++}: {
++  nhi?: string | null;
++  mrn?: string | null;
++  alerts?: string[];
++  allergies?: string[];
++  onAudit?: (evt: { action: "reveal" | "copy" | "qr_open"; field: string }) => void;
++}) {
++  const [showNHI, setShowNHI] = useState(false);
++  const [showMRN, setShowMRN] = useState(false);
++
++  const copy = async (text: string, field: string) => {
++    try { await navigator.clipboard.writeText(text); onAudit?.({ action: "copy", field }); } catch {}
++  };
++
++  return (
++    <div className="rounded-xl border p-3 bg-background">
++      {/* Identifiers only (no duplicated name/age/sex). Keep it short. */}
++      <div className="grid grid-cols-2 gap-3">
++        {/* NHI */}
++        <div className="flex items-center justify-between gap-2">
++          <div>
++            <div className="text-[11px] text-muted-foreground">NHI</div>
++            <div className="font-mono text-sm">{showNHI ? (nhi ?? "—") : maskTail(nhi ?? undefined)}</div>
++          </div>
++          <div className="flex items-center gap-1">
++            {nhi && (
++              <button className="rounded-full border p-1.5" onClick={()=>{ setShowNHI(v=>!v); onAudit?.({ action:"reveal", field:"NHI" }); }}>
++                {showNHI ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
++              </button>
++            )}
++            {nhi && (
++              <button className="rounded-full border p-1.5" onClick={()=> copy(nhi, "NHI")}>
++                <Copy className="h-4 w-4"/>
++              </button>
++            )}
++            {nhi && (
++              <button className="rounded-full border p-1.5" onClick={()=> onAudit?.({ action:"qr_open", field:"NHI" })}>
++                <QrCode className="h-4 w-4"/>
++              </button>
++            )}
++          </div>
++        </div>
++        {/* MRN */}
++        <div className="flex items-center justify-between gap-2">
++          <div>
++            <div className="text-[11px] text-muted-foreground">MRN</div>
++            <div className="font-mono text-sm">{showMRN ? (mrn ?? "—") : maskTail(mrn ?? undefined)}</div>
++          </div>
++          <div className="flex items-center gap-1">
++            {mrn && (
++              <button className="rounded-full border p-1.5" onClick={()=>{ setShowMRN(v=>!v); onAudit?.({ action:"reveal", field:"MRN" }); }}>
++                {showMRN ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
++              </button>
++            )}
++            {mrn && (
++              <button className="rounded-full border p-1.5" onClick={()=> copy(mrn, "MRN")}>
++                <Copy className="h-4 w-4"/>
++              </button>
++            )}
++          </div>
++        </div>
++      </div>
++
++      {(allergies.length || alerts.length) ? (
++        <div className="mt-3 space-y-2">
++          {!!allergies.length && (
++            <div className="flex items-center gap-2">
++              <ShieldAlert className="h-4 w-4 text-rose-600"/><span className="text-sm">Allergies:</span>
++              <div className="flex flex-wrap gap-1">{allergies.map(a => <span key={a} className="rounded-full border px-2 py-0.5 text-xs">{a}</span>)}</div>
++            </div>
++          )}
++          {!!alerts.length && (
++            <div className="flex items-center gap-2">
++              <Info className="h-4 w-4 text-amber-600"/><span className="text-sm">Alerts:</span>
++              <div className="flex flex-wrap gap-1">{alerts.map(a => <span key={a} className="rounded-full border px-2 py-0.5 text-xs">{a}</span>)}</div>
++            </div>
++          )}
++        </div>
++      ) : null}
++    </div>
++  );
++}
+```
+
+---
+
+## How to apply this in Replit
+
+1. Open the **Shell**.
+2. Create a branch and apply the patch:
+
+   ```bash
+   git checkout -b fix/insights-pack
+   printf "%s\n" 'PASTE THE WHOLE PATCH ABOVE HERE' > edflow-insights-pack.patch
+   git apply --reject --whitespace=fix edflow-insights-pack.patch
+   git add -A
+   git commit -m "Insights pack: slim Identity, live EWS chip, persist vitals; auto-EWS on save"
+   ```
+
+> If any `*.rej` files appear, open them—they occur only if a path changed. This patch primarily **adds** files and appends to `vitalsStore.ts`, so it should apply cleanly.
+
+---
+
+## Final 3 tiny edits in your app
+
+1. **Use Slim Identity** (compact, no duplicate name/age/sex)
+   In your expanded Patient Card, replace the old identity block with:
+
+   ```tsx
+   import IdentitySlim from "@/components/patient/IdentitySlim"; // or relative path
+
+   <IdentitySlim
+     nhi={patient.nhi}
+     mrn={patient.mrn}
+     alerts={patient.alerts}
+     allergies={patient.allergies}
+     onAudit={(e)=>{/* audit hook */}}
+   />
+   ```
+
+2. **Make EWS on the collapsed header live**
+   Replace the static EWS chip (`EWS {ews}`) with:
+
+   ```tsx
+   import EWSChipLive from "@/components/patient/EWSChipLive";
+
+   <EWSChipLive patientId={patient.id} fallback={patient.ews} />
+   ```
+
+3. **Ensure +Obs saves also populate EWS and persist**
+   In your **+Obs modal** `handleSave()`:
+
+   ```tsx
+   import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
+
+   // After you collect rr/spo2/hr/sbp/temp and (optionally) ews:
+   saveObsToStore(patient.id, { rr, spo2, hr, sbp, temp, ews }); // instant UI + localStorage
+   try { await api.saveObservation(patient.id, { rr, spo2, hr, sbp, temp, ews }); } catch {}
+   onClose();
+   ```
+
+That’s it:
+
+* Identity block is **smaller** and no longer duplicates name/age/sex.
+* EWS on the **collapsed card updates immediately** after +Obs.
+* Observations are **persisted to localStorage**, so values remain after app refresh and continue to build a trend (and the EWS chip still reflects the latest point).
+
+If you’d like, I can also ship a tiny **“debug ribbon”** toggle (`?debug=1`) that shows the patientId and last-obs timestamp right on the card, to make troubleshooting instant.
