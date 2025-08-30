@@ -11,6 +11,7 @@ export default function VitalsCapsuleLive({
   onAddObs?: () => void;
 }) {
   const last = useVitalsLast(patientId);
+  console.log("VitalsCapsuleLive render:", patientId, "last:", last);
 
   const Item = ({ label, val, unit }: { label: string; val?: number; unit?: string }) => (
     <div className="rounded-lg border p-2 text-center">

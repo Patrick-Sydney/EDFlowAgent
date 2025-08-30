@@ -40,6 +40,7 @@ class VitalsStore {
   add(patientId: string | number, point: ObsPoint) {
     const id = normalizeId(patientId);
     const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
+    console.log("VitalsStore.add:", id, point, "total points:", list.length);
     this.data.set(id, list); this.emit();
   }
 
