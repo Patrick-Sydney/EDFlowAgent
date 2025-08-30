@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Brain, Droplets, HeartPulse, Waves, Thermometer, Gauge } from "lucide-react";
+import ObsModalHeaderMobile from "./ObsModalHeaderMobile";
 
 // ------------------------------------------------------------
 // NZ Early Warning Score policy (approx bands – please verify)
@@ -297,16 +296,26 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
     onOpenChange(false);
   };
 
+  // Extract age/sex from patientName (format: "Name • Age Sex")
+  const ageSex = useMemo(() => {
+    const match = patientName.match(/•\s*(\d+\s*[MFX])/);
+    return match ? match[1] : undefined;
+  }, [patientName]);
+  
+  const cleanPatientName = useMemo(() => {
+    return patientName.split('•')[0].trim();
+  }, [patientName]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto max-h-[100vh] flex flex-col overflow-hidden">
-        <DialogHeader className="px-3 py-2 flex flex-row items-center justify-between space-y-0">
-          <div>
-            <DialogTitle className="text-lg">Record Observations - {patientName}</DialogTitle>
-          </div>
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">EWS {total}</Badge>
-        </DialogHeader>
-        <Separator />
+        <ObsModalHeaderMobile
+          patientId={patientId || ""}
+          patientName={cleanPatientName}
+          ageSex={ageSex}
+          cohort="Adult"
+          onClose={() => onOpenChange(false)}
+        />
 
         <div className="flex-1 overflow-y-auto px-3 py-2">
           <div className="space-y-2">
