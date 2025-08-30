@@ -1,7 +1,7 @@
 import React from "react";
 import { X, Loader2 } from "lucide-react";
-import EWSChipLive from "./patient/EWSChipLive";
-import { useVitalsLast } from "../stores/vitalsStore";
+import EWSChipLive from "../patient/EWSChipLive";
+import { useVitalsLast } from "../../stores/vitalsStore";
 
 /**
  * Mobile-first sticky header for the Record Observations modal.
