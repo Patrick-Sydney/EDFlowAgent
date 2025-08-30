@@ -39,6 +39,15 @@ class VitalsStore {
     return this.cache.get(id)!.last;
   }
 
+  // Get the previous EWS score for trend comparison
+  previousEWS(patientId: string): number | undefined {
+    const id = normalizeId(patientId);
+    const list = this.data.get(id) ?? [];
+    const ewsPoints = list.filter(p => typeof p.ews === 'number');
+    if (ewsPoints.length < 2) return undefined;
+    return ewsPoints[ewsPoints.length - 2]?.ews;
+  }
+
   add(patientId: string | number, point: ObsPoint) {
     const id = normalizeId(patientId);
     const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
@@ -96,5 +105,14 @@ export function useVitalsLast(patientId: string | number) {
     vitalsStore.subscribe,
     () => vitalsStore.last(id),
     () => vitalsStore.last(id)
+  );
+}
+
+export function useVitalsPreviousEWS(patientId: string | number) {
+  const id = String(patientId ?? "");
+  return useSyncExternalStore(
+    vitalsStore.subscribe,
+    () => vitalsStore.previousEWS(id),
+    () => vitalsStore.previousEWS(id)
   );
 }
