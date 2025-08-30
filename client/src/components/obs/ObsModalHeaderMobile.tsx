@@ -33,6 +33,9 @@ export default function ObsModalHeaderMobile({
     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
+  // Debug logging to see what's happening
+  console.log("Header DEBUG:", { patientId, listLength: list.length, last: last });
+
 
   return (
     <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
