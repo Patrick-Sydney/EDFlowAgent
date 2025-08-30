@@ -314,7 +314,7 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-[100vw] w-[100vw] sm:max-w-[420px] sm:rounded-2xl rounded-none h-[100vh] sm:h-auto max-h-[100vh] flex flex-col overflow-hidden">
         <ObsModalHeaderMobile
-          patientId={patientId || "unknown"}
+          patientId={patientId}
           patientName={cleanPatientName}
           ageSex={ageSex}
           cohort="Adult"

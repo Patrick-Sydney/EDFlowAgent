@@ -20,7 +20,7 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
     const givenName = nameParts[0] || '';
     const familyName = nameParts.slice(1).join(' ') || '';
     
-    return {
+    const patient = {
       id: e.id,
       givenName,
       familyName,
@@ -30,6 +30,9 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
       ews: e.ats, // Using ATS as EWS for now
       roomName: e.room
     };
+    
+    console.log("transformPatient:", e.name, "->", patient);
+    return patient;
   };
 
   return [

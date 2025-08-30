@@ -19,7 +19,7 @@ export default function ObsModalHeaderMobile({
   isSaving = false,
   onClose,
 }: {
-  patientId: string | number;
+  patientId?: string | number | null;
   patientName: string;
   ageSex?: string;
   cohort?: "Adult" | "PEWS" | "MEWS" | string;
@@ -27,7 +27,7 @@ export default function ObsModalHeaderMobile({
   isSaving?: boolean;
   onClose: () => void;
 }) {
-  const list = useVitalsList(patientId);
+  const list = useVitalsList(patientId || "");
   const last = list.length ? list[list.length - 1] : undefined;
   const lastStr = last?.t
     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
