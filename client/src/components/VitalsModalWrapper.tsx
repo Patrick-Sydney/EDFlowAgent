@@ -59,7 +59,7 @@ export function VitalsModalWrapper({
   };
 
   // Debug logging
-  console.log("VitalsModalWrapper DEBUG:", { patientId, patientName });
+  console.log("VitalsModalWrapper DEBUG:", { patientId, patientName, open });
 
   return (
     <ObservationSetModalTouch
