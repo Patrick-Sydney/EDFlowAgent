@@ -3,7 +3,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, Brain, Droplets, HeartPulse, Waves, Thermometer, Gauge } from "lucide-react";
-import ObsModalHeaderMobile from "./obs/ObsModalHeaderMobile";
+import ObsModalHeaderMobile from "@/components/obs/ObsModalHeaderMobile";
 
 // ------------------------------------------------------------
 // NZ Early Warning Score policy (approx bands – please verify)
