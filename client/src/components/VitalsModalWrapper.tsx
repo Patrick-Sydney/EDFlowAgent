@@ -23,6 +23,7 @@ export function VitalsModalWrapper({
   recorder: string;
 }) {
   const handleSave = async (observations: any[]) => {
+    console.log("VitalsModalWrapper.handleSave called", patientId, observations);
     if (!patientId) return;
     
     // Transform observations to our format

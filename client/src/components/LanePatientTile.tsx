@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Activity, ListChecks } from "lucide-react";
 import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
 import { buildObsDefaults } from "@/lib/obsDefaults";
+import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
 
 export type Role = "reception" | "charge" | "rn" | "md";
 export type ATS = 1|2|3|4|5;
@@ -41,7 +42,26 @@ export default function LanePatientTile({ patient, role, onAddObservations }:{ p
         defaults={defaults}
         recorder={role.toUpperCase()}
         isTriage={/triage/i.test(patient.location)}
-        onSave={(list)=> onAddObservations?.(patient.id, list)}
+        onSave={(list)=> {
+          // Transform and save to vitals store for instant UI update
+          const obsRecord: Record<string, number> = {};
+          list.forEach(obs => {
+            switch(obs.type) {
+              case 'RR': obsRecord.rr = parseFloat(obs.value); break;
+              case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
+              case 'HR': obsRecord.hr = parseFloat(obs.value); break;
+              case 'BP': 
+                const bpMatch = obs.value.match(/^(\d+)/);
+                if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
+                break;
+              case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
+            }
+          });
+          saveObsToStore(patient.id, obsRecord);
+          
+          // Also save to API via callback
+          onAddObservations?.(patient.id, list);
+        }}
       />
     </div>
   );

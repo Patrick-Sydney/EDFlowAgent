@@ -29,6 +29,7 @@ import {
 
 import VitalsTimeline, { Observation as Obs, CareEvent } from "@/components/VitalsTimeline";
 import ObservationSetModalTouch, { type Observation as TouchObservation } from "@/components/ObservationSetModalTouch";
+import { saveObsToStore } from "@/components/patient/ObsSaveToStore";
 import { buildObsDefaults } from "@/lib/obsDefaults";
 
 // ---------- Types ----------
@@ -474,6 +475,23 @@ export default function PatientCardExpandableV3({ role, patient, onOpenChart, on
             isTriage={stage==='triage'}
             defaults={defaults}
             onSave={(list)=>{
+              // Transform and save to vitals store for instant UI update
+              const obsRecord: Record<string, number> = {};
+              list.forEach(obs => {
+                switch(obs.type) {
+                  case 'RR': obsRecord.rr = parseFloat(obs.value); break;
+                  case 'SpO2': obsRecord.spo2 = parseFloat(obs.value); break;
+                  case 'HR': obsRecord.hr = parseFloat(obs.value); break;
+                  case 'BP': 
+                    const bpMatch = obs.value.match(/^(\d+)/);
+                    if (bpMatch) obsRecord.sbp = parseFloat(bpMatch[1]);
+                    break;
+                  case 'Temp': obsRecord.temp = parseFloat(obs.value); break;
+                }
+              });
+              saveObsToStore(patient.id, obsRecord);
+              
+              // Also save to API via callback
               onAddObservations?.(patient.id, list);
             }}
           />
