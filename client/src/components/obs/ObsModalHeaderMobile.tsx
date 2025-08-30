@@ -33,6 +33,9 @@ export default function ObsModalHeaderMobile({
     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
+  // Debug logging
+  console.log("ObsModalHeader:", patientId, "list length:", list.length, "last:", last);
+
   return (
     <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
       <div className="px-4 py-3 flex items-center justify-between gap-3">

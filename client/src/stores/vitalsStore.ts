@@ -93,13 +93,17 @@ function getSingleton(): VitalsStore {
   // @ts-ignore
   const w = typeof window !== "undefined" ? (window as any) : undefined;
   if (!w) {
+    console.log("VitalsStore: Server-side, creating new instance");
     const s = new VitalsStore();
     try { s.hydrateFromLocal(); } catch {}
     return s;
   }
   if (!w.__EDFLOW_VITALS__) {
+    console.log("VitalsStore: Creating singleton instance");
     w.__EDFLOW_VITALS__ = new VitalsStore();
     try { w.__EDFLOW_VITALS__.hydrateFromLocal(); } catch {}
+  } else {
+    console.log("VitalsStore: Reusing existing singleton");
   }
   return w.__EDFLOW_VITALS__;
 }
