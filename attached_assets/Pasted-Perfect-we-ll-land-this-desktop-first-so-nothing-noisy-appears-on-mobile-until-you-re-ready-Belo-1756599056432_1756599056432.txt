@@ -1,0 +1,199 @@
+Perfect — we’ll land this desktop-first so nothing noisy appears on mobile until you’re ready.
+
+Below is a drop-in plan + code to gate all new features to desktop while keeping your calm UI.
+
+⸻
+
+1) Strategy (desktop-only, additive)
+	•	New components (HCA Tasks, Assign modal, Timeline, SBAR/Checklist) render only ≥ lg.
+	•	Nav items for new pages show only on desktop.
+	•	On mobile, show a tiny “Available on desktop” notice (no dead links).
+	•	No breaking changes to existing flows.
+
+⸻
+
+2) Small helper: DesktopOnly wrapper
+
+client/src/components/layout/DesktopOnly.tsx
+
+import React from "react";
+
+export default function DesktopOnly({ children, fallback }: { children: React.ReactNode; fallback?: React.ReactNode }) {
+  return (
+    <>
+      <div className="hidden lg:block">{children}</div>
+      <div className="block lg:hidden">
+        {fallback ?? <div className="text-sm text-gray-500 p-3">This feature is available on desktop screens.</div>}
+      </div>
+    </>
+  );
+}
+
+Use this to wrap any desktop-only UI.
+
+⸻
+
+3) Patient page (desktop panels only)
+
+Assuming your patient details view is something like PatientPage.tsx, compose new panels in a two-column desktop layout:
+
+client/src/pages/PatientPageDesktop.tsx
+
+import DesktopOnly from "../components/layout/DesktopOnly";
+import PatientHcaTasks from "../components/PatientHcaTasks";
+import Timeline from "../components/Timeline";            // from earlier snippet (Phase 2)
+import SbarPanel from "../components/SbarPanel";          // from earlier snippet (Phase 3)
+
+export default function PatientPageDesktop({ encounterId, patient }: { encounterId: string; patient: any }) {
+  return (
+    <DesktopOnly>
+      <div className="grid grid-cols-12 gap-4">
+        {/* Left: existing patient content (keep your calm UI) */}
+        <div className="col-span-7 space-y-4">
+          {/* Your current patient summary card / vitals / orders / results */}
+          <div className="border rounded-lg p-4">
+            {/* … existing content … */}
+            <div className="text-lg font-semibold">{patient.name} — Bed {patient.bed}</div>
+            {/* keep the rest of your current desktop card */}
+          </div>
+
+          {/* Timeline (collapsed by default? keep simple list to start) */}
+          <div className="border rounded-lg p-3">
+            <Timeline encounterId={encounterId} />
+          </div>
+        </div>
+
+        {/* Right: new stacked panels */}
+        <div className="col-span-5 space-y-4">
+          <div className="border rounded-lg p-3">
+            <PatientHcaTasks encounterId={encounterId} patient={patient} />
+          </div>
+          <div className="border rounded-lg p-3">
+            <SbarPanel encounterId={encounterId} />
+          </div>
+        </div>
+      </div>
+    </DesktopOnly>
+  );
+}
+
+Then, in your existing patient route, render PatientPageDesktop when you’re on desktop (the wrapper handles it, so you can just mount it unconditionally).
+
+⸻
+
+4) Assign Task modal (mounted once, desktop only)
+
+Mount the modal at app root so it’s available across pages:
+
+client/src/App.tsx (or your root layout)
+
+import AssignTaskModal from "./components/AssignTaskModal";
+import DesktopOnly from "./components/layout/DesktopOnly";
+
+export default function App() {
+  return (
+    <>
+      {/* …your existing shell & router… */}
+      <DesktopOnly>
+        <AssignTaskModal />
+      </DesktopOnly>
+    </>
+  );
+}
+
+
+⸻
+
+5) HCA Taskboard page (desktop table; mobile notice)
+
+client/src/pages/HcaTaskBoard.tsx (from previous snippet) — just wrap it:
+
+import DesktopOnly from "../components/layout/DesktopOnly";
+import HcaTaskBoardTable from "./HcaTaskBoard.table"; // the table we built earlier
+
+export default function HcaTaskBoard() {
+  return (
+    <DesktopOnly>
+      <HcaTaskBoardTable />
+    </DesktopOnly>
+  );
+}
+
+Or if you didn’t separate the table, just wrap the whole component body in <DesktopOnly>.
+
+Nav link (desktop only):
+
+// wherever you render the sidebar/topnav
+<li className="hidden lg:block">
+  <a href="/hca" className="text-sm text-sky-700 hover:underline">HCA Tasks</a>
+</li>
+
+
+⸻
+
+6) Gentle empty states (mobile)
+
+Any place you expose a button that opens a desktop-only feature, protect it:
+
+<button
+  className="text-sky-700 hover:underline hidden lg:inline"
+  onClick={() => document.dispatchEvent(new CustomEvent("openAssignTask", { detail: { encounterId, patient } }))}>
+  + Assign task
+</button>
+<span className="inline lg:hidden text-gray-400 text-xs">Assign task (desktop)</span>
+
+
+⸻
+
+7) Styling notes (match calm/clean)
+	•	Use existing Tailwind tokens: border rounded-lg p-3 text-sm text-gray-600.
+	•	Keep headers text-lg font-semibold and panel headers at text-base font-medium.
+	•	Only urgent statuses use your existing red semantic (e.g., text-red-600), everything else muted.
+
+⸻
+
+8) API wiring (no breakage)
+
+Server routes are additive (prefixed /api/tasks etc.). Ensure your client points to VITE_API_BASE=http://localhost:3001/api (or whatever you already use). No changes to existing endpoints.
+
+⸻
+
+9) Quick integration checklist (desktop first)
+	•	Add DesktopOnly.tsx.
+	•	Add/verify TaskAPI client.
+	•	Add PatientHcaTasks, AssignTaskModal, Timeline, SbarPanel.
+	•	Compose PatientPageDesktop and route it in your patient details path.
+	•	Add “HCA Tasks” nav link with hidden lg:block.
+	•	Start server & client; create a task from patient page; see it on HCA Taskboard; complete it and watch Patient panel update.
+
+⸻
+
+10) Keyboard + a11y (desktop)
+	•	g + h → go to HCA Taskboard (desktop).
+	•	a on patient page → open Assign Task modal (desktop).
+	•	Focus order: task rows → Start → Complete buttons; modal “Assign task” primary button is last in tab order.
+	•	Live region (optional): announce “Task completed” for screen readers.
+
+Example live region:
+
+<div aria-live="polite" className="sr-only" id="live-region" />
+// After complete:
+document.getElementById("live-region")!.textContent = "Task completed";
+
+
+⸻
+
+11) Rollout flags (optional, but nice)
+
+If you already use feature flags per site/role, wrap the desktop features in a flag check:
+
+{flags.HCA_TASKS && <PatientHcaTasks … />}
+{flags.TIMELINE && <Timeline … />}
+{flags.SBAR && <SbarPanel … />}
+
+
+⸻
+
+Want me to tailor these imports/paths to your exact files?
+
+Paste your patient page component path and Express bootstrap file path, and I’ll splice the snippets to match your repo exactly so you can paste with minimal edits.
