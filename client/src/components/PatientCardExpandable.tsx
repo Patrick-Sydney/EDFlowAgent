@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
+import StatusStrip, { StatusFlags } from "./patient/StatusStrip";
 import VitalsTimelineDrawerLive from "./patient/VitalsTimelineDrawerLive";
 import VitalsCapsuleLive from "./patient/VitalsCapsuleLive";
 import EWSChipLive from "./patient/EWSChipLive";
@@ -157,12 +158,14 @@ export type ExpandableCardProps = {
   onAssignRoom?: () => void;     // Charge
   onAddObs?: (patient: any) => void;         // RN
   onOpenFull?: () => void;       // open full card/drawer if needed
+  statusFlags?: StatusFlags;     // NEW: desktop status icons
 };
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
     ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
-    minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull
+    minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
+    statusFlags
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -215,10 +218,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             </div>
             {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
           </div>
-          <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
-            {ctaMode === "collapsed" ? (
+          {/* RIGHT SIDE: on mobile show CTA; on desktop show status icons */}
+          {/* MOBILE CTA (kept): hidden on md+ to free space on desktop */}
+          <div className="ml-2 flex items-center gap-2 md:hidden" onClick={(e)=> e.stopPropagation()}>
+            {ctaMode === "collapsed" && primaryLabel && (
               <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={handlePrimary}>{primaryLabel}</Button>
-            ) : null}
+            )}
+          </div>
+          {/* DESKTOP STATUS STRIP: hidden on small screens */}
+          <div className="ml-2 hidden md:flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+            <StatusStrip flags={statusFlags} />
           </div>
         </div>
       </div>

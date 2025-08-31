@@ -136,6 +136,14 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                   onOrderSet={() => console.log("Order set for", encounter.name)}
                   patientId={encounter.id}
                   onOpenFull={() => console.log("Open full card for", encounter.name)}
+                  statusFlags={{
+                    isolation: encounter.isolationRequired === "true",
+                    allergy: false, // would need allergy data from schema
+                    oxygen: false,  // would need O2 status from observations
+                    sepsis: false,  // would need sepsis alerts from schema  
+                    tasksDue: 0,    // would need task count from observations
+                    resultsPending: 0 // would need results status from schema
+                  }}
                 />
               );
             })

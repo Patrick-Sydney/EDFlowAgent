@@ -1,0 +1,226 @@
+Awesome—let’s make the **desktop Patient Card** cleaner by **removing collapsed CTAs** and giving that space to **status/alert symbols**.
+
+Below is a single patch that:
+
+* Hides the collapsed **CTA button on desktop** (keeps it on mobile).
+* Adds a tiny **StatusStrip** (isolation, allergy, oxygen, sepsis alert, tasks due, results pending).
+* Leaves your existing expanded actions intact.
+
+Save this as `desktop-card-no-cta.patch` and apply it.
+
+---
+
+### `desktop-card-no-cta.patch`
+
+```diff
+diff --git a/client/src/components/patient/StatusStrip.tsx b/client/src/components/patient/StatusStrip.tsx
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/client/src/components/patient/StatusStrip.tsx
+@@ -0,0 +1,93 @@
++import React from "react";
++import { ShieldAlert, Wind, AlertTriangle, Timer, FlaskConical, Pill } from "lucide-react";
++
++export type StatusFlags = {
++  isolation?: boolean;
++  allergy?: boolean;
++  oxygen?: boolean;
++  sepsis?: boolean;
++  tasksDue?: number;        // count
++  resultsPending?: number;  // count
++};
++
++function PillBadge({ title, children }: { title: string; children: React.ReactNode }) {
++  return (
++    <span
++      title={title}
++      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-foreground/90"
++    >
++      {children}
++    </span>
++  );
++}
++
++export default function StatusStrip({ flags }: { flags?: StatusFlags }) {
++  if (!flags) return null;
++  const {
++    isolation, allergy, oxygen, sepsis, tasksDue, resultsPending,
++  } = flags;
++  return (
++    <div className="flex items-center gap-2">
++      {typeof tasksDue === "number" && tasksDue > 0 && (
++        <PillBadge title={`${tasksDue} task${tasksDue === 1 ? "" : "s"} due`}>
++          <Timer className="h-3.5 w-3.5" />
++          {tasksDue}
++        </PillBadge>
++      )}
++      {typeof resultsPending === "number" && resultsPending > 0 && (
++        <PillBadge title={`${resultsPending} result${resultsPending === 1 ? "" : "s"} pending`}>
++          <FlaskConical className="h-3.5 w-3.5" />
++          {resultsPending}
++        </PillBadge>
++      )}
++      {oxygen && (
++        <PillBadge title="Receiving supplemental oxygen">
++          <Wind className="h-3.5 w-3.5" />
++          O₂
++        </PillBadge>
++      )}
++      {allergy && (
++        <PillBadge title="Allergy recorded">
++          <Pill className="h-3.5 w-3.5" />
++          Allergy
++        </PillBadge>
++      )}
++      {isolation && (
++        <PillBadge title="Isolation / precautions">
++          <ShieldAlert className="h-3.5 w-3.5" />
++          ISO
++        </PillBadge>
++      )}
++      {sepsis && (
++        <PillBadge title="Sepsis pathway/alert">
++          <AlertTriangle className="h-3.5 w-3.5" />
++          Sepsis
++        </PillBadge>
++      )}
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 3f4e5a1..8d9e7c2 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -1,10 +1,12 @@
+ import React, { useMemo, useState } from "react";
+ import { Badge } from "@/components/ui/badge";
+ import { Button } from "@/components/ui/button";
+ import { Separator } from "@/components/ui/separator";
+ import { Clock, User } from "lucide-react";
++import StatusStrip, { StatusFlags } from "./StatusStrip";
+ 
+ // ... existing imports for IdentityInline, VitalsCapsule, etc.
+ 
+ export type ExpandableCardProps = {
+   name: string;
+   status: string;
+@@ -22,12 +24,16 @@ export type ExpandableCardProps = {
+   role: 'RN' | 'Charge' | 'MD';
+   minVitals?: MinVitals;
+   onOpenVitals?: () => void;
+   onPrimary?: () => void;
+   primaryLabel?: string;
+   onOrderSet?: () => void;
+   onAssignRoom?: () => void;
+   onAddObs?: () => void;
+   onOpenFull?: () => void;
++  /**
++   * NEW: desktop status icons (oxygen/iso/allergy/tasks/results/sepsis)
++   */
++  statusFlags?: StatusFlags;
+ };
+ 
+ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   const {
+-    name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
+-    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull
++    name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
++    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
++    statusFlags
+   } = props;
+ 
+   const [open, setOpen] = useState(false);
+@@ -42,29 +48,45 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   return (
+     <div className="rounded-2xl border bg-card p-3">
+       {/* Header row */}
+-      <button className="w-full text-left" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}>
+-        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
++      <button className="w-full text-left" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}>
++        <div className="grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto] gap-2 items-center">
+           <div className="min-w-0">
+             <div className="flex items-center gap-2 min-w-0">
+               <User className="h-4 w-4 text-muted-foreground shrink-0" />
+               <div title={name} className="font-semibold text-lg truncate max-w-[52vw] sm:max-w-[40ch]">{displayName}</div>
+               {/* Chips live here; calm outline to avoid noise */}
+               {typeof ews === 'number' && <Badge variant="outline" className="shrink-0 text-xs">EWS {ews}</Badge>}
+               {typeof ats === 'number' && <Badge variant="outline" className="shrink-0 text-xs">ATS {ats}</Badge>}
+             </div>
+             <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+               {ageSex && <span className="shrink-0">{ageSex}</span>}
+               <span className="rounded-full bg-muted px-2 py-0.5 shrink-0">{status}</span>
+               {timer && (
+                 <span className="flex items-center gap-1 min-w-0"><Clock className="h-3 w-3" /><span className="truncate">{timer}</span></span>
+               )}
+             </div>
+             {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
+           </div>
+-          <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+-            <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
+-          </div>
++          {/* RIGHT SIDE: on mobile show CTA; on desktop show status icons */}
++          {/* MOBILE CTA (kept): hidden on md+ to free space on desktop */}
++          <div className="ml-2 flex items-center gap-2 md:hidden" onClick={(e)=> e.stopPropagation()}>
++            {primaryLabel && (
++              <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
++            )}
++          </div>
++          {/* DESKTOP STATUS STRIP: hidden on small screens */}
++          <div className="ml-2 hidden md:flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
++            <StatusStrip flags={statusFlags} />
++          </div>
+         </div>
+       </button>
+ 
+       {/* Expandable content */}
+       <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[1600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+         <div className="space-y-3">
+```
+
+---
+
+## How to use this in Replit
+
+1. **Open Shell**, make a branch, apply:
+
+   ```bash
+   git checkout -b ui/desktop-card-no-cta
+   printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > desktop-card-no-cta.patch
+   git apply --reject --whitespace=fix desktop-card-no-cta.patch
+   git add -A
+   git commit -m "Desktop: hide collapsed CTAs; add StatusStrip area for insights"
+   ```
+
+2. **Pass status flags** when rendering desktop cards (one place, all lanes).
+   In your **desktop board** where you map patients to `PatientCardExpandable`, add `statusFlags`:
+
+   ```tsx
+   <PatientCardExpandable
+     // ...existing props
+     statusFlags={{
+       isolation: p.isolation,           // from Flag/precautions
+       allergy: !!(p.allergies?.length),
+       oxygen: p.onOxygen,               // from latest obs/orders
+       sepsis: p.sepsisPathway === true, // or from alerts
+       tasksDue: p.tasksDueCount,        // number
+       resultsPending: p.resultsPending, // number
+     }}
+   />
+   ```
+
+   That’s it—**no CTA on desktop** (it’s hidden with `md:hidden`), and the **status strip** appears where the button used to live.
+
+3. **Mobile stays unchanged.** The CTA still shows on phones (RN “Start Triage”, etc.), because we only hid it on `md+`.
+
+---
+
+## Sanity checks (desktop)
+
+* CTAs are **gone** on all lanes.
+* To the right of each card header you now have room for **StatusStrip** badges:
+
+  * Add/omit flags to control what shows.
+* Expanding a card still reveals **all actions** (+Obs, Assign Room, Order set, etc.).
+
+If you want me to also add a **hover tooltip** with richer text (without extra libs), I can extend `StatusStrip` to show a small popover on hover/focus next.
