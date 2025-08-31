@@ -254,6 +254,7 @@ export interface TouchObservation { id?: string; type: 'RR'|'SpO2'|'HR'|'BP'|'Te
 export interface ObservationSetModalTouchProps { open: boolean; onOpenChange: (o: boolean) => void; patientName: string; patientId?: string | number; defaults?: Partial<Record<'RR'|'SpO2'|'HR'|'SBP'|'Temp'|'ACVPU'|'O2', string>>; onSave: (observations: TouchObservation[]) => void; recorder: string; isTriage?: boolean; isFirstObs?: boolean; }
 
 import { useVitalsLast } from "../stores/vitalsStore";
+import { calcEWSFromLatest } from "@/utils/ews";
 
 export default function ObservationSetModalTouch({ open, onOpenChange, patientName, patientId, defaults, onSave, recorder, isTriage, isFirstObs }: ObservationSetModalTouchProps) {
   const [rr, setRR] = useState<string|undefined>(defaults?.RR);
@@ -278,6 +279,25 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   const tempPts = bandPoints(parseNum(temp), NZ_POLICY.temp);
   const acvpuPts = (NZ_POLICY.acvpu[acvpu ?? 'A'] ?? 0) as 0|3;
   const total = rrPts + spo2Pts + sbpPts + hrPts + tempPts + (acvpuPts as number);
+
+  // Calculate live EWS with proper band classification
+  const liveEWS = useMemo(() => {
+    const vitals = {
+      RR: parseNum(rr),
+      SpO2: parseNum(spo2),
+      HR: parseNum(hr),
+      SBP: parseNum(sbp),
+      Temp: parseNum(temp),
+      ACVPU: acvpu || 'A',
+      SpO2Scale: scale2 ? 2 : 1
+    };
+    
+    try {
+      return calcEWSFromLatest(vitals);
+    } catch {
+      return { score: total, band: total >= 7 ? 'high' : total >= 4 ? 'medium' : 'low' };
+    }
+  }, [rr, spo2, hr, sbp, temp, acvpu, scale2, total]);
 
   const canSave = rr || spo2 || hr || sbp || temp || acvpu;
 
@@ -320,6 +340,38 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
         />
 
         <div className="flex-1 overflow-y-auto px-3 py-2">
+          {/* Live EWS Display */}
+          <div className="mb-4 p-3 rounded-xl border bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-muted-foreground">Live EWS Score</span>
+                <Badge variant="outline" className="text-xs">Updates as you move sliders</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <span 
+                  className={`text-2xl font-bold ${
+                    liveEWS.band === 'high' ? 'text-red-600' : 
+                    liveEWS.band === 'medium' ? 'text-amber-600' : 
+                    'text-green-600'
+                  }`}
+                >
+                  {liveEWS.score}
+                </span>
+                <Badge 
+                  variant={liveEWS.band === 'high' ? 'destructive' : liveEWS.band === 'medium' ? 'default' : 'secondary'}
+                  className="capitalize"
+                >
+                  {liveEWS.band}
+                </Badge>
+              </div>
+            </div>
+            {liveEWS.score >= 7 && (
+              <div className="mt-2 text-xs text-red-600 font-medium">
+                ⚠️ High-risk score - Consider escalation
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             <RangeInputTouch icon={<Waves className="h-5 w-5"/>} label="Respiratory Rate" unit="/min" value={rr} onChange={setRR} bands={NZ_POLICY.rr} min={4} max={40} step={1} hideThumb={isFirstObs} previousValue={lastVitals?.rr} />
 
