@@ -33,8 +33,6 @@ export default function ObsModalHeaderMobile({
     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
-  // Debug logging to see what's happening
-  console.log("Header DEBUG:", { patientId, listLength: list.length, last: last });
 
 
   return (
@@ -55,7 +53,7 @@ export default function ObsModalHeaderMobile({
           <div className="mt-0.5 flex items-center gap-2 min-w-0">
             <h1 className="font-semibold truncate max-w-[60vw] sm:max-w-[40ch]" title={patientName}>{patientName}</h1>
             {/* Live EWS chip (updates after +Obs via vitalsStore) */}
-            <EWSChipLive patientId={patientId} />
+            <EWSChipLive patientId={patientId || ""} />
           </div>
 
           <div className="mt-0.5 text-[11px] text-muted-foreground">

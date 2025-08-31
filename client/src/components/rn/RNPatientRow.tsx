@@ -51,7 +51,6 @@ export function RNPatientRow({
         } : undefined
       }
       onAddObs={(patient) => {
-        console.log("RNPatientRow onAddObs called with patient:", patient, "fallback p:", p);
         onOpenObs(patient || p);
       }}
       onOpenFull={() => onOpenCard(p)}

@@ -23,7 +23,6 @@ export function VitalsModalWrapper({
   recorder: string;
 }) {
   const handleSave = async (observations: any[]) => {
-    console.log("VitalsModalWrapper.handleSave called", patientId, observations);
     if (!patientId) return;
     
     // Transform observations to our format
@@ -44,8 +43,6 @@ export function VitalsModalWrapper({
     // 1) Instant UI update
     saveObsToStore(patientId, obsRecord);
     
-    // Debug logging
-    console.log("save for", patientId, obsRecord);
     
     // 2) Optional server save (do not block the UI)
     try {
@@ -58,11 +55,6 @@ export function VitalsModalWrapper({
     onOpenChange(false);
   };
 
-  // Debug logging
-  console.log("VitalsModalWrapper DEBUG:", { patientId, patientName, open });
-  if (open && !patientId) {
-    console.error("VitalsModalWrapper ERROR: Modal opened but patientId is", patientId, "patientName:", patientName);
-  }
 
   return (
     <ObservationSetModalTouch

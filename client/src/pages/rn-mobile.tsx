@@ -31,7 +31,6 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
       roomName: e.room
     };
     
-    console.log("transformPatient:", e.name, "->", patient);
     return patient;
   };
 
@@ -56,19 +55,16 @@ export default function RNMobilePage() {
   };
 
   const handleOpenObs = (patient: PatientLite) => {
-    console.log("RN Mobile handleOpenObs called with:", patient);
     setSelectedPatient(patient);
     setObsModalOpen(true);
   };
 
   const handleOpenCard = (patient: PatientLite) => {
     // Would open detailed patient info modal/drawer
-    console.log("Open patient card for:", patient.displayName);
   };
 
   const handleOpenVitals = (patient: PatientLite) => {
     // Would open vitals timeline/drawer
-    console.log("Open vitals for:", patient.displayName);
   };
 
   // Save handling is now done in VitalsModalWrapper
@@ -110,9 +106,6 @@ export default function RNMobilePage() {
         isTriage={selectedPatient ? lanes.find(l => l.patients.some(p => p.id === selectedPatient.id))?.id === "triage" : false}
       />
       
-      {/* Debug logging */}
-      {console.log("RN Mobile render - selectedPatient:", selectedPatient, "obsModalOpen:", obsModalOpen) && <></>}
-      {selectedPatient && console.log("RN Mobile selectedPatient.id:", selectedPatient.id, "type:", typeof selectedPatient.id) && <></>}
     </div>
   );
 }

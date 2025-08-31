@@ -188,7 +188,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         ews: ews,
         roomName: status // using status as room info for now
       };
-      console.log("PatientCardExpandable calling onAddObs with:", patient);
       return onAddObs(patient);
     }
     if (label.includes("assign") && onAssignRoom) return onAssignRoom();
