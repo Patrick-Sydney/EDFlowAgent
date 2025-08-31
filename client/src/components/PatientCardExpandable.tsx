@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
 import StatusStrip, { StatusFlags } from "./patient/StatusStrip";
+import CollapsedCardHeader from "./patient/CollapsedCardHeader";
 import VitalsTimelineDrawerLive from "./patient/VitalsTimelineDrawerLive";
 import VitalsCapsuleLive from "./patient/VitalsCapsuleLive";
 import EWSChipLive from "./patient/EWSChipLive";
@@ -198,34 +199,25 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
 
   return (
     <div className="rounded-2xl border bg-card p-3">
-      {/* Header row */}
+      {/* Header row - new collapsed header component */}
       <div className="w-full text-left cursor-pointer" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}> 
         <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <User className="h-4 w-4 text-muted-foreground shrink-0" />
-              <div title={name} className="font-semibold text-lg truncate max-w-[52vw] sm:max-w-[40ch]">{displayName}</div>
-              {/* Chips live here; calm outline to avoid noise */}
-              <EWSChipLive patientId={patientId} fallback={ews} />
-              {typeof ats === 'number' && <Badge variant="outline" className="shrink-0 text-xs">ATS {ats}</Badge>}
-            </div>
-            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-              {ageSex && <span className="shrink-0">{ageSex}</span>}
-              <span className="rounded-full bg-muted px-2 py-0.5 shrink-0">{status}</span>
-              {timer && (
-                <span className="flex items-center gap-1 min-w-0"><Clock className="h-3 w-3" /><span className="truncate">{timer}</span></span>
-              )}
-            </div>
-            {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
-          </div>
-          {/* RIGHT SIDE: on mobile show CTA; on desktop show status icons */}
-          {/* MOBILE CTA (kept): hidden on md+ to free space on desktop */}
+          {/* Left: collapsed header content (no CTAs) */}
+          <CollapsedCardHeader
+            patientId={patientId}
+            name={displayName}
+            ageSex={ageSex}
+            ats={ats}
+            roomName={status.includes('Room') ? status : undefined}
+            chiefComplaint={complaint}
+            timerLabel={timer}
+          />
+          {/* Right: mobile CTA (visible on small screens), desktop status strip */}
           <div className="ml-2 flex items-center gap-2 md:hidden" onClick={(e)=> e.stopPropagation()}>
             {ctaMode === "collapsed" && primaryLabel && (
               <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={handlePrimary}>{primaryLabel}</Button>
             )}
           </div>
-          {/* DESKTOP STATUS STRIP: hidden on small screens */}
           <div className="ml-2 hidden md:flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
             <StatusStrip flags={statusFlags} />
           </div>

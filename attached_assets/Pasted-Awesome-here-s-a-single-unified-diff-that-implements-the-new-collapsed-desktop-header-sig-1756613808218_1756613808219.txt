@@ -1,0 +1,332 @@
+Awesome — here’s a **single unified diff** that implements the new **collapsed desktop header** (signal-only, no CTAs) and keeps mobile CTAs. It adds a compact header component and wires it into your existing Patient Card.
+
+Save this as `desktop-patient-card-collapsed.patch` and apply it.
+
+---
+
+### `desktop-patient-card-collapsed.patch`
+
+```diff
+diff --git a/client/src/components/patient/CollapsedCardHeader.tsx b/client/src/components/patient/CollapsedCardHeader.tsx
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/client/src/components/patient/CollapsedCardHeader.tsx
+@@ -0,0 +1,112 @@
++import React from "react";
++import { Clock, Bed } from "lucide-react";
++import EWSChipLive from "./EWSChipLive";
++import { useVitalsLast } from "../../stores/vitalsStore";
++
++/**
++ * Desktop-first collapsed header (no CTAs).
++ * Left area = two rows:
++ *  Row 1: Name · Age/Sex · Room · ATS · EWS (live)
++ *  Row 2: Chief complaint · Timer · Last obs time
++ * Right area (rendered by parent) = StatusStrip (desktop) or CTA (mobile)
++ */
++export default function CollapsedCardHeader({
++  patientId,
++  name,
++  ageSex,
++  ats,
++  roomName,
++  chiefComplaint,
++  timerLabel,
++}: {
++  patientId: string | number;
++  name: string;
++  ageSex?: string;
++  ats?: 1 | 2 | 3 | 4 | 5;
++  roomName?: string | null;
++  chiefComplaint?: string;
++  timerLabel?: string; // e.g. "Waiting 00:47"
++}) {
++  const last = useVitalsLast(patientId);
++  const lastStr = last?.t
++    ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
++    : undefined;
++
++  return (
++    <div className="min-w-0">
++      {/* Row 1 */}
++      <div className="flex items-center gap-2 min-w-0">
++        <div className="font-semibold text-lg truncate max-w-[44ch]" title={name}>
++          {name}
++        </div>
++        {ageSex && <span className="text-xs text-muted-foreground shrink-0">{ageSex}</span>}
++        {roomName && (
++          <span className="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 shrink-0">
++            <Bed className="h-3.5 w-3.5" />
++            {roomName}
++          </span>
++        )}
++        {typeof ats === "number" && (
++          <span className="text-xs rounded-full border px-2 py-0.5 shrink-0">ATS {ats}</span>
++        )}
++        <EWSChipLive patientId={patientId} />
++      </div>
++
++      {/* Row 2 */}
++      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
++        {chiefComplaint && <span className="truncate">{chiefComplaint}</span>}
++        {timerLabel && (
++          <span className="inline-flex items-center gap-1 shrink-0">
++            <Clock className="h-3 w-3" />
++            {timerLabel}
++          </span>
++        )}
++        <span className="shrink-0">•</span>
++        <span className="shrink-0">Last obs: {lastStr ?? "—"}</span>
++      </div>
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/StatusStrip.tsx b/client/src/components/patient/StatusStrip.tsx
+new file mode 100644
+index 0000000..d4e5f6a
+--- /dev/null
++++ b/client/src/components/patient/StatusStrip.tsx
+@@ -0,0 +1,97 @@
++import React from "react";
++import { ShieldAlert, Wind, AlertTriangle, Timer, FlaskConical, Pill } from "lucide-react";
++
++export type StatusFlags = {
++  isolation?: boolean;
++  allergy?: boolean;
++  oxygen?: boolean;
++  sepsis?: boolean;
++  tasksDue?: number;        // count
++  resultsPending?: number;  // count
++};
++
++function PillBadge({ title, children }: { title: string; children: React.ReactNode }) {
++  return (
++    <span
++      title={title}
++      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-foreground/90"
++    >
++      {children}
++    </span>
++  );
++}
++
++export default function StatusStrip({ flags }: { flags?: StatusFlags }) {
++  if (!flags) return null;
++  const { isolation, allergy, oxygen, sepsis, tasksDue, resultsPending } = flags;
++  return (
++    <div className="flex items-center gap-2">
++      {typeof tasksDue === "number" && tasksDue > 0 && (
++        <PillBadge title={`${tasksDue} task${tasksDue === 1 ? "" : "s"} due`}>
++          <Timer className="h-3.5 w-3.5" />
++          {tasksDue}
++        </PillBadge>
++      )}
++      {typeof resultsPending === "number" && resultsPending > 0 && (
++        <PillBadge title={`${resultsPending} result${resultsPending === 1 ? "" : "s"} pending`}>
++          <FlaskConical className="h-3.5 w-3.5" />
++          {resultsPending}
++        </PillBadge>
++      )}
++      {oxygen && (
++        <PillBadge title="Receiving supplemental oxygen">
++          <Wind className="h-3.5 w-3.5" />
++          O₂
++        </PillBadge>
++      )}
++      {allergy && (
++        <PillBadge title="Allergy recorded">
++          <Pill className="h-3.5 w-3.5" />
++          Allergy
++        </PillBadge>
++      )}
++      {isolation && (
++        <PillBadge title="Isolation / precautions">
++          <ShieldAlert className="h-3.5 w-3.5" />
++          ISO
++        </PillBadge>
++      )}
++      {sepsis && (
++        <PillBadge title="Sepsis pathway/alert">
++          <AlertTriangle className="h-3.5 w-3.5" />
++          Sepsis
++        </PillBadge>
++      )}
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 3f4e5a1..7a8b9c0 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -1,18 +1,22 @@
+ import React, { useMemo, useState } from "react";
+-import { Badge } from "@/components/ui/badge";
+-import { Button } from "@/components/ui/button";
+-import { Separator } from "@/components/ui/separator";
+-import { Clock, User } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Separator } from "@/components/ui/separator";
++import { User } from "lucide-react";
++import CollapsedCardHeader from "./CollapsedCardHeader";
++import StatusStrip, { StatusFlags } from "./StatusStrip";
+ 
+ // ------------------------------------------------------------------
+ // IdentityInline, VitalsCapsule, etc. (existing imports)
+ // ------------------------------------------------------------------
+ 
+ export type ExpandableCardProps = {
++  patientId: string | number;         // NEW: needed for live EWS/Last obs in collapsed header
+   name: string;
+   status: string;
+   timer?: string;
+   complaint?: string;
+   ews?: number;
+   ats?: 1|2|3|4|5;
+   ageSex?: string;
+   dob?: string | null;
+   nhi?: string | null;
+   mrn?: string | null;
+   alerts?: string[];
+   allergies?: string[];
+   role: 'RN' | 'Charge' | 'MD';
+   minVitals?: MinVitals;
+   onOpenVitals?: () => void;
+   onPrimary?: () => void;
+   primaryLabel?: string;
+   onOrderSet?: () => void;
+   onAssignRoom?: () => void;
+   onAddObs?: () => void;
+   onOpenFull?: () => void;
++  statusFlags?: StatusFlags;         // NEW: desktop status badges (oxygen/iso/allergy/tasks/results/sepsis)
+ };
+ 
+ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   const {
+-    name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
+-    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull
++    patientId, name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
++    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull, statusFlags
+   } = props;
+ 
+   const [open, setOpen] = useState(false);
+@@ -33,34 +37,38 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   return (
+     <div className="rounded-2xl border bg-card p-3">
+       {/* Header row (collapsed view) */}
+-      <button className="w-full text-left" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}> 
+-        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+-          <div className="min-w-0">
+-            <div className="flex items-center gap-2 min-w-0">
+-              <User className="h-4 w-4 text-muted-foreground shrink-0" />
+-              <div title={name} className="font-semibold text-lg truncate max-w-[52vw] sm:max-w-[40ch]">{displayName}</div>
+-              {/* Chips live here; calm outline to avoid noise */}
+-              {typeof ews === 'number' && <Badge variant="outline" className="shrink-0 text-xs">EWS {ews}</Badge>}
+-              {typeof ats === 'number' && <Badge variant="outline" className="shrink-0 text-xs">ATS {ats}</Badge>}
+-            </div>
+-            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+-              {ageSex && <span className="shrink-0">{ageSex}</span>}
+-              <span className="rounded-full bg-muted px-2 py-0.5 shrink-0">{status}</span>
+-              {timer && (
+-                <span className="flex items-center gap-1 min-w-0"><Clock className="h-3 w-3" /><span className="truncate">{timer}</span></span>
+-              )}
+-            </div>
+-            {complaint && <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{complaint}</div>}
+-          </div>
+-          <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+-            <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>
+-          </div>
+-        </div>
+-      </button>
++      <button className="w-full text-left" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}>
++        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
++          {/* Left: collapsed header content (no CTAs) */}
++          <CollapsedCardHeader
++            patientId={patientId}
++            name={displayName}
++            ageSex={ageSex}
++            ats={ats}
++            roomName={status === "Room" ? undefined : undefined /* pass actual room if you have it */}
++            chiefComplaint={complaint}
++            timerLabel={timer}
++          />
++          {/* Right: mobile CTA (visible on small screens), desktop status strip */}
++          <div className="ml-2 flex items-center gap-2 md:hidden" onClick={(e)=> e.stopPropagation()}>
++            {primaryLabel && <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>}
++          </div>
++          <div className="ml-2 hidden md:flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
++            <StatusStrip flags={statusFlags} />
++          </div>
++        </div>
++      </button>
+ 
+       {/* Expandable content */}
+       <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[1600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+         <div className="space-y-3">
+           {/* Identity, Vitals, Quick actions, Insights ... (existing sections) */}
++          {/* NOTE: ensure Identity section is compact (IdentitySlim) and placed later in the layout */}
+         </div>
+       </div>
+     </div>
+   );
+ }
+```
+
+---
+
+## How to apply this in Replit
+
+1. Open the **Shell**.
+
+2. Create a branch and apply the patch:
+
+   ```bash
+   git checkout -b ui/desktop-patient-card-collapsed
+   printf "%s\n" 'PASTE THE WHOLE PATCH ABOVE HERE' > desktop-patient-card-collapsed.patch
+   git apply --reject --whitespace=fix desktop-patient-card-collapsed.patch
+   git add -A
+   git commit -m "Desktop Patient Card: collapsed header redesign, no CTAs; status strip on desktop"
+   ```
+
+   If you see any `*.rej` files, open them — they usually mean the target file has drifted. The new files will still be added; you can transplant the header swap manually if needed.
+
+3. **Wire the new props** wherever you render `PatientCardExpandable` on desktop:
+
+   ```tsx
+   <PatientCardExpandable
+     patientId={p.id}
+     name={p.displayName}
+     status={lane.label}
+     timer={p.waitingFor}
+     complaint={p.chiefComplaint}
+     ats={p.ats}
+     ews={p.ews} // optional; EWS chip in collapsed header is live anyway
+     ageSex={p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ""}` : p.sex}
+     // ...
+     statusFlags={{
+       isolation: p.isolation,
+       allergy: !!(p.allergies?.length),
+       oxygen: p.onOxygen === true,
+       sepsis: p.sepsisAlert === true,
+       tasksDue: p.tasksDueCount,
+       resultsPending: p.resultsPendingCount,
+     }}
+   />
+   ```
+
+4. **Mobile stays fast**: The CTA button still appears on small screens (`md:hidden`), but it’s gone on desktop, making room for clear status symbols.
+
+---
+
+## Quick acceptance test (desktop)
+
+* Collapsed card shows:
+
+  * **Name**, **Age/Sex**, **(optional) Room**, **ATS**, **EWS (live)**.
+  * Second line: **Chief complaint**, **Timer**, **Last obs**.
+  * **StatusStrip** to the right (oxygen/iso/allergy/sepsis/tasks/results).
+* No CTAs visible on desktop collapsed.
+* Expanding still reveals your full actions/sections as before.
+
+If you want me to also drop in a minimal **ActionBar** and **AlertsRibbon** for the top of the expanded view (as discussed), I can ship a second small patch that just adds those components and a simple composition block.
