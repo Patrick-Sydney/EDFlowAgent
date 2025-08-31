@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -15,6 +15,7 @@ import ResultsCapsule from "./patient/ResultsCapsule";
 import TasksMini, { TaskItem } from "./patient/TasksMini";
 import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
+import BoardExpandOverlay from "./board/BoardExpandOverlay";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -192,7 +193,9 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   } = props;
 
   const [open, setOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
+  const cardAnchorRef = useRef<HTMLDivElement | null>(null);
   const displayName = useMemo(() => {
     const s = (name || "").trim();
     if (s.length <= 28) return s;
@@ -220,9 +223,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   };
 
   return (
-    <div className="rounded-2xl border bg-card p-3">
+    <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
       {/* Header row - new collapsed header component */}
-      <div className="w-full text-left cursor-pointer" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}> 
+      <div className="w-full text-left cursor-pointer" onClick={()=> {
+        const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+        if (isDesktop) { setDesktopOpen(true); } else { setOpen(o=>!o); }
+      }} aria-expanded={open} aria-controls={`exp-${name}`}> 
         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
           {/* Left: collapsed header content (no CTAs) */}
           <CollapsedCardHeader
@@ -246,7 +252,107 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         </div>
       </div>
 
-      {/* Expandable content - clinical-first layout */}
+      {/* Desktop overlay expander: two-lane width panel */}
+      <BoardExpandOverlay
+        anchorEl={cardAnchorRef.current}
+        open={desktopOpen}
+        onOpenChange={setDesktopOpen}
+        title={displayName}
+      >
+        <div className="space-y-3">
+          {/* Alerts Ribbon (if any) */}
+          {alertFlags && <AlertsRibbon flags={alertFlags} />}
+
+          {/* Action Bar (role-based) */}
+          {role && lane && (
+            <ActionBar 
+              role={role} 
+              lane={lane} 
+              handlers={{
+                onAddObs: onAddObs ? () => {
+                  const patient = {
+                    id: patientId,
+                    displayName: name,
+                    givenName: name.split(' ')[0] || '',
+                    familyName: name.split(' ').slice(1).join(' ') || '',
+                    chiefComplaint: complaint,
+                    ews: ews,
+                    roomName: status
+                  };
+                  onAddObs(patient);
+                } : undefined,
+                onAssignRoom,
+                onOrderSet,
+                onDispo: onOpenFull,
+                onSeeNow: onOpenFull
+              }} 
+            />
+          )}
+
+          {/* Clinical Snapshot */}
+          <ClinicalSnapshot 
+            patientId={patientId}
+            complaint={complaint}
+            ats={ats}
+            o2Label={o2Label}
+          />
+
+          {/* Two-column layout for desktop overlay */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-3">
+              {/* Vitals Capsule Live */}
+              <VitalsCapsuleLive 
+                patientId={patientId} 
+                onOpenTimeline={() => setOpenTL(true)} 
+                onAddObs={onAddObs ? () => {
+                  const patient = {
+                    id: patientId,
+                    displayName: name,
+                    givenName: name.split(' ')[0] || '',
+                    familyName: name.split(' ').slice(1).join(' ') || '',
+                    chiefComplaint: complaint,
+                    ews: ews,
+                    roomName: status
+                  };
+                  onAddObs(patient);
+                } : undefined} 
+              />
+
+              {/* Tasks Mini (if any) */}
+              {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
+            </div>
+            <div className="space-y-3">
+              {/* Results Capsule (if pending) */}
+              {(resultsPending && resultsPending > 0) && (
+                <ResultsCapsule 
+                  resultsPending={resultsPending}
+                  onOpenResults={onOpenResults}
+                  onQuickOrders={onQuickOrders}
+                />
+              )}
+
+              {/* Notes Tabs Lite */}
+              <NotesTabsLite 
+                triageSummary={triageSummary}
+                assessment={assessment}
+                note={note}
+                onEdit={onEditNotes}
+              />
+
+              {/* Identity Slim (moved to end) */}
+              <IdentitySlim 
+                nhi={nhi ?? undefined} 
+                mrn={mrn ?? undefined} 
+                alerts={alerts} 
+                allergies={allergies} 
+                onAudit={(e)=>{/* wire to audit */}} 
+              />
+            </div>
+          </div>
+        </div>
+      </BoardExpandOverlay>
+
+      {/* Expandable content - clinical-first layout (mobile/tablet inline) */}
       <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[1600px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <div className="space-y-3">
           {/* Alerts Ribbon (if any) */}

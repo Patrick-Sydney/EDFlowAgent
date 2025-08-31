@@ -65,7 +65,7 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
   const role = roleView || "charge";
 
   return (
-    <div className="lane-container" style={{ minWidth: '280px' }} data-testid={`lane-${lane}`}>
+    <div className="lane-container lane-col" style={{ minWidth: '280px' }} data-testid={`lane-${lane}`}>
       <div className={`${config.bgColor} rounded-lg p-4 h-full min-h-[600px]`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-900 flex items-center space-x-2">

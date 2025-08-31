@@ -1,0 +1,333 @@
+Love this — widening on expand is a great way to reduce scrolling and show the “first fold” we designed (Actions + Snapshot + Vitals/Tasks/Results/Notes) without cramming. From a clinical UX pov this helps because:
+	•	Less paging/scrolling → faster task switching.
+	•	Keeps the board context (you don’t lose your place like a full-screen modal).
+	•	Avoids big layout shifts for other cards: we animate a floating clone (“FLIP”) rather than pushing the whole lane around.
+
+Below is a single patch that adds an overlay expander that animates from the collapsed card to a panel sized at ≈ two lanes wide on desktop, then contracts back on collapse. Phones/tablets keep the current inline expand.
+
+⸻
+
+expand-to-two-lanes.patch
+
+diff --git a/client/src/components/board/BoardExpandOverlay.tsx b/client/src/components/board/BoardExpandOverlay.tsx
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/client/src/components/board/BoardExpandOverlay.tsx
+@@ -0,0 +1,189 @@
++import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
++import { createPortal } from "react-dom";
++import { X } from "lucide-react";
++
++/**
++ * BoardExpandOverlay
++ * - Animates a card from its on-board position to a floating panel sized to ~2 lane widths.
++ * - Uses a FLIP-style transform for smooth expand/contract.
++ * - Desktop only; callers should gate with a media query check.
++ *
++ * Assumptions:
++ * - Each lane column has className \"lane-col\" (width is measured from the first one).
++ * - Horizontal lane gap approximated from computed styles.
++ */
++export default function BoardExpandOverlay({
++  anchorEl,
++  open,
++  onOpenChange,
++  children,
++  title,
++}: {
++  anchorEl: HTMLElement | null;
++  open: boolean;
++  onOpenChange: (o: boolean) => void;
++  children: React.ReactNode;
++  title?: string;
++}) {
++  const [mounted, setMounted] = useState(false);
++  const hostRef = useRef<HTMLDivElement | null>(null);
++  const cardRef = useRef<HTMLDivElement | null>(null);
++
++  useEffect(() => { setMounted(true); }, []);
++
++  // Measure lane width to target ~2 columns
++  const targetGeom = useMemo(() => {
++    if (typeof window === "undefined") return null;
++    const firstLane = document.querySelector<HTMLElement>(".lane-col");
++    const laneWidth = firstLane ? firstLane.getBoundingClientRect().width : Math.min(520, window.innerWidth - 48);
++    const gap = (() => {
++      if (!firstLane || !firstLane.parentElement) return 16;
++      const s = window.getComputedStyle(firstLane.parentElement);
++      const g = parseFloat(s.columnGap || s.gap || "16");
++      return isNaN(g) ? 16 : g;
++    })();
++    const width = Math.min( Math.round(laneWidth * 2 + gap), Math.min(1120, window.innerWidth - 32) );
++    const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
++    return { width, left };
++  }, [open]);
++
++  // ESC & scrim close
++  useEffect(() => {
++    if (!open) return;
++    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onOpenChange(false); };
++    window.addEventListener("keydown", onKey);
++    return () => window.removeEventListener("keydown", onKey);
++  }, [open, onOpenChange]);
++
++  // FLIP animation
++  useLayoutEffect(() => {
++    const el = cardRef.current;
++    if (!open || !el || !anchorEl || !targetGeom) return;
++    const from = anchorEl.getBoundingClientRect();
++    const to = {
++      top: Math.max(16, Math.min(from.top - 8, window.innerHeight - 100)), // keep near origin, within viewport
++      left: targetGeom.left,
++      width: targetGeom.width,
++    };
++    // Position at final, then invert to from
++    el.style.position = "fixed";
++    el.style.top = `${to.top}px`;
++    el.style.left = `${to.left}px`;
++    el.style.width = `${to.width}px`;
++    el.style.maxHeight = `${Math.round(window.innerHeight - to.top - 16)}px`;
++    el.style.overflow = "auto";
++    el.style.transformOrigin = "top left";
++    // Invert
++    const dx = from.left - to.left;
++    const dy = from.top - to.top;
++    const sx = from.width / to.width;
++    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sx})`;
++    el.style.opacity = "0.98";
++    // Play
++    requestAnimationFrame(() => {
++      el.style.transition = "transform 180ms ease, opacity 180ms ease";
++      el.style.transform = "translate(0px, 0px) scale(1,1)";
++      el.style.opacity = "1";
++    });
++    // Cleanup transition after
++    const t = setTimeout(() => { if (el) el.style.transition = ""; }, 220);
++    return () => clearTimeout(t);
++  }, [open, anchorEl, targetGeom]);
++
++  // Contract animation on close
++  const onClose = () => {
++    const el = cardRef.current;
++    if (!el || !anchorEl) { onOpenChange(false); return; }
++    const to = anchorEl.getBoundingClientRect();
++    const from = el.getBoundingClientRect();
++    const dx = to.left - from.left;
++    const dy = to.top - from.top;
++    const sx = to.width / from.width;
++    el.style.transition = "transform 160ms ease, opacity 160ms ease";
++    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sx})`;
++    el.style.opacity = "0.98";
++    setTimeout(() => onOpenChange(false), 160);
++  };
++
++  if (!mounted) return null;
++  const portalRoot = document.body; // no special mount required
++  if (!open) return null;
++
++  return createPortal(
++    <div ref={hostRef} className="fixed inset-0 z-[70]">
++      <div className="absolute inset-0 bg-black/20" onClick={onClose} />
++      <div ref={cardRef} className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
++        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
++          <div className="font-semibold truncate pr-3">{title ?? "Patient"}</div>
++          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted">
++            <X className="h-5 w-5" />
++          </button>
++        </div>
++        <div className="p-3">
++          {children}
++        </div>
++      </div>
++    </div>,
++    portalRoot
++  );
++}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 7777777..8888888 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -1,16 +1,18 @@
+ import React, { useMemo, useState, useRef } from "react";
+ import { Badge } from "../ui/badge";
+ import { Button } from "../ui/button";
+ import { Separator } from "../ui/separator";
+ import CollapsedCardHeader from "./CollapsedCardHeader";
+ import StatusStrip, { StatusFlags } from "./StatusStrip";
+ import AlertsRibbon, { AlertFlags } from "./AlertsRibbon";
+ import ActionBar from "./ActionBar";
+ import ClinicalSnapshot from "./ClinicalSnapshot";
+ import VitalsCapsuleLive from "./VitalsCapsuleLive";
+ import ResultsCapsule from "./ResultsCapsule";
+ import TasksMini, { TaskItem } from "./TasksMini";
+ import NotesTabsLite from "./NotesTabsLite";
+ import IdentitySlim from "./IdentitySlim";
++import BoardExpandOverlay from "../board/BoardExpandOverlay";
+ 
+ export type ExpandableCardProps = {
+   patientId: string | number;         // live EWS/Last obs
+   name: string;
+@@ -53,10 +55,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   } = props;
+ 
+   const [open, setOpen] = useState(false);
++  const [desktopOpen, setDesktopOpen] = useState(false);
+   const displayName = name;
++  const cardAnchorRef = useRef<HTMLDivElement | null>(null);
+ 
+   return (
+-    <div className="rounded-2xl border bg-card p-3">
++    <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
+       {/* Header row (collapsed view) */}
+       <button className="w-full text-left" onClick={()=>{
+-        setOpen(o=>!o);
++        const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
++        if (isDesktop) { setDesktopOpen(true); } else { setOpen(o=>!o); }
+       }} aria-expanded={open} aria-controls={`exp-${name}`}>
+         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+           {/* Left: collapsed header content (no CTAs) */}
+@@ -92,6 +96,66 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+         </div>
+       </button>
+ 
++      {/* Desktop overlay expander: two-lane width panel */}
++      <BoardExpandOverlay
++        anchorEl={cardAnchorRef.current}
++        open={desktopOpen}
++        onOpenChange={setDesktopOpen}
++        title={displayName}
++      >
++        <div className="space-y-3">
++          <AlertsRibbon flags={alertFlags} />
++          <ActionBar
++            role={role}
++            lane={lane}
++            handlers={{ onAddObs, onAssignRoom, onOrderSet, onDispo: onOpenFull, onSeeNow: onOpenFull }}
++          />
++          <ClinicalSnapshot
++            patientId={patientId}
++            complaint={complaint}
++            ats={ats ?? null}
++            o2Label={o2Label ?? null}
++          />
++          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
++            <div className="space-y-3">
++              <VitalsCapsuleLive
++                patientId={patientId}
++                onOpenTimeline={onOpenVitals}
++                onAddObs={onAddObs}
++              />
++              <TasksMini tasks={tasks} onOpen={onOpenFull} />
++            </div>
++            <div className="space-y-3">
++              <ResultsCapsule
++                resultsPending={resultsPending}
++                onOpenResults={onOpenResults}
++                onQuickOrders={onQuickOrders}
++              />
++              <NotesTabsLite
++                triageSummary={triageSummary}
++                assessment={assessment}
++                note={note}
++                onEdit={onEditNotes}
++              />
++              <IdentitySlim nhi={nhi} mrn={mrn} alerts={alerts} allergies={allergies} />
++            </div>
++          </div>
++        </div>
++      </BoardExpandOverlay>
++
+       {/* Expandable content (mobile / tablet inline) */}
+       <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+         <div className="space-y-3">
+           <AlertsRibbon flags={alertFlags} />
+           <ActionBar
+             role={role}
+             lane={lane}
+             handlers={{ onAddObs, onAssignRoom, onOrderSet, onDispo: onOpenFull, onSeeNow: onOpenFull }}
+           />
+           <ClinicalSnapshot
+             patientId={patientId}
+             complaint={complaint}
+             ats={ats ?? null}
+             o2Label={o2Label ?? null}
+           />
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+             <div className="space-y-3">
+               <VitalsCapsuleLive
+                 patientId={patientId}
+                 onOpenTimeline={onOpenVitals}
+                 onAddObs={onAddObs}
+               />
+               <TasksMini tasks={tasks} onOpen={onOpenFull} />
+             </div>
+             <div className="space-y-3">
+               <ResultsCapsule
+                 resultsPending={resultsPending}
+                 onOpenResults={onOpenResults}
+                 onQuickOrders={onQuickOrders}
+               />
+               <NotesTabsLite
+                 triageSummary={triageSummary}
+                 assessment={assessment}
+                 note={note}
+                 onEdit={onEditNotes}
+               />
+               <IdentitySlim nhi={nhi} mrn={mrn} alerts={alerts} allergies={allergies} />
+             </div>
+           </div>
+         </div>
+       </div>
+     </div>
+   );
+ }
+diff --git a/client/src/styles/tailwind-overrides.css b/client/src/styles/tailwind-overrides.css
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/client/src/styles/tailwind-overrides.css
+@@ -0,0 +1,10 @@
++/* Optional: ensure smooth transforms look crisp */
++.will-change-transform {
++  will-change: transform;
++}
++
++/* Give lane columns a class so we can measure width for the overlay */
++/* Add className=\"lane-col\" on your lane column wrappers in the board layout. */
++
+
+
+⸻
+
+How to use (Replit)
+	1.	Apply the patch:
+
+git checkout -b ui/expand-to-two-lanes
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > expand-to-two-lanes.patch
+git apply --reject --whitespace=fix expand-to-two-lanes.patch
+git add -A
+git commit -m "Desktop: expand patient card to ~2-lane width via FLIP overlay; keep inline expand on mobile"
+
+	2.	In your board layout, ensure each lane column wrapper has the class lane-col, e.g.:
+
+<div className="lane-col w-full md:max-w-[520px]"> {/* lane content... */}</div>
+
+This lets the overlay measure a “lane width” and size itself to roughly two columns.
+	3.	That’s it. On desktop (≥1024px):
+
+	•	Clicking a collapsed card animates it outward to a panel about two lanes wide.
+	•	The panel has its own sticky header with a Close (X).
+	•	Click the scrim or press Esc to close; it contracts back to the originating card.
+	•	Other cards/lane layout don’t jump, so the board remains readable.
+
+Phones/tablets still use your inline expand.
+
+⸻
+
+Why this approach (best-practice quick take)
+	•	Inline look, overlay mechanics: Using a FLIP overlay preserves context without reflowing the whole board—important for clinicians scanning multiple patients.
+	•	Width ≈ 2 lanes: Big enough to show Actions + Snapshot + two columns of content; small enough to keep peripheral context visible.
+	•	Escape hatch: Esc to close; background click closes; sticky header with Close (X) for motor accuracy.
+
+If you want the panel to open centered on the viewport or to remember scroll position inside between opens, I can add those refinements in a follow-up patch.
