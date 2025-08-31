@@ -155,7 +155,7 @@ export type ExpandableCardProps = {
   primaryLabel?: string;
   onOrderSet?: () => void;       // MD quick order set
   onAssignRoom?: () => void;     // Charge
-  onAddObs?: () => void;         // RN
+  onAddObs?: (patient: any) => void;         // RN
   onOpenFull?: () => void;       // open full card/drawer if needed
 };
 
@@ -177,7 +177,20 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const handlePrimary = () => {
     if (onPrimary) return onPrimary();
     const label = (primaryLabel || "").toLowerCase();
-    if (label.includes("obs") && onAddObs) return onAddObs();
+    if (label.includes("obs") && onAddObs) {
+      // Create patient object from props to pass to onAddObs
+      const patient = {
+        id: patientId,
+        displayName: name,
+        givenName: name.split(' ')[0] || '',
+        familyName: name.split(' ').slice(1).join(' ') || '',
+        chiefComplaint: complaint,
+        ews: ews,
+        roomName: status // using status as room info for now
+      };
+      console.log("PatientCardExpandable calling onAddObs with:", patient);
+      return onAddObs(patient);
+    }
     if (label.includes("assign") && onAssignRoom) return onAssignRoom();
   };
 
