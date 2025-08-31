@@ -56,8 +56,6 @@ export function VitalsModalWrapper({
   };
 
 
-  // Temporary debug for modal data flow
-  console.log("VitalsModalWrapper FLOW:", { patientId, patientName, open });
 
   return (
     <ObservationSetModalTouch

@@ -31,7 +31,6 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
       roomName: e.room
     };
     
-    console.log("transformPatient:", e.name, "ID:", e.id, "->", patient);
     return patient;
   };
 
@@ -44,6 +43,7 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
 
 export default function RNMobilePage() {
   const { data: encounters = [] } = useQuery<Encounter[]>({ queryKey: ['/api/encounters'] });
+  
   const [obsModalOpen, setObsModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
   
@@ -56,7 +56,11 @@ export default function RNMobilePage() {
   };
 
   const handleOpenObs = (patient: PatientLite) => {
-    console.log("RN Mobile handleOpenObs - received patient:", patient);
+    // Ensure patient has valid ID before setting
+    if (!patient.id) {
+      console.error("Patient missing ID:", patient);
+      return;
+    }
     setSelectedPatient(patient);
     setObsModalOpen(true);
   };
@@ -100,10 +104,7 @@ export default function RNMobilePage() {
           setObsModalOpen(open);
           if (!open) setSelectedPatient(null);
         }}
-        patientId={(() => {
-          console.log("RN Mobile passing patientId - selectedPatient:", selectedPatient, "id:", selectedPatient?.id);
-          return selectedPatient?.id || null;
-        })()}
+        patientId={selectedPatient?.id || null}
         patientName={selectedPatient?.displayName || ""}
         defaults={obsDefaults}
         isFirstObs={isFirstObs}

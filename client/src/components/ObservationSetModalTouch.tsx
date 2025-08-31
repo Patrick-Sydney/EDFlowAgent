@@ -307,8 +307,6 @@ export default function ObservationSetModalTouch({ open, onOpenChange, patientNa
   }, [patientName]);
 
 
-  // Temporary debug for modal data flow
-  console.log("ObservationSetModalTouch FLOW:", { patientId, patientName, open });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
