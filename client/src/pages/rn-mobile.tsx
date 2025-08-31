@@ -100,7 +100,10 @@ export default function RNMobilePage() {
           setObsModalOpen(open);
           if (!open) setSelectedPatient(null);
         }}
-        patientId={selectedPatient?.id || null}
+        patientId={(() => {
+          console.log("RN Mobile passing patientId - selectedPatient:", selectedPatient, "id:", selectedPatient?.id);
+          return selectedPatient?.id || null;
+        })()}
         patientName={selectedPatient?.displayName || ""}
         defaults={obsDefaults}
         isFirstObs={isFirstObs}
