@@ -31,6 +31,7 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
       roomName: e.room
     };
     
+    console.log("transformPatient:", e.name, "ID:", e.id, "->", patient);
     return patient;
   };
 
@@ -55,6 +56,7 @@ export default function RNMobilePage() {
   };
 
   const handleOpenObs = (patient: PatientLite) => {
+    console.log("RN Mobile handleOpenObs - received patient:", patient);
     setSelectedPatient(patient);
     setObsModalOpen(true);
   };

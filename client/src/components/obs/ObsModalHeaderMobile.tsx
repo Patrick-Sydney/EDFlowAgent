@@ -35,6 +35,9 @@ export default function ObsModalHeaderMobile({
 
 
 
+  // Temporary debug for header data flow
+  console.log("ObsModalHeaderMobile FLOW:", { patientId, patientName, listLength: list.length });
+
   return (
     <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b">
       <div className="px-4 py-3 flex items-center justify-between gap-3">
