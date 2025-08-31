@@ -5,17 +5,18 @@ import { useVitalsLast } from "../../stores/vitalsStore";
 
 /**
  * Desktop-first collapsed header (no CTAs).
- * Left area = two rows:
- *  Row 1: Name · Age/Sex · Room · ATS · EWS (live)
- *  Row 2: Chief complaint · Timer · Last obs time
- * Right area (rendered by parent) = StatusStrip (desktop) or CTA (mobile)
+ * Reflowed to avoid cramping:
+ *  Row A: Name (two-line clamp) · Age/Sex
+ *  Row B: Location chip (e.g., RESUS 2 / OBS 5 / Cubicle 7) · EWS (live) · ATS · Timer · Last obs
+ *  Row C: Chief complaint (single-line clamp)
+ * Right column (rendered by parent) = StatusStrip (desktop) or CTA (mobile)
  */
 export default function CollapsedCardHeader({
   patientId,
   name,
   ageSex,
   ats,
-  roomName,
+  locationLabel,
   chiefComplaint,
   timerLabel,
 }: {
@@ -23,7 +24,8 @@ export default function CollapsedCardHeader({
   name: string;
   ageSex?: string;
   ats?: 1 | 2 | 3 | 4 | 5;
-  roomName?: string | null;
+  /** e.g., "RESUS 2", "OBS 5", "Cubicle 7", "ISO 1" */
+  locationLabel?: string | null;
   chiefComplaint?: string;
   timerLabel?: string; // e.g. "Waiting 00:47"
 }) {
@@ -34,36 +36,39 @@ export default function CollapsedCardHeader({
 
   return (
     <div className="min-w-0">
-      {/* Row 1 */}
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="font-semibold text-lg truncate max-w-[44ch]" title={name}>
+      {/* Row A: Name (allow 2 lines), Age/Sex to the side */}
+      <div className="flex items-start gap-2 min-w-0">
+        <div className="font-semibold text-lg leading-snug line-clamp-2" title={name}>
           {name}
         </div>
-        {ageSex && <span className="text-xs text-muted-foreground shrink-0">{ageSex}</span>}
-        {roomName && (
-          <span className="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 shrink-0">
-            <Bed className="h-3.5 w-3.5" />
-            {roomName}
-          </span>
-        )}
-        {typeof ats === "number" && (
-          <span className="text-xs rounded-full border px-2 py-0.5 shrink-0">ATS {ats}</span>
-        )}
-        <EWSChipLive patientId={patientId} />
+        {ageSex && <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{ageSex}</span>}
       </div>
 
-      {/* Row 2 */}
-      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
-        {chiefComplaint && <span className="truncate">{chiefComplaint}</span>}
+      {/* Row B: Location + live chips + timers */}
+      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+        {locationLabel && (
+          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-background text-foreground">
+            <Bed className="h-3.5 w-3.5" />
+            {locationLabel}
+          </span>
+        )}
+        <EWSChipLive patientId={patientId} />
+        {typeof ats === "number" && (
+          <span className="rounded-full border px-2 py-0.5">ATS {ats}</span>
+        )}
         {timerLabel && (
-          <span className="inline-flex items-center gap-1 shrink-0">
+          <span className="inline-flex items-center gap-1">
             <Clock className="h-3 w-3" />
             {timerLabel}
           </span>
         )}
-        <span className="shrink-0">•</span>
-        <span className="shrink-0">Last obs: {lastStr ?? "—"}</span>
+        <span className="">Last obs: {lastStr ?? "—"}</span>
       </div>
+
+      {/* Row C: Complaint */}
+      {chiefComplaint && (
+        <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{chiefComplaint}</div>
+      )}
     </div>
   );
 }

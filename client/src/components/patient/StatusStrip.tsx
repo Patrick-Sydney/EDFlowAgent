@@ -1,6 +1,8 @@
 import React from "react";
 import { ShieldAlert, Wind, AlertTriangle, Timer, FlaskConical, Pill } from "lucide-react";
 
+// NOTE: this strip now supports wrapping to avoid cramping the name line.
+
 export type StatusFlags = {
   isolation?: boolean;
   allergy?: boolean;
@@ -27,7 +29,7 @@ export default function StatusStrip({ flags }: { flags?: StatusFlags }) {
     isolation, allergy, oxygen, sepsis, tasksDue, resultsPending,
   } = flags;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap justify-end max-w-[360px]">
       {typeof tasksDue === "number" && tasksDue > 0 && (
         <PillBadge title={`${tasksDue} task${tasksDue === 1 ? "" : "s"} due`}>
           <Timer className="h-3.5 w-3.5" />

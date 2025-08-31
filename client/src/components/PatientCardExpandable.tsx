@@ -160,13 +160,14 @@ export type ExpandableCardProps = {
   onAddObs?: (patient: any) => void;         // RN
   onOpenFull?: () => void;       // open full card/drawer if needed
   statusFlags?: StatusFlags;     // NEW: desktop status icons
+  locationLabel?: string | null;     // NEW: e.g., "RESUS 2", "OBS 5", "Cubicle 7"
 };
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
     ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
     minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
-    statusFlags
+    statusFlags, locationLabel
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -201,14 +202,14 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     <div className="rounded-2xl border bg-card p-3">
       {/* Header row - new collapsed header component */}
       <div className="w-full text-left cursor-pointer" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}> 
-        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+        <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
           {/* Left: collapsed header content (no CTAs) */}
           <CollapsedCardHeader
             patientId={patientId}
             name={displayName}
             ageSex={ageSex}
             ats={ats}
-            roomName={status.includes('Room') ? status : undefined}
+            locationLabel={locationLabel ?? (status?.toLowerCase() === "room" ? undefined : undefined)}
             chiefComplaint={complaint}
             timerLabel={timer}
           />

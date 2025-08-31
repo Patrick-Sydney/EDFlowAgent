@@ -1,0 +1,276 @@
+Great call. Here’s a **single patch** that fixes the cramped top line, **stops truncating the name** (uses a tidy two-line clamp), and shows a **proper location pill** (e.g., “RESUS 2”, “OBS 5”, “Cubicle 7”) instead of the generic “Roomed” chip.
+
+Save this as `desktop-card-header-reflow.patch` and apply it.
+
+---
+
+### `desktop-card-header-reflow.patch`
+
+```diff
+diff --git a/client/src/components/patient/StatusStrip.tsx b/client/src/components/patient/StatusStrip.tsx
+index d4e5f6a..0b1c2d3 100644
+--- a/client/src/components/patient/StatusStrip.tsx
++++ b/client/src/components/patient/StatusStrip.tsx
+@@ -1,6 +1,7 @@
+ import React from "react";
+ import { ShieldAlert, Wind, AlertTriangle, Timer, FlaskConical, Pill } from "lucide-react";
+ 
++// NOTE: this strip now supports wrapping to avoid cramping the name line.
+ export type StatusFlags = {
+   isolation?: boolean;
+   allergy?: boolean;
+@@
+ export default function StatusStrip({ flags }: { flags?: StatusFlags }) {
+   if (!flags) return null;
+   const { isolation, allergy, oxygen, sepsis, tasksDue, resultsPending } = flags;
+   return (
+-    <div className="flex items-center gap-2">
++    <div className="flex items-center gap-2 flex-wrap justify-end max-w-[360px]">
+       {typeof tasksDue === "number" && tasksDue > 0 && (
+         <PillBadge title={`${tasksDue} task${tasksDue === 1 ? "" : "s"} due`}>
+           <Timer className="h-3.5 w-3.5" />
+           {tasksDue}
+         </PillBadge>
+       )}
+diff --git a/client/src/components/patient/CollapsedCardHeader.tsx b/client/src/components/patient/CollapsedCardHeader.tsx
+index a1b2c3d..c7d8e9f 100644
+--- a/client/src/components/patient/CollapsedCardHeader.tsx
++++ b/client/src/components/patient/CollapsedCardHeader.tsx
+@@ -1,17 +1,20 @@
+ import React from "react";
+-import { Clock, Bed } from "lucide-react";
++import { Clock, Bed } from "lucide-react";
+ import EWSChipLive from "./EWSChipLive";
+ import { useVitalsLast } from "../../stores/vitalsStore";
+ 
+ /**
+- * Desktop-first collapsed header (no CTAs).
+- * Left area = two rows:
+- *  Row 1: Name · Age/Sex · Room · ATS · EWS (live)
+- *  Row 2: Chief complaint · Timer · Last obs time
+- * Right area (rendered by parent) = StatusStrip (desktop) or CTA (mobile)
++ * Desktop-first collapsed header (no CTAs).
++ * Reflowed to avoid cramping:
++ *  Row A: Name (two-line clamp) · Age/Sex
++ *  Row B: Location chip (e.g., RESUS 2 / OBS 5 / Cubicle 7) · EWS (live) · ATS · Timer · Last obs
++ *  Row C: Chief complaint (single-line clamp)
++ * Right column (rendered by parent) = StatusStrip (desktop) or CTA (mobile)
+  */
+ export default function CollapsedCardHeader({
+   patientId,
+   name,
+   ageSex,
+   ats,
+-  roomName,
++  locationLabel,
+   chiefComplaint,
+   timerLabel,
+ }: {
+   patientId: string | number;
+   name: string;
+   ageSex?: string;
+   ats?: 1 | 2 | 3 | 4 | 5;
+-  roomName?: string | null;
++  /** e.g., "RESUS 2", "OBS 5", "Cubicle 7", "ISO 1" */
++  locationLabel?: string | null;
+   chiefComplaint?: string;
+   timerLabel?: string; // e.g. "Waiting 00:47"
+ }) {
+   const last = useVitalsLast(patientId);
+   const lastStr = last?.t
+     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+     : undefined;
+ 
+   return (
+-    <div className="min-w-0">
+-      {/* Row 1 */}
+-      <div className="flex items-center gap-2 min-w-0">
+-        <div className="font-semibold text-lg truncate max-w-[44ch]" title={name}>
+-          {name}
+-        </div>
+-        {ageSex && <span className="text-xs text-muted-foreground shrink-0">{ageSex}</span>}
+-        {roomName && (
+-          <span className="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 shrink-0">
+-            <Bed className="h-3.5 w-3.5" />
+-            {roomName}
+-          </span>
+-        )}
+-        {typeof ats === "number" && (
+-          <span className="text-xs rounded-full border px-2 py-0.5 shrink-0">ATS {ats}</span>
+-        )}
+-        <EWSChipLive patientId={patientId} />
+-      </div>
+-
+-      {/* Row 2 */}
+-      <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+-        {chiefComplaint && <span className="truncate">{chiefComplaint}</span>}
+-        {timerLabel && (
+-          <span className="inline-flex items-center gap-1 shrink-0">
+-            <Clock className="h-3 w-3" />
+-            {timerLabel}
+-          </span>
+-        )}
+-        <span className="shrink-0">•</span>
+-        <span className="shrink-0">Last obs: {lastStr ?? "—"}</span>
+-      </div>
+-    </div>
++    <div className="min-w-0">
++      {/* Row A: Name (allow 2 lines), Age/Sex to the side */}
++      <div className="flex items-start gap-2 min-w-0">
++        <div className="font-semibold text-lg leading-snug line-clamp-2" title={name}>
++          {name}
++        </div>
++        {ageSex && <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{ageSex}</span>}
++      </div>
++
++      {/* Row B: Location + live chips + timers */}
++      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
++        {locationLabel && (
++          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-background text-foreground">
++            <Bed className="h-3.5 w-3.5" />
++            {locationLabel}
++          </span>
++        )}
++        <EWSChipLive patientId={patientId} />
++        {typeof ats === "number" && (
++          <span className="rounded-full border px-2 py-0.5">ATS {ats}</span>
++        )}
++        {timerLabel && (
++          <span className="inline-flex items-center gap-1">
++            <Clock className="h-3 w-3" />
++            {timerLabel}
++          </span>
++        )}
++        <span className="">Last obs: {lastStr ?? "—"}</span>
++      </div>
++
++      {/* Row C: Complaint */}
++      {chiefComplaint && (
++        <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{chiefComplaint}</div>
++      )}
++    </div>
+   );
+ }
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 7a8b9c0..8f0a1b2 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -7,6 +7,7 @@ import CollapsedCardHeader from "./CollapsedCardHeader";
+ import StatusStrip, { StatusFlags } from "./StatusStrip";
+ 
+ export type ExpandableCardProps = {
+   patientId: string | number;         // NEW: needed for live EWS/Last obs in collapsed header
+   name: string;
+   status: string;
+   timer?: string;
+   complaint?: string;
+   ews?: number;
+   ats?: 1|2|3|4|5;
+   ageSex?: string;
+   dob?: string | null;
+   nhi?: string | null;
+   mrn?: string | null;
+   alerts?: string[];
+   allergies?: string[];
+   role: 'RN' | 'Charge' | 'MD';
+   minVitals?: MinVitals;
+   onOpenVitals?: () => void;
+   onPrimary?: () => void;
+   primaryLabel?: string;
+   onOrderSet?: () => void;
+   onAssignRoom?: () => void;
+   onAddObs?: () => void;
+   onOpenFull?: () => void;
+   statusFlags?: StatusFlags;         // NEW: desktop status badges (oxygen/iso/allergy/tasks/results/sepsis)
++  locationLabel?: string | null;     // NEW: e.g., "RESUS 2", "OBS 5", "Cubicle 7"
+ };
+ 
+ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   const {
+-    patientId, name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
+-    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull, statusFlags
++    patientId, name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
++    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull, statusFlags, locationLabel
+   } = props;
+ 
+   const [open, setOpen] = useState(false);
+@@ -37,18 +38,22 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   return (
+     <div className="rounded-2xl border bg-card p-3">
+       {/* Header row (collapsed view) */}
+       <button className="w-full text-left" onClick={()=> setOpen(o=>!o)} aria-expanded={open} aria-controls={`exp-${name}`}>
+         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+           {/* Left: collapsed header content (no CTAs) */}
+           <CollapsedCardHeader
+             patientId={patientId}
+             name={displayName}
+             ageSex={ageSex}
+             ats={ats}
+-            roomName={status === "Room" ? undefined : undefined /* pass actual room if you have it */}
++            locationLabel={locationLabel ?? (status?.toLowerCase() === "room" ? undefined : undefined)}
+             chiefComplaint={complaint}
+             timerLabel={timer}
+           />
+           {/* Right: mobile CTA (visible on small screens), desktop status strip */}
+           <div className="ml-2 flex items-center gap-2 md:hidden" onClick={(e)=> e.stopPropagation()}>
+             {primaryLabel && <Button className="h-11 rounded-full px-4 min-w-[96px] shrink-0" onClick={onPrimary}>{primaryLabel}</Button>}
+           </div>
+           <div className="ml-2 hidden md:flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+             <StatusStrip flags={statusFlags} />
+           </div>
+         </div>
+       </button>
+```
+
+---
+
+## How to use it (Replit)
+
+1. Open **Shell** and apply:
+
+   ```bash
+   git checkout -b ui/desktop-card-header-reflow
+   printf "%s\n" 'PASTE THE PATCH CONTENTS HERE' > desktop-card-header-reflow.patch
+   git apply --reject --whitespace=fix desktop-card-header-reflow.patch
+   git add -A
+   git commit -m "Desktop Patient Card: header reflow, 2-line name, EWS+ATS moved to meta row, location pill"
+   ```
+
+2. **Pass a real location label** when you render the card:
+
+   ```tsx
+   <PatientCardExpandable
+     patientId={p.id}
+     name={p.displayName}
+     status={lane.label}
+     timer={p.waitingFor}
+     complaint={p.chiefComplaint}
+     ats={p.ats}
+     ageSex={p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ""}` : p.sex}
+     statusFlags={{
+       isolation: p.isolation,
+       allergy: !!(p.allergies?.length),
+       oxygen: p.onOxygen === true,
+       sepsis: p.sepsisAlert === true,
+       tasksDue: p.tasksDueCount,
+       resultsPending: p.resultsPendingCount,
+     }}
+     // NEW — feed the actual physical location label here:
+     locationLabel={
+       p.roomName
+         ? p.roomName                      // e.g., "Cubicle 7" or "Room 3"
+         : p.treatmentArea
+           ? `${p.treatmentArea}`          // e.g., "RESUS 2", "OBS 5", "ISO 1"
+           : undefined
+     }
+   />
+   ```
+
+3. **Result**
+
+   * Name now uses a **two-line clamp** on desktop (no weird truncation).
+   * **EWS (live)**, **ATS**, **Timer**, **Last obs** moved to a calm **meta row**.
+   * A clear **Location** pill (with bed icon) shows **where the patient physically is**: “RESUS 2”, “OBS 5”, “Cubicle 7”, etc.
+   * **StatusStrip** wraps gracefully on the right, so it won’t crush the name.
+
+Want a variant that shows **location color-coding** (e.g., RESUS = red outline, OBS = amber)? I can add a tiny mapper for that too.
