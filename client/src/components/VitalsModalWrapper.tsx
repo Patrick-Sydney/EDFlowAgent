@@ -60,6 +60,9 @@ export function VitalsModalWrapper({
 
   // Debug logging
   console.log("VitalsModalWrapper DEBUG:", { patientId, patientName, open });
+  if (open && !patientId) {
+    console.error("VitalsModalWrapper ERROR: Modal opened but patientId is", patientId, "patientName:", patientName);
+  }
 
   return (
     <ObservationSetModalTouch

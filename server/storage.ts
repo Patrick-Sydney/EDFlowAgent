@@ -49,7 +49,8 @@ export class MemStorage implements IStorage {
   }
 
   async createEncounter(insertEncounter: InsertEncounter): Promise<Encounter> {
-    const id = randomUUID();
+    // Use NHI as stable ID to prevent data loss on server restart
+    const id = insertEncounter.nhi || randomUUID();
     const now = new Date();
     const encounter: Encounter = {
       ...insertEncounter,
@@ -227,7 +228,8 @@ export class MemStorage implements IStorage {
       const arrivalTime = new Date();
       arrivalTime.setHours(arrivalTime.getHours() - (testEncounters.length - index));
       
-      const id = randomUUID();
+      // Use NHI as stable ID to prevent data loss on server restart
+      const id = encounter.nhi || randomUUID();
       const fullEncounter: Encounter = {
         ...encounter,
         id,

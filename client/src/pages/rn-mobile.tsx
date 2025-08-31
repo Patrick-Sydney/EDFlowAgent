@@ -27,7 +27,7 @@ function transformToLanes(encounters: Encounter[]): Lane[] {
       displayName: e.name,
       chiefComplaint: e.complaint,
       waitingFor: undefined, // Would need to calculate from timestamps
-      ews: e.ats, // Using ATS as EWS for now
+      ews: e.ats || undefined, // Using ATS as EWS for now
       roomName: e.room
     };
     
@@ -111,7 +111,8 @@ export default function RNMobilePage() {
       />
       
       {/* Debug logging */}
-      {console.log("RN Mobile render - selectedPatient:", selectedPatient, "obsModalOpen:", obsModalOpen)}
+      {console.log("RN Mobile render - selectedPatient:", selectedPatient, "obsModalOpen:", obsModalOpen) && <></>}
+      {selectedPatient && console.log("RN Mobile selectedPatient.id:", selectedPatient.id, "type:", typeof selectedPatient.id) && <></>}
     </div>
   );
 }
