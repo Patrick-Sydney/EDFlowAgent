@@ -45,9 +45,15 @@ export function RNPatientRow({
       primaryLabel={primaryLabel}
       onPrimary={
         primaryLabel === "Start Triage" ? () => onStartTriage(p) :
-        primaryLabel === "+ Obs" ? () => onOpenObs(p) : undefined
+        primaryLabel === "+ Obs" ? () => {
+          console.log("RNPatientRow onPrimary + Obs clicked for patient:", p);
+          onOpenObs(p);
+        } : undefined
       }
-      onAddObs={() => onOpenObs(p)}
+      onAddObs={(patient) => {
+        console.log("RNPatientRow onAddObs called with patient:", patient, "fallback p:", p);
+        onOpenObs(patient || p);
+      }}
       onOpenVitals={() => onOpenVitals(p)}
       onOpenFull={() => onOpenCard(p)}
     />

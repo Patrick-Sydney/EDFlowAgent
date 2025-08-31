@@ -234,7 +234,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <VitalsCapsuleLive 
             patientId={patientId} 
             onOpenTimeline={() => setOpenTL(true)} 
-            onAddObs={onAddObs} 
+            onAddObs={onAddObs ? () => {
+              const patient = {
+                id: patientId,
+                displayName: name,
+                givenName: name.split(' ')[0] || '',
+                familyName: name.split(' ').slice(1).join(' ') || '',
+                chiefComplaint: complaint,
+                ews: ews,
+                roomName: status
+              };
+              onAddObs(patient);
+            } : undefined} 
           />
 
           {/* Role-specific quick actions */}
@@ -281,7 +292,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         onOpenChange={setOpenTL}
         patientId={patientId || ""}
         patientName={name}
-        onAddObs={onAddObs}
+        onAddObs={onAddObs ? () => {
+          const patient = {
+            id: patientId,
+            displayName: name,
+            givenName: name.split(' ')[0] || '',
+            familyName: name.split(' ').slice(1).join(' ') || '',
+            chiefComplaint: complaint,
+            ews: ews,
+            roomName: status
+          };
+          onAddObs(patient);
+        } : undefined}
       />
     </div>
   );
