@@ -146,6 +146,23 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                     resultsPending: 0 // would need results status from schema
                   }}
                   locationLabel={locationLabel}
+                  alertFlags={{
+                    isolation: encounter.isolationRequired === "true",
+                    sepsisActive: false,
+                    strokePathway: false,
+                    stemiPathway: false,
+                    allergySevere: null
+                  }}
+                  lane={lane}
+                  o2Label={null}
+                  resultsPending={0}
+                  tasks={[]}
+                  triageSummary={encounter.complaint}
+                  assessment={null}
+                  note={null}
+                  onOpenResults={() => console.log("Open results for", encounter.name)}
+                  onQuickOrders={() => console.log("Quick orders for", encounter.name)}
+                  onEditNotes={() => console.log("Edit notes for", encounter.name)}
                 />
               );
             })

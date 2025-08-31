@@ -1,0 +1,471 @@
+Perfect—let’s lock in the **Expanded Patient Card** on desktop.
+
+Below is a **single unified patch** that adds a calm, clinical-first expanded layout and wires it into your existing `PatientCardExpandable`:
+
+* **AlertsRibbon** (only if present)
+* **ActionBar** (role & lane aware; ≤4 primaries)
+* **ClinicalSnapshot** (Chief complaint, **live EWS**, last obs, ATS, O₂)
+* **VitalsCapsuleLive** (+ Timeline/+Obs hooks you already have)
+* **TasksMini** (light list, optional)
+* **ResultsCapsule** (pending results count, optional)
+* **NotesTabsLite** (Triage summary + Notes)
+* Keeps **IdentitySlim** for later in the layout
+
+Save this as `expanded-patient-card-desktop.patch` and apply it.
+
+---
+
+### `expanded-patient-card-desktop.patch`
+
+```diff
+diff --git a/client/src/components/patient/ActionBar.tsx b/client/src/components/patient/ActionBar.tsx
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/client/src/components/patient/ActionBar.tsx
+@@ -0,0 +1,92 @@
++import React from "react";
++import { Button } from "../ui/button";
++
++type Handlers = {
++  onAddObs?: () => void;
++  onAssignRoom?: () => void;
++  onOrderSet?: () => void;
++  onDispo?: () => void;
++  onSeeNow?: () => void;
++};
++
++export default function ActionBar({
++  role, lane, handlers,
++}: {
++  role: "RN" | "Charge" | "MD";
++  lane: string;
++  handlers: Handlers;
++}) {
++  // Pick up to 4 context actions. Keep it simple and explicit.
++  const actions: { key: string; label: string; onClick?: () => void }[] = [];
++
++  if (role === "RN") {
++    actions.push({ key: "obs", label: "+ Obs", onClick: handlers.onAddObs });
++    if (/Waiting|In Triage/i.test(lane)) actions.push({ key: "assign", label: "Assign room", onClick: handlers.onAssignRoom });
++  }
++  if (role === "Charge") {
++    actions.push({ key: "assign", label: "Assign room", onClick: handlers.onAssignRoom });
++    actions.push({ key: "obs", label: "+ Obs", onClick: handlers.onAddObs });
++  }
++  if (role === "MD") {
++    actions.push({ key: "see", label: "See now", onClick: handlers.onSeeNow });
++    actions.push({ key: "orders", label: "Order set", onClick: handlers.onOrderSet });
++    actions.push({ key: "dispo", label: "Disposition", onClick: handlers.onDispo });
++  }
++
++  // De-dup and cap to 4
++  const uniq: Record<string, boolean> = {};
++  const firstFour = actions.filter(a => (uniq[a.key] ? false : (uniq[a.key] = true))).slice(0, 4);
++
++  if (firstFour.length === 0) return null;
++  return (
++    <div className="flex flex-wrap gap-2">
++      {firstFour.map(a => (
++        <Button key={a.key} onClick={a.onClick} className="h-9 rounded-full px-3">{a.label}</Button>
++      ))}
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/AlertsRibbon.tsx b/client/src/components/patient/AlertsRibbon.tsx
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/client/src/components/patient/AlertsRibbon.tsx
+@@ -0,0 +1,67 @@
++import React from "react";
++import { AlertTriangle, ShieldAlert, Activity } from "lucide-react";
++
++export type AlertFlags = {
++  isolation?: boolean;            // true if precautions required
++  sepsisActive?: boolean;
++  strokePathway?: boolean;
++  stemiPathway?: boolean;
++  allergySevere?: string | null;  // label for tooltip
++};
++
++export default function AlertsRibbon({ flags }: { flags?: AlertFlags }) {
++  if (!flags) return null;
++  const items: React.ReactNode[] = [];
++  if (flags.sepsisActive) items.push(
++    <span key="sepsis" className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 text-amber-800 bg-amber-50 px-2 py-0.5 text-xs">
++      <AlertTriangle className="h-3.5 w-3.5" /> Sepsis pathway
++    </span>
++  );
++  if (flags.strokePathway) items.push(
++    <span key="stroke" className="inline-flex items-center gap-1 rounded-full border border-indigo-500/40 text-indigo-800 bg-indigo-50 px-2 py-0.5 text-xs">
++      <Activity className="h-3.5 w-3.5" /> Stroke pathway
++    </span>
++  );
++  if (flags.stemiPathway) items.push(
++    <span key="stemi" className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 text-rose-800 bg-rose-50 px-2 py-0.5 text-xs">
++      <Activity className="h-3.5 w-3.5" /> STEMI pathway
++    </span>
++  );
++  if (flags.isolation) items.push(
++    <span key="iso" className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 text-rose-800 bg-rose-50 px-2 py-0.5 text-xs">
++      <ShieldAlert className="h-3.5 w-3.5" /> Isolation precautions
++    </span>
++  );
++  if (flags.allergySevere) items.push(
++    <span key="allergy" title={flags.allergySevere ?? undefined} className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 text-rose-800 bg-rose-50 px-2 py-0.5 text-xs">
++      <ShieldAlert className="h-3.5 w-3.5" /> Severe allergy
++    </span>
++  );
++  if (items.length === 0) return null;
++  return (
++    <div className="flex flex-wrap gap-2">{items}</div>
++  );
++}
+diff --git a/client/src/components/patient/ClinicalSnapshot.tsx b/client/src/components/patient/ClinicalSnapshot.tsx
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/client/src/components/patient/ClinicalSnapshot.tsx
+@@ -0,0 +1,67 @@
++import React from "react";
++import EWSChipLive from "./EWSChipLive";
++import { useVitalsLast } from "../../stores/vitalsStore";
++
++export default function ClinicalSnapshot({
++  patientId, complaint, ats, o2Label, rightAddon,
++}: {
++  patientId: string | number;
++  complaint?: string;
++  ats?: number | null;
++  o2Label?: string | null;   // e.g. "O₂ 2 L/min"
++  rightAddon?: React.ReactNode; // e.g., tiny trend widget
++}) {
++  const last = useVitalsLast(patientId);
++  const lastStr = last?.t ? new Date(last.t).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—";
++  return (
++    <div className="rounded-xl border p-3">
++      <div className="flex items-start justify-between gap-3">
++        <div className="min-w-0">
++          {complaint && <div className="text-sm font-medium truncate">{complaint}</div>}
++          <div className="mt-0.5 text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
++            <EWSChipLive patientId={patientId} />
++            <span>Last obs {lastStr}</span>
++            {typeof ats === "number" && <span className="rounded-full border px-2 py-0.5">ATS {ats}</span>}
++            {o2Label && <span className="rounded-full border px-2 py-0.5">{o2Label}</span>}
++          </div>
++        </div>
++        {rightAddon ?? null}
++      </div>
++    </div>
++  );
++}
+diff --git b/client/src/components/patient/ResultsCapsule.tsx a/client/src/components/patient/ResultsCapsule.tsx
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/client/src/components/patient/ResultsCapsule.tsx
+@@ -0,0 +1,35 @@
++import React from "react";
++import { FlaskConical } from "lucide-react";
++
++export default function ResultsCapsule({
++  resultsPending = 0,
++  onOpenResults,
++  onQuickOrders,
++}: {
++  resultsPending?: number;
++  onOpenResults?: () => void;
++  onQuickOrders?: () => void;
++}) {
++  return (
++    <div className="rounded-xl border p-3">
++      <div className="flex items-center justify-between">
++        <div className="text-sm font-medium">Results</div>
++        <div className="flex items-center gap-2">
++          <button className="rounded-full border px-3 py-2 text-sm" onClick={onOpenResults}>Open</button>
++          <button className="rounded-full border px-3 py-2 text-sm" onClick={onQuickOrders}>Quick orders</button>
++        </div>
++      </div>
++      <div className="mt-2 text-sm text-muted-foreground inline-flex items-center gap-1">
++        <FlaskConical className="h-4 w-4"/> {resultsPending} pending
++      </div>
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/TasksMini.tsx b/client/src/components/patient/TasksMini.tsx
+new file mode 100644
+index 0000000..5555555
+--- /dev/null
++++ b/client/src/components/patient/TasksMini.tsx
+@@ -0,0 +1,54 @@
++import React from "react";
++import { Timer } from "lucide-react";
++
++export type TaskItem = {
++  id: string;
++  label: string;
++  dueAt?: string | null;         // ISO time
++  status?: "due" | "overdue" | "done";
++};
++
++export default function TasksMini({ tasks = [], onOpen }: { tasks?: TaskItem[]; onOpen?: () => void }) {
++  if (!tasks.length) return null;
++  return (
++    <div className="rounded-xl border p-3">
++      <div className="flex items-center justify-between">
++        <div className="text-sm font-medium">Tasks</div>
++        <button className="rounded-full border px-3 py-2 text-sm" onClick={onOpen}>Open board</button>
++      </div>
++      <div className="mt-2 space-y-1">
++        {tasks.slice(0,5).map(t => {
++          const badge =
++            t.status === "overdue" ? "border-rose-500/40 text-rose-800 bg-rose-50" :
++            t.status === "due"     ? "border-amber-500/40 text-amber-800 bg-amber-50" :
++                                     "border border-muted text-muted-foreground";
++          return (
++            <div key={t.id} className="flex items-center justify-between">
++              <div className="text-sm truncate">{t.label}</div>
++              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${badge}`}>
++                <Timer className="h-3 w-3"/>{t.dueAt ? new Date(t.dueAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "-"}
++              </span>
++            </div>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/NotesTabsLite.tsx b/client/src/components/patient/NotesTabsLite.tsx
+new file mode 100644
+index 0000000..6666666
+--- /dev/null
++++ b/client/src/components/patient/NotesTabsLite.tsx
+@@ -0,0 +1,72 @@
++import React, { useState } from "react";
++
++export default function NotesTabsLite({
++  triageSummary, assessment, note, onEdit,
++}: {
++  triageSummary?: string | null;
++  assessment?: string | null;
++  note?: string | null;
++  onEdit?: () => void;
++}) {
++  const [tab, setTab] = useState<"Triage" | "Assessment" | "Notes">("Triage");
++  return (
++    <div className="rounded-xl border">
++      <div className="flex items-center justify-between px-3 py-2 border-b">
++        <div className="inline-flex gap-1 p-1 rounded-full bg-muted">
++          {(["Triage","Assessment","Notes"] as const).map(t => (
++            <button key={t} onClick={()=>setTab(t)}
++              className={`px-3 py-1 rounded-full text-sm ${tab===t ? "bg-background shadow" : "opacity-70"}`}>
++              {t}
++            </button>
++          ))}
++        </div>
++        <button className="rounded-full border px-3 py-1.5 text-sm" onClick={onEdit}>Edit</button>
++      </div>
++      <div className="p-3 text-sm text-muted-foreground min-h-[64px] whitespace-pre-wrap">
++        {tab === "Triage" && (triageSummary || "—")}
++        {tab === "Assessment" && (assessment || "—")}
++        {tab === "Notes" && (note || "—")}
++      </div>
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 8f0a1b2..7777777 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -1,9 +1,16 @@
+ import React, { useMemo, useState } from "react";
+ import { Badge } from "../ui/badge";
+ import { Button } from "../ui/button";
+ import { Separator } from "../ui/separator";
+ import CollapsedCardHeader from "./CollapsedCardHeader";
+ import StatusStrip, { StatusFlags } from "./StatusStrip";
++import AlertsRibbon, { AlertFlags } from "./AlertsRibbon";
++import ActionBar from "./ActionBar";
++import ClinicalSnapshot from "./ClinicalSnapshot";
++import VitalsCapsuleLive from "./VitalsCapsuleLive";
++import ResultsCapsule from "./ResultsCapsule";
++import TasksMini, { TaskItem } from "./TasksMini";
++import NotesTabsLite from "./NotesTabsLite";
++import IdentitySlim from "./IdentitySlim";
+ 
+ export type ExpandableCardProps = {
+   patientId: string | number;         // live EWS/Last obs
+@@ -24,9 +31,21 @@ export type ExpandableCardProps = {
+   onAssignRoom?: () => void;
+   onAddObs?: () => void;
+   onOpenFull?: () => void;
+   statusFlags?: StatusFlags;         // badges on right (desktop)
+   locationLabel?: string | null;     // e.g., "RESUS 2", "OBS 5", "Cubicle 7"
++  // NEW: for expanded layout
++  alertFlags?: AlertFlags;
++  lane?: string;
++  role?: "RN" | "Charge" | "MD";
++  o2Label?: string | null;
++  resultsPending?: number;
++  tasks?: TaskItem[];
++  triageSummary?: string | null;
++  assessment?: string | null;
++  note?: string | null;
++  onOpenResults?: () => void;
++  onQuickOrders?: () => void;
++  onEditNotes?: () => void;
+ };
+ 
+ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   const {
+@@ -37,7 +56,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+-    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull, statusFlags, locationLabel
++    minVitals, onOpenVitals, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
++    statusFlags, locationLabel,
++    alertFlags, lane = "Room", role = "RN", o2Label, resultsPending = 0, tasks = [],
++    triageSummary, assessment, note, onOpenResults, onQuickOrders, onEditNotes,
+   } = props;
+ 
+   const [open, setOpen] = useState(false);
+   const displayName = name;
+ 
+   return (
+     <div className="rounded-2xl border bg-card p-3">
+       {/* Header row (collapsed view) */}
+@@ -58,14 +86,61 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+         </div>
+       </button>
+ 
+       {/* Expandable content */}
+       <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+-        <div className="space-y-3">
+-          {/* Identity, Vitals, Quick actions, Insights ... (existing sections) */}
+-        </div>
++        <div className="space-y-3">
++          {/* 1) Alerts ribbon (only if any flags present) */}
++          <AlertsRibbon flags={alertFlags} />
++
++          {/* 2) Action Bar (role & lane aware; up to 4 primaries) */}
++          <ActionBar
++            role={role}
++            lane={lane}
++            handlers={{
++              onAddObs,
++              onAssignRoom,
++              onOrderSet,
++              onDispo: onOpenFull,
++              onSeeNow: onOpenFull,
++            }}
++          />
++
++          {/* 3) Clinical Snapshot (complaint, live EWS, last obs, ATS, O₂) */}
++          <ClinicalSnapshot
++            patientId={patientId}
++            complaint={complaint}
++            ats={ats ?? null}
++            o2Label={o2Label ?? null}
++          />
++
++          {/* 4/5) Two-column layout: Vitals + Tasks | Results + Notes + Identity */}
++          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
++            {/* LEFT column */}
++            <div className="space-y-3">
++              <VitalsCapsuleLive
++                patientId={patientId}
++                onOpenTimeline={onOpenVitals}
++                onAddObs={onAddObs}
++              />
++              <TasksMini tasks={tasks} onOpen={onOpenFull} />
++            </div>
++
++            {/* RIGHT column */}
++            <div className="space-y-3">
++              <ResultsCapsule
++                resultsPending={resultsPending}
++                onOpenResults={onOpenResults}
++                onQuickOrders={onQuickOrders}
++              />
++              <NotesTabsLite
++                triageSummary={triageSummary}
++                assessment={assessment}
++                note={note}
++                onEdit={onEditNotes}
++              />
++              <IdentitySlim nhi={nhi} mrn={mrn} alerts={alerts} allergies={allergies} />
++            </div>
++          </div>
++        </div> 
+       </div>
+     </div>
+   );
+ }
+```
+
+---
+
+## How to apply (Replit)
+
+1. Open **Shell**:
+
+   ```bash
+   git checkout -b ui/expanded-patient-card
+   printf "%s\n" 'PASTE THE PATCH CONTENTS HERE' > expanded-patient-card-desktop.patch
+   git apply --reject --whitespace=fix expanded-patient-card-desktop.patch
+   git add -A
+   git commit -m "Expanded Patient Card (desktop): alerts ribbon, action bar, clinical snapshot, vitals/tasks/results/notes layout"
+   ```
+
+2. **Pass the new props** when you render `PatientCardExpandable` (desktop lanes):
+
+```tsx
+<PatientCardExpandable
+  patientId={p.id}
+  name={p.displayName}
+  status={lane.label}
+  timer={p.waitingFor}
+  complaint={p.chiefComplaint}
+  ats={p.ats}
+  ageSex={p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ""}` : p.sex}
+  locationLabel={p.roomLabel ?? p.treatmentArea /* e.g., "RESUS 2" */}
+  statusFlags={{
+    isolation: p.isolation,
+    allergy: !!(p.allergies?.length),
+    oxygen: p.onOxygen === true,
+    sepsis: p.sepsisAlert === true,
+    tasksDue: p.tasksDueCount,
+    resultsPending: p.resultsPendingCount,
+  }}
+  alertFlags={{
+    isolation: p.isolation,
+    sepsisActive: p.sepsisPathway === true,
+    strokePathway: p.strokePathway === true,
+    stemiPathway: p.stemiPathway === true,
+    allergySevere: p.severeAllergyLabel,
+  }}
+  role={currentRole}        // "RN" | "Charge" | "MD"
+  lane={lane.label}
+  o2Label={p.o2Lpm ? `O₂ ${p.o2Lpm} L/min` : null}
+  resultsPending={p.resultsPendingCount}
+  tasks={p.tasksMini}
+  triageSummary={p.triageSummary}
+  assessment={p.assessment}
+  note={p.note}
+  onAddObs={() => openObs(p)}
+  onAssignRoom={() => openAssignRoom(p)}
+  onOrderSet={() => openOrderSets(p)}
+  onOpenResults={() => openResults(p)}
+  onQuickOrders={() => openQuickOrders(p)}
+  onEditNotes={() => openNotesEditor(p)}
+  onOpenVitals={() => openVitalsTimeline(p)}
+  onOpenFull={() => openPatient(p)}
+/>
+```
+
+That’s it. You’ll get:
+
+* **Top fold**: alerts (only if present), a tidy **Action Bar**, and a **Clinical Snapshot** with **live EWS** and “Last obs”.
+* **Two columns**: left for **Vitals & Tasks**; right for **Results, Notes, Identity**.
+* Collapsed card remains as we built: **signal-only**, no CTAs on desktop.
+
+If you want this to also include a tiny **trend arrow** for EWS in the snapshot, I can add a 10-line helper that compares the last two EWS values and shows ↑/↓/→.

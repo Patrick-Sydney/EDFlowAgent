@@ -8,6 +8,13 @@ import CollapsedCardHeader from "./patient/CollapsedCardHeader";
 import VitalsTimelineDrawerLive from "./patient/VitalsTimelineDrawerLive";
 import VitalsCapsuleLive from "./patient/VitalsCapsuleLive";
 import EWSChipLive from "./patient/EWSChipLive";
+import AlertsRibbon, { AlertFlags } from "./patient/AlertsRibbon";
+import ActionBar from "./patient/ActionBar";
+import ClinicalSnapshot from "./patient/ClinicalSnapshot";
+import ResultsCapsule from "./patient/ResultsCapsule";
+import TasksMini, { TaskItem } from "./patient/TasksMini";
+import NotesTabsLite from "./patient/NotesTabsLite";
+import IdentitySlim from "./patient/IdentitySlim";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -161,13 +168,27 @@ export type ExpandableCardProps = {
   onOpenFull?: () => void;       // open full card/drawer if needed
   statusFlags?: StatusFlags;     // NEW: desktop status icons
   locationLabel?: string | null;     // NEW: e.g., "RESUS 2", "OBS 5", "Cubicle 7"
+  // NEW: for expanded layout
+  alertFlags?: AlertFlags;
+  lane?: string;
+  role?: "RN" | "Charge" | "MD";
+  o2Label?: string | null;
+  resultsPending?: number;
+  tasks?: TaskItem[];
+  triageSummary?: string | null;
+  assessment?: string | null;
+  note?: string | null;
+  onOpenResults?: () => void;
+  onQuickOrders?: () => void;
+  onEditNotes?: () => void;
 };
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
     ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
     minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
-    statusFlags, locationLabel
+    statusFlags, locationLabel, alertFlags, lane, o2Label, resultsPending, tasks, triageSummary, assessment, note,
+    onOpenResults, onQuickOrders, onEditNotes
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -225,13 +246,47 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         </div>
       </div>
 
-      {/* Expandable content */}
+      {/* Expandable content - clinical-first layout */}
       <div id={`exp-${name}`} className={`transition-all overflow-hidden ${open? 'mt-3 max-h-[1600px] opacity-100' : 'max-h-0 opacity-0'}`}>
         <div className="space-y-3">
-          {/* Identity */}
-          <IdentityInline legalName={name} ageSex={ageSex} dob={dob ?? undefined} nhi={nhi ?? undefined} mrn={mrn ?? undefined} alerts={alerts} allergies={allergies} onAudit={(e)=>{/* wire to audit */}} />
+          {/* Alerts Ribbon (if any) */}
+          {alertFlags && <AlertsRibbon flags={alertFlags} />}
 
-          {/* Vitals Capsule (restores quick vitals & access to timeline) */}
+          {/* Action Bar (role-based) */}
+          {role && lane && (
+            <ActionBar 
+              role={role} 
+              lane={lane} 
+              handlers={{
+                onAddObs: onAddObs ? () => {
+                  const patient = {
+                    id: patientId,
+                    displayName: name,
+                    givenName: name.split(' ')[0] || '',
+                    familyName: name.split(' ').slice(1).join(' ') || '',
+                    chiefComplaint: complaint,
+                    ews: ews,
+                    roomName: status
+                  };
+                  onAddObs(patient);
+                } : undefined,
+                onAssignRoom,
+                onOrderSet,
+                onDispo: onOpenFull,
+                onSeeNow: onOpenFull
+              }} 
+            />
+          )}
+
+          {/* Clinical Snapshot */}
+          <ClinicalSnapshot 
+            patientId={patientId}
+            complaint={complaint}
+            ats={ats}
+            o2Label={o2Label}
+          />
+
+          {/* Vitals Capsule Live */}
           <VitalsCapsuleLive 
             patientId={patientId} 
             onOpenTimeline={() => setOpenTL(true)} 
@@ -249,41 +304,34 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             } : undefined} 
           />
 
-          {/* Role-specific quick actions */}
-          <div className="rounded-xl border p-3">
-            <div className="text-sm font-medium">Quick actions</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" onClick={handlePrimary}>{primaryLabel}</Button>
-              {role === 'RN' && (
-                <>
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={onAddObs}>+ Obs</Button>
-                </>
-              )}
-              {role === 'Charge' && (
-                <>
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={onAssignRoom}>Assign room</Button>
-                </>
-              )}
-              {role === 'MD' && (
-                <>
-                  <Button size="sm" variant="outline" className="rounded-full" onClick={onOrderSet}>Order set</Button>
-                </>
-              )}
-              <Button size="sm" variant="outline" className="rounded-full" onClick={onOpenFull}>Open details</Button>
-            </div>
-          </div>
+          {/* Tasks Mini (if any) */}
+          {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
 
-          {/* Insights placeholder (lightweight) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border p-3">
-              <div className="text-xs text-muted-foreground">EWS</div>
-              <div className="text-sm">{typeof ews === 'number' ? `Current ${ews}` : '—'}</div>
-            </div>
-            <div className="rounded-xl border p-3">
-              <div className="text-xs text-muted-foreground">Tasks due</div>
-              <div className="text-sm">None</div>
-            </div>
-          </div>
+          {/* Results Capsule (if pending) */}
+          {(resultsPending && resultsPending > 0) && (
+            <ResultsCapsule 
+              resultsPending={resultsPending}
+              onOpenResults={onOpenResults}
+              onQuickOrders={onQuickOrders}
+            />
+          )}
+
+          {/* Notes Tabs Lite */}
+          <NotesTabsLite 
+            triageSummary={triageSummary}
+            assessment={assessment}
+            note={note}
+            onEdit={onEditNotes}
+          />
+
+          {/* Identity Slim (moved to end) */}
+          <IdentitySlim 
+            nhi={nhi ?? undefined} 
+            mrn={mrn ?? undefined} 
+            alerts={alerts} 
+            allergies={allergies} 
+            onAudit={(e)=>{/* wire to audit */}} 
+          />
         </div>
       </div>
 
