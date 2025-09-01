@@ -129,6 +129,10 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
               <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
               <XAxis dataKey="time" tick={{ fontSize: 12 }} />
 
+              {/* Hidden default axis to satisfy any components that fall back to id 0 */}
+              {/* (Recharts uses 0 as the implicit yAxisId when none is provided) */}
+              <YAxis yAxisId={0 as any} hide />
+
               {/* Multi-axes — kept subtle to avoid clutter */}
               <YAxis yAxisId="rate"  domain={domRate}  width={36} tick={{ fontSize: 11 }} label={{ value: "HR/RR", angle: -90, position: "insideLeft", fontSize: 11 }} />
               <YAxis yAxisId="bp"    domain={domBP}    orientation="right" width={36} tick={{ fontSize: 11 }} />

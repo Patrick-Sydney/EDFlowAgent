@@ -1,0 +1,45 @@
+That error means something inside the chart is still trying to use the **default Y-axis id `0`**. Our chart only defined custom ids (`rate`, `bp`, `spo2`, `temp`), so Recharts can’t find `0` and throws.
+
+The simplest, safe fix is to **add a hidden Y-axis with id `0`** so anything that defaults to `0` (e.g., an internal component or a future series you add without a yAxisId) has a home.
+
+Here’s a tiny patch:
+
+---
+
+### `fix-recharts-yaxis-0.patch`
+
+```diff
+diff --git a/client/src/components/obs/VitalsTimelineInline.tsx b/client/src/components/obs/VitalsTimelineInline.tsx
+index 6b7cd00..c7aa9a2 100644
+--- a/client/src/components/obs/VitalsTimelineInline.tsx
++++ b/client/src/components/obs/VitalsTimelineInline.tsx
+@@ -80,10 +80,15 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
+           <ResponsiveContainer width="100%" height="100%">
+             <LineChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
+               <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+               <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+ 
++              {/* Hidden default axis to satisfy any components that fall back to id 0 */}
++              {/* (Recharts uses 0 as the implicit yAxisId when none is provided) */}
++              <YAxis yAxisId={0 as any} hide />
++
+               {/* Multi-axes — kept subtle to avoid clutter */}
+               <YAxis yAxisId="rate"  domain={domRate}  width={36} tick={{ fontSize: 11 }} label={{ value: "HR/RR", angle: -90, position: "insideLeft", fontSize: 11 }} />
+               <YAxis yAxisId="bp"    domain={domBP}    orientation="right" width={36} tick={{ fontSize: 11 }} />
+               <YAxis yAxisId="spo2"  domain={domSpO2}  orientation="right" width={28} hide />
+               <YAxis yAxisId="temp"  domain={domTemp}  orientation="right" width={28} hide />
+```
+
+---
+
+### Apply in Replit
+
+```bash
+git checkout -b fix/recharts-yaxis-0
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > fix-recharts-yaxis-0.patch
+git apply --reject --whitespace=fix fix-recharts-yaxis-0.patch
+git add -A
+git commit -m "Vitals timeline: add hidden default YAxis (id 0) to prevent 'Could not find yAxis 0' errors"
+```
+
+After this, expand a Patient Card again—the inline timeline should render without the “yAxis 0” crash. If you still see the error, it means a `Line` somewhere is missing a `yAxisId`; I can harden it by enforcing ids on every series you render, but this hidden axis usually resolves it cleanly.
