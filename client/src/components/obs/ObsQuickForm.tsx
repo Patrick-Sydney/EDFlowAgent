@@ -113,9 +113,9 @@ function FingerSlider({
         />
       </div>
       <div className="mt-2 flex items-center justify-between">
-        <button className="rounded-full border px-3 py-1 text-sm"
+        <button className="hit-btn text-base"
           onClick={()=>{ const next=(value ?? last ?? (min+max)/2)-step; onChange(Number(Math.max(min,next).toFixed(2))); setTouched(true); }}>−</button>
-        <button className="rounded-full border px-3 py-1 text-sm"
+        <button className="hit-btn text-base"
           onClick={()=>{ const next=(value ?? last ?? (min+max)/2)+step; onChange(Number(Math.min(max,next).toFixed(2))); setTouched(true); }}>+</button>
       </div>
     </div>

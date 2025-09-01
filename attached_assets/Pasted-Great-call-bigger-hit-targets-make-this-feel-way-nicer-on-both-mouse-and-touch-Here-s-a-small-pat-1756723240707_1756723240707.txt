@@ -1,0 +1,142 @@
+Great call—bigger hit targets make this feel way nicer on both mouse and touch. Here’s a **small patch** that:
+
+* Increases the **range input hit area to 44 px** (Apple/Google guideline)
+* Makes the **thumb 32 px** and track 16 px (keeps the calm look)
+* Enlarges the **+ / − buttons to 40×40 px** with clearer press states
+* Keeps our first-tap behavior and smooth drag
+
+---
+
+### `obs-slider-hit-target.patch`
+
+```diff
+diff --git a/client/src/components/obs/obs-slider.css b/client/src/components/obs/obs-slider.css
+index 2aa1aac..6db77e1 100644
+--- a/client/src/components/obs/obs-slider.css
++++ b/client/src/components/obs/obs-slider.css
+@@ -1,22 +1,27 @@
+ /* Calm finger-first range control */
+ .finger-range {
+   -webkit-appearance: none;
+   appearance: none;
+   width: 100%;
+   background: transparent;
+-  height: 28px;
++  /* Increase the interactive hit area (recommended ~44px) */
++  height: 44px;
+   position: relative;
+-  touch-action: none;
++  touch-action: none; /* don’t scroll while sliding */
+ }
+ .finger-range:focus { outline: none; }
+ 
+ /* Track */
+ .finger-range::-webkit-slider-runnable-track,
+ .finger-range::-moz-range-track {
+-  height: 14px;
++  /* Slightly taller track for visual affordance */
++  height: 16px;
+   border-radius: 999px;
+   background: linear-gradient(90deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06));
+   border: 1px solid rgba(0,0,0,0.08);
+ }
+ 
+ /* Thumb */
+ .finger-range::-webkit-slider-thumb,
+ .finger-range::-moz-range-thumb {
+   -webkit-appearance: none;
+   appearance: none;
+-  width: 28px; height: 28px; border-radius: 999px;
++  /* Larger thumb to match the bigger hit area */
++  width: 32px; height: 32px; border-radius: 999px;
+   background: white; border: 1px solid rgba(0,0,0,0.15);
+   box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+   transition: box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease;
+-  margin-top: -7px; /* center on 14px track (webkit) */
++  /* Center the 32px thumb on the 16px track */
++  margin-top: -8px; /* webkit */
+ }
+ 
+ /* Hide until touched/has value */
+ .finger-range[data-hasvalue="false"]::-webkit-slider-thumb,
+ .finger-range[data-hasvalue="false"]::-moz-range-thumb { opacity: 0; }
+@@ -33,3 +38,14 @@
+ .finger-range:focus-visible::-webkit-slider-thumb,
+ .finger-range:focus-visible::-moz-range-thumb {
+   box-shadow: 0 0 0 6px rgba(59,130,246,.25), 0 1px 2px rgba(0,0,0,.08);
+ }
++
++/* Bigger +/- controls (shared utility) */
++.hit-btn {
++  width: 40px;
++  height: 40px;
++  display: grid;
++  place-items: center;
++  border-radius: 9999px;
++  border: 1px solid rgba(0,0,0,0.12);
++  transition: background-color 120ms ease, transform 60ms ease;
++}
++.hit-btn:active { transform: scale(0.98); }
+diff --git a/client/src/components/obs/ObsQuickForm.tsx b/client/src/components/obs/ObsQuickForm.tsx
+index a7c8f10..d3cbb55 100644
+--- a/client/src/components/obs/ObsQuickForm.tsx
++++ b/client/src/components/obs/ObsQuickForm.tsx
+@@ -116,14 +116,14 @@ function FingerSlider({
+       </div>
+       <div className="relative">
+         {/* Invisible overlay captures ONLY the very first drag when no value/last exist.
+             After that, it becomes inert so the native range input handles drag. */}
+         <div
+           ref={overlayRef}
+           className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
+           style={{ touchAction: "none" }}
+           aria-hidden="true"
+         />
+         <input
+           ref={inputRef}
+           type="range"
+           className="finger-range z-0"
+           min={min}
+           max={max}
+           step={step}
+           value={visual}
+           onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
+           onPointerDown={() => setActive(true)}
+           onPointerUp={() => setActive(false)}
+           data-active={active ? "true" : "false"}
+           data-hasvalue={touched ? "true" : "false"}
+         />
+       </div>
+-      <div className="mt-2 flex items-center justify-between">
+-        <button className="rounded-full border px-3 py-1 text-sm"
++      <div className="mt-2 flex items-center justify-between">
++        <button className="hit-btn text-base"
+           onClick={()=>{ const next=(value ?? last ?? (min+max)/2)-step; onChange(Number(Math.max(min,next).toFixed(2))); setTouched(true); }}>−</button>
+-        <button className="rounded-full border px-3 py-1 text-sm"
++        <button className="hit-btn text-base"
+           onClick={()=>{ const next=(value ?? last ?? (min+max)/2)+step; onChange(Number(Math.min(max,next).toFixed(2))); setTouched(true); }}>+</button>
+       </div>
+     </div>
+   );
+ }
+```
+
+---
+
+## Apply in Replit
+
+```bash
+git checkout -b ui/obs-hit-targets
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > obs-slider-hit-target.patch
+git apply --reject --whitespace=fix obs-slider-hit-target.patch
+git add -A
+git commit -m "Obs drawer: enlarge slider hit area (44px), 32px thumb, 16px track; 40x40 +/- buttons"
+```
+
+### Quick checks
+
+* You can **tap anywhere on the slider area** comfortably and drag without grabbing pixel-perfect spots.
+* The **+ / −** controls feel easy to hit with a thumb (40×40) and give a tiny press feedback.
+* EWS still updates live.
+
+If you want the **entire card** (label/value header) to also act as a tap-to-place zone, I can add a lightweight “tap plate” that maps any click in that tile to the nearest slider value—just say the word.

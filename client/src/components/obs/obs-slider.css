@@ -4,16 +4,18 @@
   appearance: none;
   width: 100%;
   background: transparent;
-  height: 28px;
-  touch-action: none; /* smooth finger drag; don't scroll page while sliding */
+  /* Increase the interactive hit area (recommended ~44px) */
+  height: 44px;
   position: relative;
+  touch-action: none; /* don't scroll while sliding */
 }
 .finger-range:focus { outline: none; }
 
 /* Track */
 .finger-range::-webkit-slider-runnable-track,
 .finger-range::-moz-range-track {
-  height: 14px;
+  /* Slightly taller track for visual affordance */
+  height: 16px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06));
   border: 1px solid rgba(0,0,0,0.08);
@@ -24,11 +26,13 @@
 .finger-range::-moz-range-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 28px; height: 28px; border-radius: 999px;
+  /* Larger thumb to match the bigger hit area */
+  width: 32px; height: 32px; border-radius: 999px;
   background: white; border: 1px solid rgba(0,0,0,0.15);
   box-shadow: 0 1px 2px rgba(0,0,0,0.08);
   transition: box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease;
-  margin-top: -7px; /* center on 14px track (webkit) */
+  /* Center the 32px thumb on the 16px track */
+  margin-top: -8px; /* webkit */
 }
 
 /* Hide until touched/has value */
@@ -47,3 +51,15 @@
 .finger-range:focus-visible::-moz-range-thumb {
   box-shadow: 0 0 0 6px rgba(59,130,246,.25), 0 1px 2px rgba(0,0,0,.08);
 }
+
+/* Bigger +/- controls (shared utility) */
+.hit-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(0,0,0,0.12);
+  transition: background-color 120ms ease, transform 60ms ease;
+}
+.hit-btn:active { transform: scale(0.98); }
