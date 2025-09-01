@@ -175,4 +175,9 @@
   .no-scrollbar::-webkit-scrollbar { 
     display: none; 
   }
+  
+  /* Z-index layering for clinical workflows */
+  .drawer-root { 
+    z-index: 90 !important; /* higher than patient overlay z-[80] */
+  }
 }
