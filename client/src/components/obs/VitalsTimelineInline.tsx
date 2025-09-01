@@ -6,8 +6,7 @@ import {
 import { vitalsStore } from "../../stores/vitalsStore";
 
 type Obs = {
-  t: string;         // ISO-ish time
-  patientId?: string | number;
+  t: string;         // ISO time
   rr?: number;       // breaths/min
   hr?: number;       // bpm
   sbp?: number;      // mmHg (systolic)
@@ -17,119 +16,28 @@ type Obs = {
   source?: "triage" | "obs" | "device";
 };
 
-// --- utilities --------------------------------------------------------------
-const todayISO = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD
-const toISO = (ms:number) => new Date(ms).toISOString();
-
-function coerceMs(x:any): number | undefined {
-  if (x == null) return undefined;
-  if (x instanceof Date) return x.getTime();
-  if (typeof x === "number") return x > 1e12 ? x : x*1000; // allow seconds
-  if (typeof x === "string") {
-    // ISO first
-    const iso = Date.parse(x);
-    if (!Number.isNaN(iso)) return iso;
-    // Some stores keep "12:18 AM" (no date) → assume today at that time
-    const maybeTime = Date.parse(`${todayISO()} ${x}`);
-    if (!Number.isNaN(maybeTime)) return maybeTime;
-  }
-  return undefined;
-}
-
-const coerceN = (x:any) => (x===null || x===undefined || x==="" ? undefined : Number(x));
-
-// Tolerant reader + AUTO-DISCOVERY over vitalsStore
-function getAllVitals(patientId: string | number): Obs[] {
-  const pidStr = String(patientId);
-  const pidNum = Number(pidStr);
-  const norm = (r: any): Obs | null => {
-    if (!r) return null;
-    const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date ?? r.obsAt ?? r.observedAt);
-    if (ms == null) return null;
-    const sbpFromObj =
-      typeof r.bp === "object" && r.bp
-        ? r.bp.sbp ?? r.bp.sys ?? r.bp.systolic
-        : undefined;
-    const out: Obs = {
-      t: toISO(ms),
-      patientId: r.patientId ?? r.pid ?? r.subjectId ?? r.patient ?? r.patient_id,
-      rr:  coerceN(r.rr ?? r.resp ?? r.respiratory ?? r.respiratoryRate ?? r.rr_bpm),
-      hr:  coerceN(r.hr ?? r.pulse ?? r.heartRate ?? r.hr_bpm),
-      sbp: coerceN(r.sbp ?? r.sys ?? r.systolic ?? r.bp ?? sbpFromObj),
-      temp: coerceN(r.temp ?? r.temperature ?? r.temp_c),
-      spo2: coerceN(r.spo2 ?? r.SpO2 ?? r.spo2Pct ?? r.oxygenSaturation),
-      ews: coerceN(r.ews ?? r.news ?? r.score),
-      source: r.source,
-    };
-    // drop rows with no vitals at all
-    if (out.rr==null && out.hr==null && out.sbp==null && out.temp==null && out.spo2==null) return null;
-    return out;
-  };
-  const fromAny = (val: any): Obs[] => {
-    if (!val) return [];
-    if (Array.isArray(val)) return val.map(norm).filter(Boolean) as Obs[];
-    if (typeof val === "object") {
-      // object keyed by time
-      return Object.values(val).map(norm).filter(Boolean) as Obs[];
-    }
-    return [];
-  };
-  // Try actual vitalsStore API methods first
-  try {
-    // @ts-ignore - Check for list method (our actual store method)
-    if (typeof vitalsStore?.list === "function") {
-      const data = vitalsStore.list(pidStr);
-      console.log("VitalsTimeline: using vitalsStore.list for", pidStr, "found", data?.length || 0, "points:", data);
-      return fromAny(data);
-    }
-    
-    // @ts-ignore - Common fallbacks
-    if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
-    if (typeof vitalsStore?.getSeries === "function") return fromAny(vitalsStore.getSeries(pidStr));
-    if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
-  } catch (e) {
-    console.log("VitalsTimeline: Error accessing vitalsStore methods:", e);
-  }
-  
-  console.log("VitalsTimeline: No data found for patient", pidStr);
+function getAllVitals(patientId: string): Obs[] {
+  // Be liberal in what we accept from the store
+  // Try common method names before falling back.
+  // @ts-ignore
+  if (typeof vitalsStore?.getAll === "function") return vitalsStore.getAll(patientId) as Obs[];
+  // @ts-ignore
+  if (typeof vitalsStore?.getSeries === "function") return vitalsStore.getSeries(patientId) as Obs[];
+  // @ts-ignore
+  if (typeof vitalsStore?.all === "function") return vitalsStore.all(patientId) as Obs[];
+  // @ts-ignore
+  if (vitalsStore?.data && vitalsStore.data[patientId]) return vitalsStore.data[patientId] as Obs[];
   return [];
 }
 
-// Reactive-ish hook: listen for custom events + short poll fallback
-function useVitalsSeries(patientId: string | number, pollMs = 800) {
-  const [rows, setRows] = useState<Obs[]>(() => {
-    console.log("VitalsTimeline: Initial fetch for patient", patientId);
-    return getAllVitals(patientId);
-  });
-  
+// Very light polling fallback so timeline updates even if the store is not reactive
+function useVitalsSeries(patientId: string, pollMs = 1500) {
+  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
   useEffect(() => {
-    console.log("VitalsTimeline: useEffect triggered for patient", patientId);
-    const newRows = getAllVitals(patientId);
-    console.log("VitalsTimeline: Setting rows", newRows);
-    setRows(newRows);
-    
-    const id = window.setInterval(() => {
-      const polledRows = getAllVitals(patientId);
-      console.log("VitalsTimeline: Polling update for", patientId, "found", polledRows.length, "rows");
-      setRows(polledRows);
-    }, pollMs);
-    
-    const onB = (e: Event) => {
-      // Optional filter by patient id if detail is present
-      const det = (e as CustomEvent)?.detail;
-      if (!det || det.patientId == null || String(det.patientId) === String(patientId)) {
-        console.log("VitalsTimeline: Event-driven update for", patientId);
-        setRows(getAllVitals(patientId));
-      }
-    };
-    window.addEventListener("vitals:updated", onB as EventListener);
-    return () => {
-      window.clearInterval(id);
-      window.removeEventListener("vitals:updated", onB as EventListener);
-    };
+    setRows(getAllVitals(patientId));
+    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
+    return () => window.clearInterval(id);
   }, [patientId, pollMs]);
-  
-  console.log("VitalsTimeline: useVitalsSeries returning", rows.length, "rows for patient", patientId);
   return rows;
 }
 
@@ -182,9 +90,6 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
 
   const hasAny = data.length > 0;
 
-  // Debug logging for troubleshooting
-  console.log("VitalsTimelineInline render:", { patientId: pid, hasAny, dataLength: data.length, rawLength: raw.length });
-
   return (
     <div className={`rounded-2xl border p-3 ${className ?? ""}`}>
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -214,24 +119,27 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
         {!hasAny ? (
           <div className="h-full grid place-items-center text-sm text-muted-foreground">
             No observations in the last {windowHours}h.
-            <div className="text-xs mt-2 opacity-75">
-              Raw data: {raw.length} points • Patient ID: {pid}
-            </div>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
               <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-              <YAxis yAxisId="left" domain={[0, 200]} width={36} tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="right" domain={[70, 220]} orientation="right" width={36} tick={{ fontSize: 11 }} />
 
-              {show.rr   && <Line type="monotone" yAxisId="left"  dataKey="rr"   name="RR"   stroke="#4b9fd6" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
-              {show.hr   && <Line type="monotone" yAxisId="left"  dataKey="hr"   name="HR"   stroke="#6f7fb2" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
-              {show.sbp  && <Line type="monotone" yAxisId="right" dataKey="sbp"  name="SBP"  stroke="#6aa3a1" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
-              {show.spo2 && <Line type="monotone" yAxisId="left"  dataKey="spo2" name="SpO₂" stroke="#7aa386" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
-              {show.temp && <Line type="monotone" yAxisId="left"  dataKey="temp" name="Temp" stroke="#a38b6b" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
+              {/* Multi-axes — kept subtle to avoid clutter */}
+              <YAxis yAxisId="rate"  domain={domRate}  width={36} tick={{ fontSize: 11 }} label={{ value: "HR/RR", angle: -90, position: "insideLeft", fontSize: 11 }} />
+              <YAxis yAxisId="bp"    domain={domBP}    orientation="right" width={36} tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="spo2"  domain={domSpO2}  orientation="right" width={28} hide />
+              <YAxis yAxisId="temp"  domain={domTemp}  orientation="right" width={28} hide />
 
+              {/* Calm palette (no alarm colors) */}
+              {show.rr   && <Line type="monotone" yAxisId="rate" dataKey="rr"   name="RR"   stroke="#4b9fd6" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
+              {show.hr   && <Line type="monotone" yAxisId="rate" dataKey="hr"   name="HR"   stroke="#6f7fb2" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
+              {show.sbp  && <Line type="monotone" yAxisId="bp"   dataKey="sbp"  name="SBP"  stroke="#6aa3a1" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
+              {show.spo2 && <Line type="monotone" yAxisId="spo2" dataKey="spo2" name="SpO₂" stroke="#7aa386" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
+              {show.temp && <Line type="monotone" yAxisId="temp" dataKey="temp" name="Temp" stroke="#a38b6b" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
+
+              {/* EWS ≥5 markers */}
               {markers.map(m => (
                 <ReferenceLine key={`${m.idx}-${m.time}`} x={m.time} stroke="#999" strokeDasharray="4 4" opacity={0.6} />
               ))}
@@ -254,8 +162,9 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
         )}
       </div>
 
+      {/* Tiny footnote for marker semantics (optional, unobtrusive) */}
       <div className="mt-2 text-[11px] text-muted-foreground">
-        {hasAny ? "Dashed lines indicate times where EWS ≥ 5." : "Add observations using the + Obs button to see trends here."}
+        Dashed lines indicate times where EWS ≥ 5.
       </div>
     </div>
   );
