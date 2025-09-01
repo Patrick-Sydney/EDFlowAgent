@@ -5,6 +5,7 @@
   width: 100%;
   background: transparent;
   height: 28px;
+  touch-action: none; /* smooth finger drag; don't scroll page while sliding */
   position: relative;
 }
 .finger-range:focus { outline: none; }

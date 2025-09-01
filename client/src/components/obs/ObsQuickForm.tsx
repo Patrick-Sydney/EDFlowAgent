@@ -34,7 +34,8 @@ function FingerSlider({
   // First-tap places the thumb under the finger
   useEffect(()=>{
     const el=overlayRef.current;
-    if(!el || value!=null) return;
+    // Only arm overlay when no value AND no last value (true first obs)
+    if(!el || value!=null || last!=null) return;
     const onDown=(e:PointerEvent)=>{
       const input=inputRef.current; if(!input) return;
       const r=input.getBoundingClientRect();
@@ -43,11 +44,12 @@ function FingerSlider({
       const v=min+clamped*(max-min);
       const snapped=Math.round(v/step)*step;
       onChange(Number(snapped.toFixed(2)));
-      setTouched(true); setActive(true); input.focus();
+      setTouched(true);   // disables overlay for subsequent drags
+      setActive(true); input.focus();
     };
     el.addEventListener("pointerdown",onDown);
     return ()=> el.removeEventListener("pointerdown",onDown);
-  },[min,max,step,onChange,value]);
+  },[min,max,step,onChange,value,last]);
 
   const delta = last!=null && value!=null ? value-last : undefined;
   const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta)}`:`Δ −${Math.abs(delta)}`) : undefined;
@@ -63,7 +65,14 @@ function FingerSlider({
         </div>
       </div>
       <div className="relative">
-        <div ref={overlayRef} className="absolute inset-0 z-[1]" />
+        {/* Invisible overlay captures ONLY the very first tap when no value exists.
+            After first touch (or if a last value exists), it becomes inert so the
+            native range input handles drag normally. */}
+        <div
+          ref={overlayRef}
+          className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
+          aria-hidden="true"
+        />
         <input
           ref={inputRef}
           type="range"

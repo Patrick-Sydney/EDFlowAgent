@@ -1,0 +1,104 @@
+You’re right—the slider isn’t draggable because our invisible “first-tap overlay” is sitting **on top of the range input** and keeps intercepting all pointer events. Quick fix: only allow the overlay to capture the **very first** tap (when there’s no prior value), then turn its pointer-events off. I’ve also added `touch-action: none;` to make touch dragging smoother.
+
+Here’s a tiny patch you can drop in:
+
+---
+
+### `fix-finger-slider-drag.patch`
+
+```diff
+diff --git a/client/src/components/obs/obs-slider.css b/client/src/components/obs/obs-slider.css
+index 1b2c3d4..9feeeef 100644
+--- a/client/src/components/obs/obs-slider.css
++++ b/client/src/components/obs/obs-slider.css
+@@ -6,6 +6,7 @@
+   width: 100%;
+   background: transparent;
+   height: 28px; /* hit target */
++  touch-action: none; /* smooth finger drag; don’t scroll page while sliding */
+   position: relative;
+ }
+ .finger-range:focus { outline: none; }
+diff --git a/client/src/components/obs/ObsQuickForm.tsx b/client/src/components/obs/ObsQuickForm.tsx
+index 7e8f9a0..21a4bcd 100644
+--- a/client/src/components/obs/ObsQuickForm.tsx
++++ b/client/src/components/obs/ObsQuickForm.tsx
+@@ -37,7 +37,7 @@ function FingerSlider({
+ }){
+   const [active,setActive]=useState(false);
+-  const [touched,setTouched]=useState<boolean>(value!=null || last!=null);
++  const [touched,setTouched]=useState<boolean>(value!=null || last!=null); // controls overlay & thumb
+   const inputRef=useRef<HTMLInputElement|null>(null);
+   const overlayRef=useRef<HTMLDivElement|null>(null);
+ 
+@@ -45,9 +45,10 @@ function FingerSlider({
+ 
+   // First-tap places the thumb under the finger
+   useEffect(()=>{
+     const el=overlayRef.current;
+-    if(!el || value!=null) return;
++    // Only arm overlay when no value AND no last value (true first obs)
++    if(!el || value!=null || last!=null) return;
+     const onDown=(e:PointerEvent)=>{
+       const input=inputRef.current; if(!input) return;
+       const r=input.getBoundingClientRect();
+       const ratio=(e.clientX-r.left)/r.width;
+@@ -57,17 +58,22 @@ function FingerSlider({
+       const snapped=Math.round(v/step)*step;
+       onChange(Number(snapped.toFixed(2)));
+-      setTouched(true);
++      setTouched(true);   // disables overlay for subsequent drags
+       setActive(true); input.focus();
+     };
+     el.addEventListener("pointerdown",onDown);
+     return ()=> el.removeEventListener("pointerdown",onDown);
+-  },[min,max,step,onChange,value]);
++  },[min,max,step,onChange,value,last]);
+@@ -80,8 +86,16 @@ function FingerSlider({
+       </div>
+       <div className="relative">
+-        {/* invisible overlay to capture first tap and place thumb */}
+-        <div ref={overlayRef} className="absolute inset-0 z-[1]" />
++        {/* Invisible overlay captures ONLY the very first tap when no value exists.
++            After first touch (or if a last value exists), it becomes inert so the
++            native range input handles drag normally. */}
++        <div
++          ref={overlayRef}
++          className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
++          aria-hidden="true"
++        />
+         <input
+           ref={inputRef}
+           type="range"
+           className="finger-range z-0"
+           min={min}
+           max={max}
+           step={step}
+           value={visual}
+-          onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
++          onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
+           onPointerDown={() => setActive(true)}
+           onPointerUp={() => setActive(false)}
+           data-active={active ? "true" : "false"}
+           data-hasvalue={touched ? "true" : "false"}
+         />
+```
+
+---
+
+## How to apply (Replit)
+
+1. Open the Shell and run:
+
+```bash
+git checkout -b fix/obs-slider-drag
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > fix-finger-slider-drag.patch
+git apply --reject --whitespace=fix fix-finger-slider-drag.patch
+git add -A
+git commit -m "Obs drawer: enable drag by disabling first-tap overlay after touch; add touch-action none"
+```
+
+2. Refresh your preview.
+   Now you should be able to **drag the thumb with mouse or touch**. First-tap-to-place still works for true first observations; once a value exists (or a “Last” value is present), the overlay turns off and the native range control handles dragging smoothly.
+
+If you still see odd behavior on iOS Safari, tell me the device/version—we can add a small WebKit-specific tweak (e.g., `-webkit-tap-highlight-color: transparent` or adjusting thumb margins).
