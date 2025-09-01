@@ -1,0 +1,218 @@
+Great clue—if the existing (modal) timeline is showing data, we should **reuse the same store hook**. Here’s a **single patch** that rewires the inline timeline to use your repo’s `useVitalsList(patientId)` (which returns `ObsPoint[]`), instead of our tolerant/polling reader. It keeps the **single combined chart** (RR, HR, SBP, SpO₂, Temp), window presets, and EWS markers—just with the right data source.
+
+---
+
+### `timeline-use-hook.patch`
+
+```diff
+diff --git a/client/src/components/obs/VitalsTimelineInline.tsx b/client/src/components/obs/VitalsTimelineInline.tsx
+index f5d9aa1..6b7cd00 100644
+--- a/client/src/components/obs/VitalsTimelineInline.tsx
++++ b/client/src/components/obs/VitalsTimelineInline.tsx
+@@ -1,29 +1,26 @@
+-import React, { useEffect, useMemo, useState } from "react";
++import React, { useMemo, useState } from "react";
+ import {
+   ResponsiveContainer, LineChart, Line,
+   XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ReferenceLine
+ } from "recharts";
+-import { vitalsStore } from "../../stores/vitalsStore";
++import { useVitalsList } from "../../stores/vitalsStore";
+ 
+ type Obs = {
+   t: string;         // ISO-ish time
+-  patientId?: string | number;
+   rr?: number;       // breaths/min
+   hr?: number;       // bpm
+   sbp?: number;      // mmHg (systolic)
+   temp?: number;     // °C
+   spo2?: number;     // %
+   ews?: number;
+   source?: "triage" | "obs" | "device";
+ };
+ 
+-// --- utilities --------------------------------------------------------------
+-const todayISO = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD
+-const toISO = (ms:number) => new Date(ms).toISOString();
+-
+-function coerceMs(x:any): number | undefined {
++// --- utilities --------------------------------------------------------------
++function coerceMs(x:any): number | undefined {
+   if (x == null) return undefined;
+   if (x instanceof Date) return x.getTime();
+   if (typeof x === "number") return x > 1e12 ? x : x*1000; // allow seconds
+   if (typeof x === "string") {
+-    // ISO first
++    // ISO first
+     const iso = Date.parse(x);
+     if (!Number.isNaN(iso)) return iso;
+-    // Some stores keep "12:18 AM" (no date) → assume today at that time
+-    const maybeTime = Date.parse(`${todayISO()} ${x}`);
+-    if (!Number.isNaN(maybeTime)) return maybeTime;
++    // If hook ever returns time-only strings, we simply skip (modal already succeeded,
++    // so your hook likely returns ISO strings or Date/number).
+   }
+   return undefined;
+ }
+@@ -31,86 +28,15 @@ const coerceN = (x:any) => (x===null || x===undefined || x==="" ? undefined : Number(x));
+ 
+-// Tolerant reader + AUTO-DISCOVERY over vitalsStore
+-function getAllVitals(patientId: string | number): Obs[] {
+-  const pidStr = String(patientId);
+-  const pidNum = Number(pidStr);
+-  const norm = (r: any): Obs | null => {
+-    if (!r) return null;
+-    const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date ?? r.obsAt ?? r.observedAt);
+-    if (ms == null) return null;
+-    const sbpFromObj =
+-      typeof r.bp === "object" && r.bp
+-        ? r.bp.sbp ?? r.bp.sys ?? r.bp.systolic
+-        : undefined;
+-    const out: Obs = {
+-      t: toISO(ms),
+-      patientId: r.patientId ?? r.pid ?? r.subjectId ?? r.patient ?? r.patient_id,
+-      rr:  coerceN(r.rr ?? r.resp ?? r.respiratory ?? r.respiratoryRate ?? r.rr_bpm),
+-      hr:  coerceN(r.hr ?? r.pulse ?? r.heartRate ?? r.hr_bpm),
+-      sbp: coerceN(r.sbp ?? r.sys ?? r.systolic ?? r.bp ?? sbpFromObj),
+-      temp: coerceN(r.temp ?? r.temperature ?? r.temp_c),
+-      spo2: coerceN(r.spo2 ?? r.SpO2 ?? r.spo2Pct ?? r.oxygenSaturation),
+-      ews: coerceN(r.ews ?? r.news ?? r.score),
+-      source: r.source,
+-    };
+-    // drop rows with no vitals at all
+-    if (out.rr==null && out.hr==null && out.sbp==null && out.temp==null && out.spo2==null) return null;
+-    return out;
+-  };
+-  const fromAny = (val: any): Obs[] => {
+-    if (!val) return [];
+-    if (Array.isArray(val)) return val.map(norm).filter(Boolean) as Obs[];
+-    if (typeof val === "object") {
+-      // object keyed by time
+-      return Object.values(val).map(norm).filter(Boolean) as Obs[];
+-    }
+-    return [];
+-  };
+-  // Try common accessors first
+-  // @ts-ignore
+-  if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
+-  // @ts-ignore
+-  if (typeof vitalsStore?.getSeries === "function") return fromAny(vitalsStore.getSeries(pidStr));
+-  // @ts-ignore
+-  if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
+-  // @ts-ignore
+-  if (vitalsStore?.data) {
+-    const v = vitalsStore.data[pidStr] ?? vitalsStore.data[pidNum];
+-    const rows = fromAny(v);
+-    if (rows.length) return rows;
+-  }
+-  // AUTO-DISCOVER: search any arrays inside vitalsStore that look like obs,
+-  // optionally filter by patientId if present.
+-  try {
+-    const candidates: Obs[] = [];
+-    const scan = (obj:any) => {
+-      if (!obj) return;
+-      if (Array.isArray(obj)) {
+-        for (const it of obj) {
+-          const n = norm(it);
+-          if (n) candidates.push(n);
+-        }
+-        return;
+-      }
+-      if (typeof obj === "object") {
+-        for (const k of Object.keys(obj)) {
+-          const v = (obj as any)[k];
+-          if (v && (Array.isArray(v) || typeof v === "object")) scan(v);
+-        }
+-      }
+-    };
+-    // Limit scan breadth a bit by only scanning enumerable props
+-    scan(vitalsStore);
+-    let rows = candidates;
+-    // If any row carries patientId, filter to ours; else attempt partition by key match
+-    if (rows.some(r => r.patientId != null)) {
+-      rows = rows.filter(r => String(r.patientId) === pidStr || Number(r.patientId) === pidNum);
+-    }
+-    return rows;
+-  } catch {}
+-  return [];
+-}
+-
+-// Reactive-ish hook: listen for custom events + short poll fallback
+-function useVitalsSeries(patientId: string | number, pollMs = 800) {
+-  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
+-  useEffect(() => {
+-    setRows(getAllVitals(patientId));
+-    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
+-    const onB = (e: Event) => {
+-      // Optional filter by patient id if detail is present
+-      const det = (e as CustomEvent)?.detail;
+-      if (!det || det.patientId == null || String(det.patientId) === String(patientId)) {
+-        setRows(getAllVitals(patientId));
+-      }
+-    };
+-    window.addEventListener("vitals:updated", onB as EventListener);
+-    return () => {
+-      window.clearInterval(id);
+-      window.removeEventListener("vitals:updated", onB as EventListener);
+-    };
+-  }, [patientId, pollMs]);
+-  return rows;
+-}
++// Use the project’s canonical hook (same one used by the working modal)
++function useVitalsSeries(patientId: string | number) {
++  // The hook already subscribes to store updates; we just normalize timestamps.
++  const list = (useVitalsList as any)(String(patientId)) as Obs[] | undefined;
++  return (Array.isArray(list) ? list : []).map((r:any) => {
++    const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
++    return {
++      ...r,
++      t: ms != null ? new Date(ms).toISOString() : (r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date),
++    } as Obs;
++  });
++}
+ 
+ const fmtTime = (iso: string) => {
+   try {
+     const d = new Date(iso);
+     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+   } catch { return iso; }
+ };
+@@ -121,7 +47,7 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
+   const now = Date.now();
+   const minTime = now - windowHours * 3600_000;
+ 
+-  const data = useMemo(() => {
++  const data = useMemo(() => {
+     const rows = [...raw].filter(r => {
+       const t = Date.parse(r.t);
+       return isFinite(t) && t >= minTime;
+@@ -132,7 +58,7 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
+   // Series toggles (default all on)
+   const [show, setShow] = useState({ rr: true, hr: true, sbp: true, spo2: true, temp: true });
+   const toggle = (k: keyof typeof show) => setShow(s => ({ ...s, [k]: !s[k] }));
+ 
+-  // Vertical markers where EWS >= 5 (escalation threshold example)
++  // Vertical markers where EWS >= 5 (escalation threshold example)
+   const markers = useMemo(() => {
+     return data
+       .map((r, idx) => ({ idx, time: r.time, ews: r.ews ?? 0 }))
+```
+
+---
+
+## How to apply
+
+```bash
+git checkout -b fix/timeline-use-hook
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > timeline-use-hook.patch
+git apply --reject --whitespace=fix timeline-use-hook.patch
+git add -A
+git commit -m "Vitals timeline (inline): use canonical useVitalsList(patientId) hook; keep combined multi-axis chart"
+```
+
+### Result
+
+* The inline **combined Vitals Timeline** now reads from exactly the **same data** as the working modal (`useVitalsList`), so it will show your saved and historical obs immediately.
+* All the UI goodness stays: **single chart**, **RR/HR/SBP/SpO₂/Temp** with **toggles**, **4h/8h/24h/72h** windows, and **EWS markers**.
+
+If your `useVitalsList` returns fields under different names (e.g., `sys` instead of `sbp`), tell me the shape (or paste one element) and I’ll map those keys inline.

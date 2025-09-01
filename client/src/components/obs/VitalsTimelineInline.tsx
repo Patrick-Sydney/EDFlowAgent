@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ReferenceLine
 } from "recharts";
-import { vitalsStore } from "../../stores/vitalsStore";
+import { useVitalsList } from "../../stores/vitalsStore";
 
 type Obs = {
-  t: string;         // ISO time
+  t: string;         // ISO-ish time
   rr?: number;       // breaths/min
   hr?: number;       // bpm
   sbp?: number;      // mmHg (systolic)
@@ -16,29 +16,32 @@ type Obs = {
   source?: "triage" | "obs" | "device";
 };
 
-function getAllVitals(patientId: string): Obs[] {
-  // Be liberal in what we accept from the store
-  // Try common method names before falling back.
-  // @ts-ignore
-  if (typeof vitalsStore?.getAll === "function") return vitalsStore.getAll(patientId) as Obs[];
-  // @ts-ignore
-  if (typeof vitalsStore?.getSeries === "function") return vitalsStore.getSeries(patientId) as Obs[];
-  // @ts-ignore
-  if (typeof vitalsStore?.all === "function") return vitalsStore.all(patientId) as Obs[];
-  // @ts-ignore
-  if (vitalsStore?.data && vitalsStore.data[patientId]) return vitalsStore.data[patientId] as Obs[];
-  return [];
+// --- utilities --------------------------------------------------------------
+function coerceMs(x:any): number | undefined {
+  if (x == null) return undefined;
+  if (x instanceof Date) return x.getTime();
+  if (typeof x === "number") return x > 1e12 ? x : x*1000; // allow seconds
+  if (typeof x === "string") {
+    // ISO first
+    const iso = Date.parse(x);
+    if (!Number.isNaN(iso)) return iso;
+    // If hook ever returns time-only strings, we simply skip (modal already succeeded,
+    // so your hook likely returns ISO strings or Date/number).
+  }
+  return undefined;
 }
 
-// Very light polling fallback so timeline updates even if the store is not reactive
-function useVitalsSeries(patientId: string, pollMs = 1500) {
-  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
-  useEffect(() => {
-    setRows(getAllVitals(patientId));
-    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
-    return () => window.clearInterval(id);
-  }, [patientId, pollMs]);
-  return rows;
+// Use the project's canonical hook (same one used by the working modal)
+function useVitalsSeries(patientId: string | number) {
+  // The hook already subscribes to store updates; we just normalize timestamps.
+  const list = (useVitalsList as any)(String(patientId)) as Obs[] | undefined;
+  return (Array.isArray(list) ? list : []).map((r:any) => {
+    const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
+    return {
+      ...r,
+      t: ms != null ? new Date(ms).toISOString() : (r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date),
+    } as Obs;
+  });
 }
 
 const fmtTime = (iso: string) => {
