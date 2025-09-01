@@ -25,17 +25,15 @@ function FingerSlider({
   value:Num; onChange:(n:Num)=>void; last?:number;
 }){
   const [active,setActive]=useState(false);
-  const [touched,setTouched]=useState<boolean>(value!=null || last!=null);
+  const [touched,setTouched]=useState<boolean>(value!=null || last!=null); // controls thumb visibility
   const inputRef=useRef<HTMLInputElement|null>(null);
   const cardRef=useRef<HTMLDivElement|null>(null);
-  const overlayRef=useRef<HTMLDivElement|null>(null);
 
   const visual = value ?? last ?? (min+max)/2;
 
-  // Helper to map pointer X to a snapped value and commit it
+  // map a clientX to a snapped value within [min,max]
   const commitFromClientX = (clientX:number) => {
-    const input = inputRef.current;
-    if (!input) return;
+    const input = inputRef.current; if(!input) return;
     const r = input.getBoundingClientRect();
     const ratio = (clientX - r.left) / r.width;
     const clamped = Math.min(1, Math.max(0, ratio));
@@ -44,87 +42,58 @@ function FingerSlider({
     onChange(Number(snapped.toFixed(2)));
   };
 
-  // First interaction: the overlay handles drag; then it's disabled forever
-  useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    // Arm overlay ONLY when there is no value and no "last"
-    if (value != null || last != null) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      e.preventDefault();
-      overlay.setPointerCapture(e.pointerId);
-      setActive(true);
-      setTouched(true); // will disable overlay after this interaction
-      commitFromClientX(e.clientX);
-    };
-    const onPointerMove = (e: PointerEvent) => {
-      if (!active) return;
-      commitFromClientX(e.clientX);
-    };
-    const onPointerUp = (e: PointerEvent) => {
-      try { overlay.releasePointerCapture(e.pointerId); } catch {}
-      setActive(false);
-      // overlay becomes inert; subsequent drags use native input
-    };
-
-    overlay.addEventListener("pointerdown", onPointerDown);
-    overlay.addEventListener("pointermove", onPointerMove);
-    overlay.addEventListener("pointerup", onPointerUp);
-    return () => {
-      overlay.removeEventListener("pointerdown", onPointerDown);
-      overlay.removeEventListener("pointermove", onPointerMove);
-      overlay.removeEventListener("pointerup", onPointerUp);
-    };
-  }, [active, value, last, min, max, step]);
-
-  // Card-wide tap plate (works for any subsequent taps; first interaction is handled by the overlay)
-  const onTapPlate = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Let the first-interaction overlay handle the very first tap
-    if (!touched && value == null && last == null) return;
-    // Don't hijack +/- buttons or the native range
+  // Full-card drag (including first interaction). We avoid hijacking +/- and the native range.
+  const onCardPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const el = e.target as HTMLElement;
     if (el.closest("button") || (el as HTMLInputElement).type === "range") return;
-    commitFromClientX(e.clientX);
+    e.preventDefault();
     setTouched(true);
     setActive(true);
-    // brief halo
-    window.setTimeout(()=> setActive(false), 120);
+    cardRef.current?.setPointerCapture(e.pointerId);
+    commitFromClientX(e.clientX);
+  };
+  const onCardPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!active) return;
+    commitFromClientX(e.clientX);
+  };
+  const onCardPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!active) return;
+    try { cardRef.current?.releasePointerCapture(e.pointerId); } catch {}
+    setActive(false);
   };
 
   const delta = last!=null && value!=null ? value-last : undefined;
   const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta)}`:`Δ −${Math.abs(delta)}`) : undefined;
 
   return (
-    <div ref={cardRef} className="rounded-xl border p-3 cursor-pointer" onPointerDown={onTapPlate}>
+    <div
+      ref={cardRef}
+      className={`rounded-xl border p-3 drag-surface ${active ? "dragging" : ""}`}
+      onPointerDown={onCardPointerDown}
+      onPointerMove={onCardPointerMove}
+      onPointerUp={onCardPointerUp}
+      onPointerCancel={onCardPointerUp}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm">{label}</div>
         <div className="text-base font-medium tabular-nums">
-          {value!=null ? value : last!=null ? <span className="text-muted-foreground">Last {last}</span> : "—"}
+          {value != null ? value : last != null ? <span className="text-muted-foreground">Last {last}</span> : "—"}
           {unit && <span className="ml-1 text-xs text-muted-foreground">{unit}</span>}
           {deltaStr && <span className="ml-2 text-xs rounded-full border px-2 py-0.5">{deltaStr}</span>}
         </div>
       </div>
       <div className="relative">
-        {/* Invisible overlay captures ONLY the very first drag when no value/last exist.
-            After that, it becomes inert so the native range input handles drag. */}
-        <div
-          ref={overlayRef}
-          className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
-          style={{ touchAction: "none" }}
-          aria-hidden="true"
-        />
         <input
           ref={inputRef}
           type="range"
           className="finger-range z-0"
-          min={min} max={max} step={step}
+          min={min}
+          max={max}
+          step={step}
           value={visual}
-          onChange={(e)=>{ onChange(Number(e.target.value)); setTouched(true); }}
-          onPointerDown={()=>setActive(true)}
-          onPointerUp={()=>setActive(false)}
-          data-active={active?"true":"false"}
-          data-hasvalue={touched?"true":"false"}
+          onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
+          data-active={active ? "true" : "false"}
+          data-hasvalue={touched ? "true" : "false"}
         />
       </div>
       <div className="mt-2 flex items-center justify-between">

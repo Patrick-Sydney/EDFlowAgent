@@ -52,6 +52,16 @@
   box-shadow: 0 0 0 6px rgba(59,130,246,.25), 0 1px 2px rgba(0,0,0,.08);
 }
 
+/* Card drag affordances */
+.drag-surface { cursor: grab; }
+.drag-surface.dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  touch-action: none; /* suppress page scroll while dragging */
+}
+
 /* Bigger +/- controls (shared utility) */
 .hit-btn {
   width: 40px;
