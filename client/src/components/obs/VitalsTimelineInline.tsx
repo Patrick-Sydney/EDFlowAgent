@@ -6,7 +6,8 @@ import {
 import { vitalsStore } from "../../stores/vitalsStore";
 
 type Obs = {
-  t: string;         // ISO time
+  t: string;         // ISO-ish time
+  patientId?: string | number;
   rr?: number;       // breaths/min
   hr?: number;       // bpm
   sbp?: number;      // mmHg (systolic)
@@ -16,33 +17,46 @@ type Obs = {
   source?: "triage" | "obs" | "device";
 };
 
-// Tolerant reader: handle different store shapes + key names
+// --- utilities --------------------------------------------------------------
+const todayISO = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD
+const toISO = (ms:number) => new Date(ms).toISOString();
+
+function coerceMs(x:any): number | undefined {
+  if (x == null) return undefined;
+  if (x instanceof Date) return x.getTime();
+  if (typeof x === "number") return x > 1e12 ? x : x*1000; // allow seconds
+  if (typeof x === "string") {
+    // ISO first
+    const iso = Date.parse(x);
+    if (!Number.isNaN(iso)) return iso;
+    // Some stores keep "12:18 AM" (no date) → assume today at that time
+    const maybeTime = Date.parse(`${todayISO()} ${x}`);
+    if (!Number.isNaN(maybeTime)) return maybeTime;
+  }
+  return undefined;
+}
+
+const coerceN = (x:any) => (x===null || x===undefined || x==="" ? undefined : Number(x));
+
+// Tolerant reader + AUTO-DISCOVERY over vitalsStore
 function getAllVitals(patientId: string | number): Obs[] {
   const pidStr = String(patientId);
   const pidNum = Number(pidStr);
-  const pick = (obj: any, key: any) => (obj && obj[key] !== undefined ? obj[key] : undefined);
-  const coerceN = (x: any) => (x === null || x === undefined || x === "" ? undefined : Number(x));
-  const coerceISO = (x: any) => {
-    if (!x) return undefined;
-    // accept Date, ISO, unix(ms/s)
-    if (x instanceof Date) return x.toISOString();
-    if (typeof x === "number") return new Date(x > 1e12 ? x : x * 1000).toISOString();
-    return String(x);
-  };
   const norm = (r: any): Obs | null => {
     if (!r) return null;
-    const t = coerceISO(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
-    if (!t) return null;
+    const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date ?? r.obsAt ?? r.observedAt);
+    if (ms == null) return null;
     const sbpFromObj =
       typeof r.bp === "object" && r.bp
         ? r.bp.sbp ?? r.bp.sys ?? r.bp.systolic
         : undefined;
     const out: Obs = {
-      t,
-      rr:  coerceN(r.rr ?? r.resp ?? r.respiratory ?? r.respiratoryRate),
-      hr:  coerceN(r.hr ?? r.pulse ?? r.heartRate),
+      t: toISO(ms),
+      patientId: r.patientId ?? r.pid ?? r.subjectId ?? r.patient ?? r.patient_id,
+      rr:  coerceN(r.rr ?? r.resp ?? r.respiratory ?? r.respiratoryRate ?? r.rr_bpm),
+      hr:  coerceN(r.hr ?? r.pulse ?? r.heartRate ?? r.hr_bpm),
       sbp: coerceN(r.sbp ?? r.sys ?? r.systolic ?? r.bp ?? sbpFromObj),
-      temp: coerceN(r.temp ?? r.temperature),
+      temp: coerceN(r.temp ?? r.temperature ?? r.temp_c),
       spo2: coerceN(r.spo2 ?? r.SpO2 ?? r.spo2Pct ?? r.oxygenSaturation),
       ews: coerceN(r.ews ?? r.news ?? r.score),
       source: r.source,
@@ -60,7 +74,7 @@ function getAllVitals(patientId: string | number): Obs[] {
     }
     return [];
   };
-  // Try common accessors then raw maps
+  // Try common accessors first
   // @ts-ignore
   if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
   // @ts-ignore
@@ -68,9 +82,40 @@ function getAllVitals(patientId: string | number): Obs[] {
   // @ts-ignore
   if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
   // @ts-ignore
-  if (vitalsStore?.data) return fromAny(vitalsStore.data[pidStr] ?? vitalsStore.data[pidNum]);
-  // @ts-ignore
-  if (vitalsStore?.byPatient) return fromAny(vitalsStore.byPatient[pidStr] ?? vitalsStore.byPatient[pidNum]);
+  if (vitalsStore?.data) {
+    const v = vitalsStore.data[pidStr] ?? vitalsStore.data[pidNum];
+    const rows = fromAny(v);
+    if (rows.length) return rows;
+  }
+  // AUTO-DISCOVER: search any arrays inside vitalsStore that look like obs,
+  // optionally filter by patientId if present.
+  try {
+    const candidates: Obs[] = [];
+    const scan = (obj:any) => {
+      if (!obj) return;
+      if (Array.isArray(obj)) {
+        for (const it of obj) {
+          const n = norm(it);
+          if (n) candidates.push(n);
+        }
+        return;
+      }
+      if (typeof obj === "object") {
+        for (const k of Object.keys(obj)) {
+          const v = (obj as any)[k];
+          if (v && (Array.isArray(v) || typeof v === "object")) scan(v);
+        }
+      }
+    };
+    // Limit scan breadth a bit by only scanning enumerable props
+    scan(vitalsStore);
+    let rows = candidates;
+    // If any row carries patientId, filter to ours; else attempt partition by key match
+    if (rows.some(r => r.patientId != null)) {
+      rows = rows.filter(r => String(r.patientId) === pidStr || Number(r.patientId) === pidNum);
+    }
+    return rows;
+  } catch {}
   return [];
 }
 
