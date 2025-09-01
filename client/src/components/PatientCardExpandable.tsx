@@ -19,6 +19,7 @@ import BoardExpandOverlay from "./board/BoardExpandOverlay";
 import AuthoringDrawer from "./shell/AuthoringDrawer";
 import ObsQuickForm from "./obs/ObsQuickForm";
 import AssignRoomPanel from "./rooms/AssignRoomPanel";
+import VitalsTimelineInline from "./obs/VitalsTimelineInline";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -310,6 +311,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   };
                   onAddObs(patient);
                 } : undefined} 
+              />
+
+              {/* Inline combined vitals timeline */}
+              <VitalsTimelineInline
+                patientId={patientId}
+                height={280}
               />
 
               {/* Tasks Mini (if any) */}
