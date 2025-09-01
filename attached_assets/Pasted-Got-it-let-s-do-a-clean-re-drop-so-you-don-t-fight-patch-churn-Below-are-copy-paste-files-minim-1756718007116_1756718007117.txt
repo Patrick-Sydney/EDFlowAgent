@@ -1,0 +1,314 @@
+Got it—let’s do a clean re-drop so you don’t fight patch churn. Below are **copy-paste files + minimal edits**. This gives you the **finger-first slider +Obs in the Authoring Drawer**, with live EWS and seeding from the last obs.
+
+---
+
+# 1) Create/replace this file
+
+## `client/src/components/obs/ObsQuickForm.tsx`
+
+```tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { vitalsStore, useVitalsLast } from "../../stores/vitalsStore";
+import "./obs-slider.css";
+
+type Num = number | undefined;
+
+// --- Adult EWS (NEWS-like) scoring ---
+function sRR(rr: Num){ if(rr==null) return 0; if(rr<=8) return 3; if(rr<=11) return 1; if(rr<=20) return 0; if(rr<=24) return 2; return 3; }
+function sSpO2(x: Num){ if(x==null) return 0; if(x>=96) return 0; if(x>=94) return 1; if(x>=92) return 2; return 3; }
+function sHR(x: Num){ if(x==null) return 0; if(x<=40) return 3; if(x<=50) return 1; if(x<=90) return 0; if(x<=110) return 1; if(x<=130) return 2; return 3; }
+function sSBP(x: Num){ if(x==null) return 0; if(x<=90) return 3; if(x<=100) return 2; if(x<=110) return 1; if(x<=219) return 0; return 3; }
+function sTemp(x: Num){ if(x==null) return 0; if(x<=35) return 3; if(x<=36) return 1; if(x<=38) return 0; if(x<=39) return 1; return 2; }
+function sLOC(loc: "A"|"V"|"P"|"U"|undefined){ return !loc || loc==="A" ? 0 : 3; }
+
+function calcEWS(v:{rr?:number; spo2?:number; hr?:number; sbp?:number; temp?:number; loc?:"A"|"V"|"P"|"U";}){
+  return sRR(v.rr)+sSpO2(v.spo2)+sHR(v.hr)+sSBP(v.sbp)+sTemp(v.temp)+sLOC(v.loc);
+}
+
+// --- Finger-first slider ---
+function FingerSlider({
+  label, unit, min, max, step = 1,
+  value, onChange, last,
+}:{
+  label:string; unit?:string; min:number; max:number; step?:number;
+  value:Num; onChange:(n:Num)=>void; last?:number;
+}){
+  const [active,setActive]=useState(false);
+  const [touched,setTouched]=useState<boolean>(value!=null || last!=null);
+  const inputRef=useRef<HTMLInputElement|null>(null);
+  const overlayRef=useRef<HTMLDivElement|null>(null);
+
+  const visual = value ?? last ?? (min+max)/2;
+
+  // First-tap places the thumb under the finger
+  useEffect(()=>{
+    const el=overlayRef.current;
+    if(!el || value!=null) return;
+    const onDown=(e:PointerEvent)=>{
+      const input=inputRef.current; if(!input) return;
+      const r=input.getBoundingClientRect();
+      const ratio=(e.clientX-r.left)/r.width;
+      const clamped=Math.min(1,Math.max(0,ratio));
+      const v=min+clamped*(max-min);
+      const snapped=Math.round(v/step)*step;
+      onChange(Number(snapped.toFixed(2)));
+      setTouched(true); setActive(true); input.focus();
+    };
+    el.addEventListener("pointerdown",onDown);
+    return ()=> el.removeEventListener("pointerdown",onDown);
+  },[min,max,step,onChange,value]);
+
+  const delta = last!=null && value!=null ? value-last : undefined;
+  const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta)}`:`Δ −${Math.abs(delta)}`) : undefined;
+
+  return (
+    <div className="rounded-xl border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm">{label}</div>
+        <div className="text-base font-medium tabular-nums">
+          {value!=null ? value : last!=null ? <span className="text-muted-foreground">Last {last}</span> : "—"}
+          {unit && <span className="ml-1 text-xs text-muted-foreground">{unit}</span>}
+          {deltaStr && <span className="ml-2 text-xs rounded-full border px-2 py-0.5">{deltaStr}</span>}
+        </div>
+      </div>
+      <div className="relative">
+        <div ref={overlayRef} className="absolute inset-0 z-[1]" />
+        <input
+          ref={inputRef}
+          type="range"
+          className="finger-range z-0"
+          min={min} max={max} step={step}
+          value={visual}
+          onChange={(e)=>{ onChange(Number(e.target.value)); setTouched(true); }}
+          onPointerDown={()=>setActive(true)}
+          onPointerUp={()=>setActive(false)}
+          data-active={active?"true":"false"}
+          data-hasvalue={touched?"true":"false"}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <button className="rounded-full border px-3 py-1 text-sm"
+          onClick={()=>{ const next=(value ?? last ?? (min+max)/2)-step; onChange(Number(Math.max(min,next).toFixed(2))); setTouched(true); }}>−</button>
+        <button className="rounded-full border px-3 py-1 text-sm"
+          onClick={()=>{ const next=(value ?? last ?? (min+max)/2)+step; onChange(Number(Math.min(max,next).toFixed(2))); setTouched(true); }}>+</button>
+      </div>
+    </div>
+  );
+}
+
+export default function ObsQuickForm({ patientId, onSaved }:{
+  patientId:string|number; onSaved?:()=>void;
+}){
+  const last = useVitalsLast(String(patientId)); // last?.{rr,spo2,hr,sbp,temp}
+  const [rr,setRR]=useState<Num>(last?.rr);
+  const [spo2,setSpO2]=useState<Num>(last?.spo2);
+  const [hr,setHR]=useState<Num>(last?.hr);
+  const [sbp,setSBP]=useState<Num>(last?.sbp);
+  const [temp,setTemp]=useState<Num>(last?.temp);
+  const [loc,setLOC]=useState<"A"|"V"|"P"|"U"|undefined>("A");
+  const [saving,setSaving]=useState(false);
+
+  const ews=useMemo(()=>calcEWS({rr,spo2,hr,sbp,temp,loc}),[rr,spo2,hr,sbp,temp,loc]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">Enter observations</div>
+        <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
+          EWS <strong className="tabular-nums">{isFinite(ews)?ews:0}</strong>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <FingerSlider label="Respiratory rate" unit="bpm" min={4} max={60} step={1}
+          value={rr} onChange={setRR} last={last?.rr}/>
+        <FingerSlider label="SpO₂" unit="%" min={70} max={100} step={1}
+          value={spo2} onChange={setSpO2} last={last?.spo2}/>
+        <FingerSlider label="Heart rate" unit="bpm" min={20} max={220} step={1}
+          value={hr} onChange={setHR} last={last?.hr}/>
+        <FingerSlider label="Systolic BP" unit="mmHg" min={50} max={260} step={1}
+          value={sbp} onChange={setSBP} last={last?.sbp}/>
+        <FingerSlider label="Temperature" unit="°C" min={32} max={42.5} step={0.1}
+          value={temp} onChange={setTemp} last={last?.temp}/>
+
+        <div className="rounded-xl border p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm">Level of consciousness</div>
+            <div className="text-xs text-muted-foreground">AVPU</div>
+          </div>
+          <div className="flex items-center gap-1">
+            {(["A","V","P","U"] as const).map(k=>(
+              <button key={k}
+                className={`rounded-full border px-3 py-1 text-sm ${k===loc?"bg-background shadow":""}`}
+                onClick={()=>setLOC(k)}>{k}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button className="rounded-full border px-4 py-2 text-sm"
+          onClick={()=>{ setRR(undefined); setSpO2(undefined); setHR(undefined); setSBP(undefined); setTemp(undefined); setLOC("A"); }}>
+          Clear
+        </button>
+        <button
+          className="rounded-full px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+          disabled={saving}
+          onClick={async ()=>{
+            setSaving(true);
+            try{
+              const obs = { t:new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source:"obs" as const };
+              vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
+              onSaved?.();
+            } finally { setSaving(false); }
+          }}>
+          Save obs
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+# 2) Create this CSS
+
+## `client/src/components/obs/obs-slider.css`
+
+```css
+/* Calm finger-first range control */
+.finger-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  height: 28px;
+  position: relative;
+}
+.finger-range:focus { outline: none; }
+
+/* Track */
+.finger-range::-webkit-slider-runnable-track,
+.finger-range::-moz-range-track {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06));
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+/* Thumb */
+.finger-range::-webkit-slider-thumb,
+.finger-range::-moz-range-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px; height: 28px; border-radius: 999px;
+  background: white; border: 1px solid rgba(0,0,0,0.15);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease;
+  margin-top: -7px; /* center on 14px track (webkit) */
+}
+
+/* Hide until touched/has value */
+.finger-range[data-hasvalue="false"]::-webkit-slider-thumb,
+.finger-range[data-hasvalue="false"]::-moz-range-thumb { opacity: 0; }
+
+/* On-drag halo */
+.finger-range[data-active="true"]::-webkit-slider-thumb,
+.finger-range[data-active="true"]::-moz-range-thumb {
+  box-shadow: 0 0 0 10px rgba(0,122,255,.15), 0 1px 2px rgba(0,0,0,.08);
+  transform: scale(1.02);
+}
+
+/* Keyboard focus */
+.finger-range:focus-visible::-webkit-slider-thumb,
+.finger-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 6px rgba(59,130,246,.25), 0 1px 2px rgba(0,0,0,.08);
+}
+```
+
+---
+
+# 3) Wire it into the Authoring Drawer
+
+Open **`client/src/components/patient/PatientCardExpandable.tsx`** and make sure you have:
+
+* The import:
+
+```tsx
+import ObsQuickForm from "../obs/ObsQuickForm";
+```
+
+* Drawer state and ActionBar handlers:
+
+```tsx
+const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "assign" | "triage">(false);
+
+// In <ActionBar … handlers={…} />
+handlers={{
+  onAddObs: () => setDrawerOpen("obs"),
+  onAssignRoom: () => setDrawerOpen("assign"),
+  onOrderSet: () => setDrawerOpen("triage"),
+  onDispo: onOpenFull,
+  onSeeNow: onOpenFull,
+}}
+```
+
+* The AuthoringDrawer rendering the real form:
+
+```tsx
+<AuthoringDrawer
+  title={drawerOpen === "obs" ? `Add observations — ${displayName}`
+        : drawerOpen === "assign" ? `Assign room — ${displayName}`
+        : drawerOpen === "triage" ? `Triage — ${displayName}` : `${displayName}`}
+  open={!!drawerOpen}
+  onClose={() => setDrawerOpen(false)}
+  widthPx={920}
+>
+  {drawerOpen === "obs" && (
+    <ObsQuickForm patientId={patientId} onSaved={()=> setDrawerOpen(false)} />
+  )}
+  {drawerOpen === "assign" && /* your AssignRoomPanel here */}
+  {drawerOpen === "triage" && /* your Triage form here */}
+</AuthoringDrawer>
+```
+
+---
+
+## Quick test checklist
+
+1. Click **+ Obs** in the **Action Bar** on the expanded card → Authoring Drawer opens.
+2. Sliders: first tap places thumb; if previous obs exist, thumb starts there and shows a **Δ** hint when you change it.
+3. EWS number at top updates **live** while sliding.
+4. **Save obs** → drawer closes; **patient card** updates **Last obs** and **EWS** immediately (no refresh).
+5. Re-open +Obs → sliders seed from the values you just entered.
+
+---
+
+## If it still doesn’t show the new UI
+
+* In Replit shell:
+
+  ```bash
+  git status
+  ```
+
+  Confirm both new files are present and committed.
+
+* Make sure there isn’t another `ObsQuickForm` being imported from a different path. Search:
+
+  ```bash
+  rg "ObsQuickForm" -n client/src
+  ```
+
+  Ensure your PatientCard imports the one we just added.
+
+* If your `vitalsStore` doesn’t export `useVitalsLast`, swap the import for this fallback:
+
+  ```tsx
+  // replace the import line with:
+  import { vitalsStore } from "../../stores/vitalsStore";
+  const useVitalsLast = (id: string) => (vitalsStore.getLast ? vitalsStore.getLast(id) : undefined);
+  ```
+
+That’s it. Paste these files in, and you should have the **finger-first +Obs drawer** running.
