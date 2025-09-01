@@ -27,6 +27,7 @@ function FingerSlider({
   const [active,setActive]=useState(false);
   const [touched,setTouched]=useState<boolean>(value!=null || last!=null);
   const inputRef=useRef<HTMLInputElement|null>(null);
+  const cardRef=useRef<HTMLDivElement|null>(null);
   const overlayRef=useRef<HTMLDivElement|null>(null);
 
   const visual = value ?? last ?? (min+max)/2;
@@ -77,11 +78,25 @@ function FingerSlider({
     };
   }, [active, value, last, min, max, step]);
 
+  // Card-wide tap plate (works for any subsequent taps; first interaction is handled by the overlay)
+  const onTapPlate = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Let the first-interaction overlay handle the very first tap
+    if (!touched && value == null && last == null) return;
+    // Don't hijack +/- buttons or the native range
+    const el = e.target as HTMLElement;
+    if (el.closest("button") || (el as HTMLInputElement).type === "range") return;
+    commitFromClientX(e.clientX);
+    setTouched(true);
+    setActive(true);
+    // brief halo
+    window.setTimeout(()=> setActive(false), 120);
+  };
+
   const delta = last!=null && value!=null ? value-last : undefined;
   const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta)}`:`Δ −${Math.abs(delta)}`) : undefined;
 
   return (
-    <div className="rounded-xl border p-3">
+    <div ref={cardRef} className="rounded-xl border p-3 cursor-pointer" onPointerDown={onTapPlate}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm">{label}</div>
         <div className="text-base font-medium tabular-nums">

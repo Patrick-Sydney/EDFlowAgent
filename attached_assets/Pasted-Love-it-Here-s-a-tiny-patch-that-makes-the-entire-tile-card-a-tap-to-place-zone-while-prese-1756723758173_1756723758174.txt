@@ -1,0 +1,74 @@
+Love it. Here’s a tiny patch that makes the **entire tile (“card”) a tap-to-place zone**—while preserving drag + the +/- buttons.
+
+### `obs-card-tap-plate.patch`
+
+```diff
+diff --git a/client/src/components/obs/ObsQuickForm.tsx b/client/src/components/obs/ObsQuickForm.tsx
+index d3cbb55..6aa7e21 100644
+--- a/client/src/components/obs/ObsQuickForm.tsx
++++ b/client/src/components/obs/ObsQuickForm.tsx
+@@ -25,6 +25,7 @@ function FingerSlider({
+ }){
+   const [active,setActive]=useState(false);
+   const [touched,setTouched]=useState<boolean>(value!=null || last!=null); // controls overlay & thumb
+   const inputRef=useRef<HTMLInputElement|null>(null);
++  const cardRef=useRef<HTMLDivElement|null>(null);
+   const overlayRef=useRef<HTMLDivElement|null>(null);
+ 
+   const visual = value ?? last ?? (min+max)/2;
+@@ -60,6 +61,26 @@ function FingerSlider({
+     onChange(Number(snapped.toFixed(2)));
+   };
+ 
++  // Card-wide tap plate (works for any subsequent taps; first interaction is handled by the overlay)
++  const onTapPlate = (e: React.PointerEvent<HTMLDivElement>) => {
++    // Let the first-interaction overlay handle the very first tap
++    if (!touched && value == null && last == null) return;
++    // Don’t hijack +/- buttons or the native range
++    const el = e.target as HTMLElement;
++    if (el.closest("button") || (el as HTMLInputElement).type === "range") return;
++    commitFromClientX(e.clientX);
++    setTouched(true);
++    setActive(true);
++    // brief halo
++    window.setTimeout(()=> setActive(false), 120);
++  };
++
+@@ -108,7 +129,7 @@ function FingerSlider({
+-    <div className="rounded-xl border p-3">
++    <div ref={cardRef} className="rounded-xl border p-3 cursor-pointer" onPointerDown={onTapPlate}>
+       <div className="flex items-center justify-between mb-2">
+         <div className="text-sm">{label}</div>
+         <div className="text-base font-medium tabular-nums">
+           {value != null ? value : last != null ? <span className="text-muted-foreground">Last {last}</span> : "—"}
+           {unit && <span className="ml-1 text-xs text-muted-foreground">{unit}</span>}
+@@ -122,7 +143,7 @@ function FingerSlider({
+         {/* Invisible overlay captures ONLY the very first drag when no value/last exist.
+             After that, it becomes inert so the native range input handles drag. */}
+         <div
+           ref={overlayRef}
+           className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
+           style={{ touchAction: "none" }}
+           aria-hidden="true"
+         />
+```
+
+---
+
+## How to apply
+
+In Replit shell:
+
+```bash
+git checkout -b ui/obs-card-tap-plate
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > obs-card-tap-plate.patch
+git apply --reject --whitespace=fix obs-card-tap-plate.patch
+git add -A
+git commit -m "Obs drawer: make full tile a tap-to-place zone (keeps drag and +/-)"
+```
+
+### What you get
+
+* Tap **anywhere in the tile** (not just the rail) → the thumb jumps under your tap, EWS updates.
+* First-time interaction still uses the “place-under-finger” overlay; after that, the card tap works every time.
+* `+` / `−` and native dragging are unaffected.
