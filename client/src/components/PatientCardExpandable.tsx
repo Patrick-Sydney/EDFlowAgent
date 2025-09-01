@@ -17,6 +17,7 @@ import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
 import BoardExpandOverlay from "./board/BoardExpandOverlay";
 import AuthoringDrawer from "./shell/AuthoringDrawer";
+import ObsQuickForm from "./obs/ObsQuickForm";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -376,18 +377,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <VitalsCapsuleLive 
             patientId={patientId} 
             onOpenTimeline={() => setOpenTL(true)} 
-            onAddObs={onAddObs ? () => {
-              const patient = {
-                id: patientId,
-                displayName: name,
-                givenName: name.split(' ')[0] || '',
-                familyName: name.split(' ').slice(1).join(' ') || '',
-                chiefComplaint: complaint,
-                ews: ews,
-                roomName: status
-              };
-              onAddObs(patient);
-            } : undefined} 
+            onAddObs={() => setDrawerOpen("obs")} 
           />
 
           {/* Tasks Mini (if any) */}
@@ -442,13 +432,20 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
       />
 
       {/* Authoring Drawer — sits ABOVE the overlay (z-[1100]) */}
-      <AuthoringDrawer title={`${displayName}`} open={!!drawerOpen} onClose={()=> setDrawerOpen(false)}>
-        <div className="text-sm text-muted-foreground">
-          {/* Mount your forms here. Replace these placeholders with your real components. */}
-          {drawerOpen === "obs" && <div>+Obs form goes here.</div>}
-          {drawerOpen === "assign" && <div>Assign room panel goes here.</div>}
-          {drawerOpen === "triage" && <div>Triage form goes here.</div>}
-        </div>
+      <AuthoringDrawer
+        title={drawerOpen === "obs" ? `Add observations — ${displayName}`
+              : drawerOpen === "assign" ? `Assign room — ${displayName}`
+              : drawerOpen === "triage" ? `Triage — ${displayName}`
+              : `${displayName}`}
+        open={!!drawerOpen}
+        onClose={()=> setDrawerOpen(false)}
+        widthPx={920}
+      >
+        {drawerOpen === "obs" && (
+          <ObsQuickForm patientId={patientId} onSaved={()=> setDrawerOpen(false)} />
+        )}
+        {drawerOpen === "assign" && <div className="text-sm text-muted-foreground">Assign room panel (hook up your existing component here).</div>}
+        {drawerOpen === "triage" && <div className="text-sm text-muted-foreground">Triage form (hook up existing component here).</div>}
       </AuthoringDrawer>
     </div>
   );
