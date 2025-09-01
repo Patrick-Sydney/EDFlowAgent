@@ -30,32 +30,42 @@ export default function BoardExpandOverlay({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [recalcTick, setRecalcTick] = useState(0);
 
-  // Layout knobs for desktop feel
-  const TOP_FRACTION = 0.12;         // 12% from top (more space for content below)
+  // Layout knobs
   const BOTTOM_MARGIN = 24;          // px margin at bottom
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Measure lane width to target ~2 columns, but keep a clinically-usable min width.
+  // Responsive geometry (phone / tablet / desktop)
   const targetGeom = useMemo(() => {
     if (typeof window === "undefined") return null;
-    const firstLane = document.querySelector<HTMLElement>(".lane-col");
-    const laneWidth = firstLane
-      ? firstLane.getBoundingClientRect().width
-      : Math.min(520, window.innerWidth - 48);
-    const gap = (() => {
-      if (!firstLane || !firstLane.parentElement) return 16;
-      const s = window.getComputedStyle(firstLane.parentElement);
-      const g = parseFloat(s.columnGap || s.gap || "16");
-      return isNaN(g) ? 16 : g;
-    })();
-    // 80% of viewport width for comprehensive clinical workspace
-    const target = Math.round(window.innerWidth * 0.8);
-    const MIN = 1100;                         // wider min for desktop readability
-    const MAX = Math.min(target, window.innerWidth - 32);
-    const width = Math.max(MIN, Math.min(target, MAX));
-    const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
-    return { width, left };
+    const vw = window.innerWidth;
+    // breakpoints
+    const PHONE_MAX = 767;
+    const TABLET_MAX = 1279;
+
+    let width = 0;
+    let left = 0;
+    let topFrac = 0.02; // default: sit near top (2% vh)
+
+    if (vw <= PHONE_MAX) {
+      // Phone: near full-bleed with small margins
+      width = Math.min(vw - 16, vw);
+      left = Math.max(8, Math.round((vw - width) / 2));
+      topFrac = 0.02; // very near the top on phones
+    } else if (vw <= TABLET_MAX) {
+      // Tablet: ~90% width, centered; safe margins to avoid overflow
+      width = Math.min(Math.round(vw * 0.90), vw - 24);
+      left  = Math.max(12, Math.round((vw - width) / 2));
+      topFrac = 0.06; // slightly lower than desktop for breathing room
+    } else {
+      // Desktop: ~80% width, clamped
+      const MIN = 1100;
+      const MAX = Math.min(1600, vw - 32);
+      width = Math.max(MIN, Math.min(Math.round(vw * 0.80), MAX));
+      left  = Math.max(16, Math.round((vw - width) / 2));
+      topFrac = 0.02; // push ~10% higher than prior 12% => ~2% from top
+    }
+    return { width, left, topFrac };
   }, [open, recalcTick]);
 
   // ESC & scrim close
@@ -83,7 +93,7 @@ export default function BoardExpandOverlay({
     el.style.position = "fixed";
     el.style.left = `${targetGeom.left}px`;
     el.style.width = `${targetGeom.width}px`;
-    const top = Math.max(16, Math.round(window.innerHeight * TOP_FRACTION));
+    const top = Math.max(12, Math.round(window.innerHeight * (targetGeom.topFrac ?? 0.02)));
     const finalH = Math.max(
       420,
       Math.min(window.innerHeight - top - BOTTOM_MARGIN, window.innerHeight - 32)

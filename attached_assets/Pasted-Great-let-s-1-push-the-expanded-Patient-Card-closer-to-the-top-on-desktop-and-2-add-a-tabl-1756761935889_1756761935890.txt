@@ -1,0 +1,119 @@
+Great—let’s (1) push the expanded Patient Card **closer to the top** on desktop and (2) add a **tablet layout** so it never overhangs the right edge.
+
+Below is a **single patch** that updates `BoardExpandOverlay.tsx` to compute geometry per breakpoint (phone / tablet / desktop), uses a **smaller top offset** on desktop (\~2% of viewport — about 10% higher than before), and constrains tablet width to **\~90% of the viewport** with centered margins.
+
+---
+
+### `overlay-top-and-tablet.patch`
+
+```diff
+diff --git a/client/src/components/board/BoardExpandOverlay.tsx b/client/src/components/board/BoardExpandOverlay.tsx
+index 4444444..5555555 100644
+--- a/client/src/components/board/BoardExpandOverlay.tsx
++++ b/client/src/components/board/BoardExpandOverlay.tsx
+@@ -28,10 +28,9 @@ export default function BoardExpandOverlay({
+   const hostRef = useRef<HTMLDivElement | null>(null);
+   const cardRef = useRef<HTMLDivElement | null>(null);
+   const [recalcTick, setRecalcTick] = useState(0);
+ 
+-  // Layout knobs for desktop feel
+-  const TOP_FRACTION = 0.12;         // 12% from top (more space for content below)
+-  const BOTTOM_MARGIN = 24;          // px margin at bottom
++  // Layout knobs
++  const BOTTOM_MARGIN = 24;          // px margin at bottom
+ 
+   useEffect(() => { setMounted(true); }, []);
+ 
+-  // Desktop: make the panel ~80% of viewport width (clamped), centered.
++  // Responsive geometry (phone / tablet / desktop)
+   const targetGeom = useMemo(() => {
+     if (typeof window === "undefined") return null;
+-    const MIN = 1100;
+-    const MAX = Math.min(1600, window.innerWidth - 32);
+-    const eighty = Math.round(window.innerWidth * 0.8);
+-    const width = Math.max(MIN, Math.min(eighty, MAX));
+-    const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
+-    return { width, left };
++    const vw = window.innerWidth;
++    // breakpoints
++    const PHONE_MAX = 767;
++    const TABLET_MAX = 1279;
++
++    let width = 0;
++    let left = 0;
++    let topFrac = 0.02; // default: sit near top (2% vh)
++
++    if (vw <= PHONE_MAX) {
++      // Phone: near full-bleed with small margins
++      width = Math.min(vw - 16, vw);
++      left = Math.max(8, Math.round((vw - width) / 2));
++      topFrac = 0.02; // very near the top on phones
++    } else if (vw <= TABLET_MAX) {
++      // Tablet: ~90% width, centered; safe margins to avoid overflow
++      width = Math.min(Math.round(vw * 0.90), vw - 24);
++      left  = Math.max(12, Math.round((vw - width) / 2));
++      topFrac = 0.06; // slightly lower than desktop for breathing room
++    } else {
++      // Desktop: ~80% width, clamped
++      const MIN = 1100;
++      const MAX = Math.min(1600, vw - 32);
++      width = Math.max(MIN, Math.min(Math.round(vw * 0.80), MAX));
++      left  = Math.max(16, Math.round((vw - width) / 2));
++      topFrac = 0.02; // push ~10% higher than prior 12% => ~2% from top
++    }
++    return { width, left, topFrac };
+   }, [open, recalcTick]);
+ 
+   // ESC & scrim close
+   useEffect(() => {
+@@ -64,7 +63,7 @@ export default function BoardExpandOverlay({
+   // FLIP animation
+   useLayoutEffect(() => {
+     const el = cardRef.current;
+-    if (!open || !el || !anchorEl || !targetGeom) return;
++    if (!open || !el || !anchorEl || !targetGeom) return;
+ 
+     // 1) Set final geometry (top-offset; width as computed)
+     el.style.position = "fixed";
+-    el.style.left = `${targetGeom.left}px`;
+-    el.style.width = `${targetGeom.width}px`;
+-    const top = Math.max(16, Math.round(window.innerHeight * TOP_FRACTION));
++    el.style.left = `${targetGeom.left}px`;
++    el.style.width = `${targetGeom.width}px`;
++    const top = Math.max(12, Math.round(window.innerHeight * (targetGeom as any).topFrac ?? 0.02));
+     const finalH = Math.max(
+       420,
+       Math.min(window.innerHeight - top - BOTTOM_MARGIN, window.innerHeight - 32)
+     );
+     el.style.top = `${top}px`;
+@@ -78,12 +77,12 @@ export default function BoardExpandOverlay({
+ 
+     // 2) FLIP: invert from anchor card rect to final rect (scaleX + scaleY)
+     const from = anchorEl.getBoundingClientRect();
+-    const dx = from.left - targetGeom.left;
+-    const dy = from.top - top;
+-    const sx = from.width / targetGeom.width;
++    const dx = from.left - (targetGeom as any).left;
++    const dy = from.top - top;
++    const sx = from.width / (targetGeom as any).width;
+     const sy = from.height / finalH;
+     el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+ 
+     // 3) Play animation to identity (center-stage)
+-    requestAnimationFrame(() => {
++    requestAnimationFrame(() => {
+       el.style.transition = "transform 220ms ease, opacity 220ms ease";
+       el.style.transform = "translate(0px, 0px) scale(1, 1)";
+       el.style.opacity = "1";
+     });
+```
+
+---
+
+## What changed
+
+* **Desktop:** panel width still about **80% of viewport**, but now sits **\~2%** from the top (≈ 10% higher than the previous 12% offset), giving you more vertical room for content.
+* **Tablet (iPad):** panel width is **\~90% of viewport**, centered, with margins so it **never pushes off-screen**.
+* **Phone:** near full-bleed with small safe margins.
+
+Apply this and expand a card on your iPad—spacing should feel right, with no right-edge overflow. If you want different exact percentages, tell me your preferred offsets and I’ll tweak the constants.
