@@ -1,45 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ReferenceLine
 } from "recharts";
-import { vitalsStore } from "../../stores/vitalsStore";
-
-type Obs = {
-  t: string;         // ISO time
-  rr?: number;       // breaths/min
-  hr?: number;       // bpm
-  sbp?: number;      // mmHg (systolic)
-  temp?: number;     // °C
-  spo2?: number;     // %
-  ews?: number;
-  source?: "triage" | "obs" | "device";
-};
-
-function getAllVitals(patientId: string): Obs[] {
-  // Be liberal in what we accept from the store
-  // Try common method names before falling back.
-  // @ts-ignore
-  if (typeof vitalsStore?.getAll === "function") return vitalsStore.getAll(patientId) as Obs[];
-  // @ts-ignore
-  if (typeof vitalsStore?.getSeries === "function") return vitalsStore.getSeries(patientId) as Obs[];
-  // @ts-ignore
-  if (typeof vitalsStore?.all === "function") return vitalsStore.all(patientId) as Obs[];
-  // @ts-ignore
-  if (vitalsStore?.data && vitalsStore.data[patientId]) return vitalsStore.data[patientId] as Obs[];
-  return [];
-}
-
-// Very light polling fallback so timeline updates even if the store is not reactive
-function useVitalsSeries(patientId: string, pollMs = 1500) {
-  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
-  useEffect(() => {
-    setRows(getAllVitals(patientId));
-    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
-    return () => window.clearInterval(id);
-  }, [patientId, pollMs]);
-  return rows;
-}
+import { useVitalsList, type ObsPoint } from "../../stores/vitalsStore";
 
 const fmtTime = (iso: string) => {
   try {
@@ -56,7 +20,7 @@ type Props = {
 
 export default function VitalsTimelineInline({ patientId, height = 260, className }: Props) {
   const pid = String(patientId);
-  const raw = useVitalsSeries(pid);
+  const raw = useVitalsList(pid);
 
   // Derive, sort, clamp to selected window
   const [windowHours, setWindowHours] = useState<4 | 8 | 24 | 72>(8);
