@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { vitalsStore } from "../../stores/vitalsStore";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { vitalsStore, useVitalsLast } from "../../stores/vitalsStore";
+import "./obs-slider.css";
 
 type Num = number | undefined;
 
@@ -67,50 +68,99 @@ function calcEWS(vals: {
   return s;
 }
 
-function Field({
-  label,
-  unit,
-  value,
-  setValue,
-  step = 1,
-  min,
-  max,
+/** Finger-first slider with hidden thumb on first obs and on-drag halo. */
+function FingerSlider({
+  label, unit, min, max, step = 1,
+  value, onChange,
+  last, // seed/ hint
 }: {
   label: string;
   unit?: string;
-  value: Num;
-  setValue: (n: Num) => void;
+  min: number;
+  max: number;
   step?: number;
-  min?: number;
-  max?: number;
+  value: Num;
+  onChange: (n: Num) => void;
+  last?: number;
 }) {
+  const [active, setActive] = useState(false);
+  const [touched, setTouched] = useState<boolean>(value != null || last != null);
+  const inputRef = useRef<HTMLInputElement|null>(null);
+  const overlayRef = useRef<HTMLDivElement|null>(null);
+
+  // If we have a last value but no current, seed visual position.
+  const visualValue = value ?? last ?? (min + max) / 2;
+
+  // Tap-to-place under finger on first interaction
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el || (value != null)) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const input = inputRef.current;
+      if (!input) return;
+      const rect = input.getBoundingClientRect();
+      const ratio = (e.clientX - rect.left) / rect.width;
+      const clamped = Math.min(1, Math.max(0, ratio));
+      const v = min + clamped * (max - min);
+      const snapped = Math.round(v / step) * step;
+      onChange(Number(snapped.toFixed(2)));
+      setTouched(true);
+      setActive(true);
+      input.focus();
+    };
+    el.addEventListener("pointerdown", onPointerDown);
+    return () => el.removeEventListener("pointerdown", onPointerDown);
+  }, [min, max, step, onChange, value]);
+
+  const delta = last != null && value != null ? value - last : undefined;
+  const deltaStr = delta != null && delta !== 0 ? (delta > 0 ? `Δ +${Math.abs(delta)}` : `Δ −${Math.abs(delta)}`) : undefined;
+
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl border p-2">
-      <div className="text-sm">{label}</div>
-      <div className="flex items-center gap-2">
+    <div className="rounded-xl border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm">{label}</div>
+        <div className="text-base font-medium tabular-nums">
+          {value != null ? value : last != null ? <span className="text-muted-foreground">Last {last}</span> : "—"}
+          {unit && <span className="ml-1 text-xs text-muted-foreground">{unit}</span>}
+          {deltaStr && <span className="ml-2 text-xs rounded-full border px-2 py-0.5">{deltaStr}</span>}
+        </div>
+      </div>
+      <div className="relative">
+        {/* invisible overlay to capture first tap and place thumb */}
+        <div ref={overlayRef} className="absolute inset-0 z-[1]" />
+        <input
+          ref={inputRef}
+          type="range"
+          className="finger-range z-0"
+          min={min}
+          max={max}
+          step={step}
+          value={visualValue}
+          onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
+          onPointerDown={() => setActive(true)}
+          onPointerUp={() => setActive(false)}
+          data-active={active ? "true" : "false"}
+          data-hasvalue={touched ? "true" : "false"}
+        />
+      </div>
+      <div className="mt-2 flex items-center justify-between">
         <button
           className="rounded-full border px-3 py-1 text-sm"
-          onClick={() => setValue(value == null ? undefined : Math.max(min ?? -Infinity, Math.round((value - step) * 10) / 10))}
+          onClick={() => {
+            const next = (value ?? last ?? (min + max) / 2) - step;
+            onChange(Number(Math.max(min, next).toFixed(2)));
+            setTouched(true);
+          }}
         >
           −
         </button>
-        <input
-          type="number"
-          inputMode="decimal"
-          className="w-20 rounded-md border px-2 py-1 text-right"
-          value={value ?? ""}
-          onChange={(e) => {
-            const v = e.target.value;
-            setValue(v === "" ? undefined : Number(v));
-          }}
-          step={step}
-          min={min}
-          max={max}
-        />
-        {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
         <button
           className="rounded-full border px-3 py-1 text-sm"
-          onClick={() => setValue(value == null ? step : Math.min(max ?? Infinity, Math.round((value + step) * 10) / 10))}
+          onClick={() => {
+            const next = (value ?? last ?? (min + max) / 2) + step;
+            onChange(Number(Math.min(max, next).toFixed(2)));
+            setTouched(true);
+          }}
         >
           +
         </button>
@@ -126,11 +176,12 @@ export default function ObsQuickForm({
   patientId: string | number;
   onSaved?: () => void;
 }) {
-  const [rr, setRR] = useState<Num>();
-  const [spo2, setSpO2] = useState<Num>();
-  const [hr, setHR] = useState<Num>();
-  const [sbp, setSBP] = useState<Num>();
-  const [temp, setTemp] = useState<Num>();
+  const last = useVitalsLast(String(patientId));
+  const [rr, setRR] = useState<Num>(last?.rr);
+  const [spo2, setSpO2] = useState<Num>(last?.spo2);
+  const [hr, setHR] = useState<Num>(last?.hr);
+  const [sbp, setSBP] = useState<Num>(last?.sbp);
+  const [temp, setTemp] = useState<Num>(last?.temp);
   const [loc, setLOC] = useState<"A" | "V" | "P" | "U" | undefined>("A");
   const [saving, setSaving] = useState(false);
 
@@ -141,25 +192,34 @@ export default function ObsQuickForm({
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">Enter observations</div>
         <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm">
-          EWS <strong>{isFinite(ews) ? ews : 0}</strong>
+          EWS <strong className="tabular-nums">{isFinite(ews) ? ews : 0}</strong>
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <Field label="Respiratory rate" unit="bpm" value={rr} setValue={setRR} step={1} min={4} max={60} />
-        <Field label="SpO₂" unit="%" value={spo2} setValue={setSpO2} step={1} min={70} max={100} />
-        <Field label="Heart rate" unit="bpm" value={hr} setValue={setHR} step={1} min={20} max={220} />
-        <Field label="Systolic BP" unit="mmHg" value={sbp} setValue={setSBP} step={1} min={50} max={260} />
-        <Field label="Temperature" unit="°C" value={temp} setValue={setTemp} step={0.1} min={32} max={42.5} />
-        <div className="flex items-center justify-between gap-2 rounded-xl border p-2">
-          <div className="text-sm">Level of consciousness</div>
+      {/* Sliders grid (finger-first) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <FingerSlider label="Respiratory rate" unit="bpm" min={4} max={60} step={1}
+          value={rr} onChange={setRR} last={last?.rr} />
+        <FingerSlider label="SpO₂" unit="%" min={70} max={100} step={1}
+          value={spo2} onChange={setSpO2} last={last?.spo2} />
+        <FingerSlider label="Heart rate" unit="bpm" min={20} max={220} step={1}
+          value={hr} onChange={setHR} last={last?.hr} />
+        <FingerSlider label="Systolic BP" unit="mmHg" min={50} max={260} step={1}
+          value={sbp} onChange={setSBP} last={last?.sbp} />
+        <FingerSlider label="Temperature" unit="°C" min={32} max={42.5} step={0.1}
+          value={temp} onChange={setTemp} last={last?.temp} />
+
+        {/* AVPU pills */}
+        <div className="rounded-xl border p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm">Level of consciousness</div>
+            <div className="text-xs text-muted-foreground">AVPU</div>
+          </div>
           <div className="flex items-center gap-1">
-            {(["A", "V", "P", "U"] as const).map((k) => (
-              <button
-                key={k}
-                className={`rounded-full border px-3 py-1 text-sm ${loc === k ? "bg-background shadow" : ""}`}
-                onClick={() => setLOC(k)}
-              >
+            {(["A","V","P","U"] as const).map(k => (
+              <button key={k}
+                className={`rounded-full border px-3 py-1 text-sm ${loc===k ? "bg-background shadow" : ""}`}
+                onClick={()=> setLOC(k)}>
                 {k}
               </button>
             ))}
@@ -168,7 +228,8 @@ export default function ObsQuickForm({
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-1">
-        <button className="rounded-full border px-4 py-2 text-sm" onClick={() => { setRR(undefined); setSpO2(undefined); setHR(undefined); setSBP(undefined); setTemp(undefined); setLOC("A"); }}>
+        <button className="rounded-full border px-4 py-2 text-sm"
+          onClick={() => { setRR(undefined); setSpO2(undefined); setHR(undefined); setSBP(undefined); setTemp(undefined); setLOC("A"); }}>
           Clear
         </button>
         <button

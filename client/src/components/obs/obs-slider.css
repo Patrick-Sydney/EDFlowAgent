@@ -1,0 +1,75 @@
+/* Finger-first calm range styling (no heat-map colors).
+   - Hidden thumb until user interacts (data-hasvalue / data-active)
+   - On-drag halo
+*/
+.finger-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  height: 28px; /* hit target */
+  position: relative;
+}
+.finger-range:focus { outline: none; }
+
+/* Track */
+.finger-range::-webkit-slider-runnable-track {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    rgba(0,0,0,0.06), rgba(0,0,0,0.06));
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.finger-range::-moz-range-track {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    rgba(0,0,0,0.06), rgba(0,0,0,0.06));
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+/* Thumb */
+.finger-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid rgba(0,0,0,0.15);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  position: relative;
+  margin-top: -7px; /* centers on 14px track */
+  transition: box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease;
+}
+.finger-range::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid rgba(0,0,0,0.15);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: box-shadow 120ms ease, transform 120ms ease, opacity 120ms ease;
+}
+
+/* Hidden until has value OR active */
+.finger-range[data-hasvalue="false"]::-webkit-slider-thumb { opacity: 0; }
+.finger-range[data-hasvalue="false"]::-moz-range-thumb { opacity: 0; }
+
+/* Halo on drag */
+.finger-range[data-active="true"]::-webkit-slider-thumb {
+  box-shadow: 0 0 0 10px rgba(0, 122, 255, 0.15), 0 1px 2px rgba(0,0,0,0.08);
+  transform: scale(1.02);
+}
+.finger-range[data-active="true"]::-moz-range-thumb {
+  box-shadow: 0 0 0 10px rgba(0, 122, 255, 0.15), 0 1px 2px rgba(0,0,0,0.08);
+  transform: scale(1.02);
+}
+
+/* Accessible focus ring */
+.finger-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.25), 0 1px 2px rgba(0,0,0,0.08);
+}
+.finger-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.25), 0 1px 2px rgba(0,0,0,0.08);
+}
