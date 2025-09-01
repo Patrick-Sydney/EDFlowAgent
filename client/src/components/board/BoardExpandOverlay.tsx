@@ -30,6 +30,10 @@ export default function BoardExpandOverlay({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [recalcTick, setRecalcTick] = useState(0);
 
+  // Layout knobs for desktop feel
+  const TOP_FRACTION = 0.12;         // 12% from top (more space for content below)
+  const BOTTOM_MARGIN = 24;          // px margin at bottom
+
   useEffect(() => { setMounted(true); }, []);
 
   // Measure lane width to target ~2 columns, but keep a clinically-usable min width.
@@ -45,9 +49,10 @@ export default function BoardExpandOverlay({
       const g = parseFloat(s.columnGap || s.gap || "16");
       return isNaN(g) ? 16 : g;
     })();
-    const target = Math.round(laneWidth * 2 + gap);
-    const MIN = 960;                          // ✅ clinically meaningful minimum width
-    const MAX = Math.min(1280, window.innerWidth - 32);
+    // Bigger target: ~2.5 lane widths + ~1.5 gaps
+    const target = Math.round(laneWidth * 2.5 + gap * 1.5);
+    const MIN = 1100;                         // wider min for desktop readability
+    const MAX = Math.min(1440, window.innerWidth - 32);
     const width = Math.max(MIN, Math.min(target, MAX));
     const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
     return { width, left };
@@ -74,46 +79,40 @@ export default function BoardExpandOverlay({
     const el = cardRef.current;
     if (!open || !el || !anchorEl || !targetGeom) return;
 
-    // 1) Set final geometry (centered vertically; width as computed)
-    //    Measure content height to choose a centered final height.
+    // 1) Set final geometry (top-offset; width as computed)
     el.style.position = "fixed";
     el.style.left = `${targetGeom.left}px`;
     el.style.width = `${targetGeom.width}px`;
-    el.style.maxHeight = "";   // clear prior constraints
-    el.style.height = "auto";  // let it size to content for measurement
+    const top = Math.max(16, Math.round(window.innerHeight * TOP_FRACTION));
+    const finalH = Math.max(
+      420,
+      Math.min(window.innerHeight - top - BOTTOM_MARGIN, window.innerHeight - 32)
+    );
+    el.style.top = `${top}px`;
+    el.style.height = `${finalH}px`;
+    el.style.maxHeight = `${finalH}px`;
     el.style.transform = "none";
     el.style.opacity = "0.98";
     el.style.overflow = "auto";
-    // Force layout to get scrollHeight with the final width applied
-    const contentH = Math.ceil(el.scrollHeight);
-    const MAXH = Math.max(320, window.innerHeight - 32); // keep margins
-    const finalH = Math.min(contentH, MAXH);
-    const top = Math.max(16, Math.round((window.innerHeight - finalH) / 2));
-    el.style.top = `${top}px`;
-    el.style.height = `${finalH}px`;
     el.style.transformOrigin = "top left";
 
-    // 2) FLIP: invert from anchor card rect to final rect
+    // 2) FLIP: invert from anchor card rect to final rect (scaleX + scaleY)
     const from = anchorEl.getBoundingClientRect();
-    const toLeft = targetGeom.left;
-    const toTop = top;
-    const toW = targetGeom.width;
-    const toH = finalH;
-    const dx = from.left - toLeft;
-    const dy = from.top - toTop;
-    const sx = from.width / toW;
-    const sy = from.height / toH;
+    const dx = from.left - targetGeom.left;
+    const dy = from.top - top;
+    const sx = from.width / targetGeom.width;
+    const sy = from.height / finalH;
     el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
 
-    // 3) Play animation to identity
+    // 3) Play animation to identity (center-stage)
     requestAnimationFrame(() => {
-      el.style.transition = "transform 200ms ease, opacity 200ms ease";
+      el.style.transition = "transform 220ms ease, opacity 220ms ease";
       el.style.transform = "translate(0px, 0px) scale(1, 1)";
       el.style.opacity = "1";
     });
 
     // Cleanup transition after play
-    const t = setTimeout(() => { if (el) el.style.transition = ""; }, 240);
+    const t = setTimeout(() => { if (el) el.style.transition = ""; }, 260);
     return () => clearTimeout(t);
   }, [open, anchorEl, targetGeom, recalcTick]);
 
@@ -127,10 +126,10 @@ export default function BoardExpandOverlay({
     const dy = to.top - from.top;
     const sx = to.width / from.width;
     const sy = to.height / from.height;
-    el.style.transition = "transform 160ms ease, opacity 160ms ease";
+    el.style.transition = "transform 180ms ease, opacity 180ms ease";
     el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
     el.style.opacity = "0.98";
-    setTimeout(() => onOpenChange(false), 160);
+    setTimeout(() => onOpenChange(false), 180);
   };
 
   if (!mounted) return null;
