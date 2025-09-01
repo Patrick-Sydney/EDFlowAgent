@@ -196,6 +196,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
+  const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
   const displayName = useMemo(() => {
     const s = (name || "").trim();
     if (s.length <= 28) return s;
@@ -226,7 +227,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
       {/* Header row - new collapsed header component */}
       <div className="w-full text-left cursor-pointer" onClick={()=> {
-        const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
         if (isDesktop) { setDesktopOpen(true); } else { setOpen(o=>!o); }
       }} aria-expanded={open} aria-controls={`exp-${name}`}> 
         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">

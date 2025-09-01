@@ -1,0 +1,106 @@
+diff --git a/client/src/components/board/BoardExpandOverlay.tsx b/client/src/components/board/BoardExpandOverlay.tsx
+index 1111111..2222222 100644
+--- a/client/src/components/board/BoardExpandOverlay.tsx
++++ b/client/src/components/board/BoardExpandOverlay.tsx
+@@ -1,9 +1,9 @@
+ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+ import { createPortal } from "react-dom";
+ import { X } from "lucide-react";
+ 
+ /**
+  * BoardExpandOverlay
+- * - Animates a card from its on-board position to a floating panel sized to ~2 lane widths.
++ * - Animates a card to a floating panel sized to ~2 lane widths (with min/max clamps).
+  * - Uses a FLIP-style transform for smooth expand/contract.
+  * - Desktop only; callers should gate with a media query check.
+  *
+@@ -28,16 +28,22 @@ export default function BoardExpandOverlay({
+   const [mounted, setMounted] = useState(false);
+   const hostRef = useRef<HTMLDivElement | null>(null);
+   const cardRef = useRef<HTMLDivElement | null>(null);
+ 
+   useEffect(() => { setMounted(true); }, []);
+ 
+-  // Measure lane width to target ~2 columns
++  // Measure lane width to target ~2 columns, but keep a clinically-usable min width.
+   const targetGeom = useMemo(() => {
+     if (typeof window === "undefined") return null;
+     const firstLane = document.querySelector<HTMLElement>(".lane-col");
+-    const laneWidth = firstLane ? firstLane.getBoundingClientRect().width : Math.min(520, window.innerWidth - 48);
++    const laneWidth = firstLane
++      ? firstLane.getBoundingClientRect().width
++      : Math.min(520, window.innerWidth - 48);
+     const gap = (() => {
+       if (!firstLane || !firstLane.parentElement) return 16;
+       const s = window.getComputedStyle(firstLane.parentElement);
+       const g = parseFloat(s.columnGap || s.gap || "16");
+       return isNaN(g) ? 16 : g;
+     })();
+-    const width = Math.min( Math.round(laneWidth * 2 + gap), Math.min(1120, window.innerWidth - 32) );
++    const target = Math.round(laneWidth * 2 + gap);
++    const MIN = 960;                          // ✅ clinically meaningful minimum width
++    const MAX = Math.min(1280, window.innerWidth - 32);
++    const width = Math.max(MIN, Math.min(target, MAX));
+     const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
+     return { width, left };
+   }, [open]);
+ 
+   // ESC & scrim close
+@@ -55,7 +61,7 @@ export default function BoardExpandOverlay({
+   // FLIP animation
+   useLayoutEffect(() => {
+     const el = cardRef.current;
+     if (!open || !el || !anchorEl || !targetGeom) return;
+     const from = anchorEl.getBoundingClientRect();
+     const to = {
+-      top: Math.max(16, Math.min(from.top - 8, window.innerHeight - 100)), // keep near origin, within viewport
++      top: Math.max(16, Math.min(from.top - 8, window.innerHeight - 100)), // keep near origin, in viewport
+       left: targetGeom.left,
+       width: targetGeom.width,
+     };
+@@ -104,14 +110,18 @@ export default function BoardExpandOverlay({
+   if (!mounted) return null;
+   const portalRoot = document.body; // no special mount required
+   if (!open) return null;
+ 
+   return createPortal(
+-    <div ref={hostRef} className="fixed inset-0 z-[70]">
++    <div ref={hostRef} className="fixed inset-0 z-[80]">
+       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
+-      <div ref={cardRef} className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
+-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+-          <div className="font-semibold truncate pr-3">{title ?? "Patient"}</div>
+-          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted">
++      <div ref={cardRef} className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
++        <div
++          className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 cursor-pointer"
++          role="button"
++          aria-label="Collapse patient"
++          onClick={onClose}
++        >
++          <div className="font-semibold truncate pr-3 select-none">{title ?? "Patient"}</div>
++          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted" onMouseDown={(e)=>e.stopPropagation()}>
+             <X className="h-5 w-5" />
+           </button>
+         </div>
+         <div className="p-3">
+           {children}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 8888888..9999999 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -26,6 +26,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   const [open, setOpen] = useState(false);
+   const [desktopOpen, setDesktopOpen] = useState(false);
+   const displayName = name;
+   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
++  const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+ 
+   return (
+     <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
+       {/* Header row (collapsed view) */}
+       <button className="w-full text-left" onClick={()=>{
+-        const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+         if (isDesktop) { setDesktopOpen(true); } else { setOpen(o=>!o); }
+       }} aria-expanded={open} aria-controls={`exp-${name}`}>
+         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">

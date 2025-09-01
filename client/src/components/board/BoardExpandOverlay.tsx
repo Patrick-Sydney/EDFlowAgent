@@ -31,18 +31,23 @@ export default function BoardExpandOverlay({
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Measure lane width to target ~2 columns
+  // Measure lane width to target ~2 columns, but keep a clinically-usable min width.
   const targetGeom = useMemo(() => {
     if (typeof window === "undefined") return null;
     const firstLane = document.querySelector<HTMLElement>(".lane-col");
-    const laneWidth = firstLane ? firstLane.getBoundingClientRect().width : Math.min(520, window.innerWidth - 48);
+    const laneWidth = firstLane
+      ? firstLane.getBoundingClientRect().width
+      : Math.min(520, window.innerWidth - 48);
     const gap = (() => {
       if (!firstLane || !firstLane.parentElement) return 16;
       const s = window.getComputedStyle(firstLane.parentElement);
       const g = parseFloat(s.columnGap || s.gap || "16");
       return isNaN(g) ? 16 : g;
     })();
-    const width = Math.min( Math.round(laneWidth * 2 + gap), Math.min(1120, window.innerWidth - 32) );
+    const target = Math.round(laneWidth * 2 + gap);
+    const MIN = 960;                          // ✅ clinically meaningful minimum width
+    const MAX = Math.min(1280, window.innerWidth - 32);
+    const width = Math.max(MIN, Math.min(target, MAX));
     const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
     return { width, left };
   }, [open]);
@@ -61,7 +66,7 @@ export default function BoardExpandOverlay({
     if (!open || !el || !anchorEl || !targetGeom) return;
     const from = anchorEl.getBoundingClientRect();
     const to = {
-      top: Math.max(16, Math.min(from.top - 8, window.innerHeight - 100)), // keep near origin, within viewport
+      top: Math.max(16, Math.min(from.top - 8, window.innerHeight - 100)), // keep near origin, in viewport
       left: targetGeom.left,
       width: targetGeom.width,
     };
@@ -110,12 +115,17 @@ export default function BoardExpandOverlay({
   if (!open) return null;
 
   return createPortal(
-    <div ref={hostRef} className="fixed inset-0 z-[70]">
+    <div ref={hostRef} className="fixed inset-0 z-[80]">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div ref={cardRef} className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <div className="font-semibold truncate pr-3">{title ?? "Patient"}</div>
-          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted">
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 cursor-pointer"
+          role="button"
+          aria-label="Collapse patient"
+          onClick={onClose}
+        >
+          <div className="font-semibold truncate pr-3 select-none">{title ?? "Patient"}</div>
+          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted" onMouseDown={(e)=>e.stopPropagation()}>
             <X className="h-5 w-5" />
           </button>
         </div>
