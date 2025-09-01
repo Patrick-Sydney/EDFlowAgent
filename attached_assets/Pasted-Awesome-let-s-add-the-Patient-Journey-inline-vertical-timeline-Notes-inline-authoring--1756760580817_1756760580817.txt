@@ -1,0 +1,400 @@
+Awesome—let’s add the **Patient Journey** (inline vertical timeline), **Notes** (inline + authoring drawer), and make the **expanded Patient Card \~80% width** on desktop. Below is a **single patch** you can paste and apply.
+
+---
+
+### `journey-notes-and-bigger-card.patch`
+
+```diff
+*** Begin Patch
+*** Add File: client/src/stores/journeyStore.ts
++import { useEffect, useState } from "react";
++
++export type JourneyEvent = {
++  id: string;
++  patientId: string;
++  t: string; // ISO
++  kind:
++    | "arrival" | "triage" | "room_change" | "vitals" | "ews_change"
++    | "order" | "result" | "med_admin" | "task"
++    | "note" | "communication" | "alert";
++  severity?: "info" | "attention" | "critical";
++  label: string;
++  detail?: string;
++  actor?: { id?: string; name?: string; role?: "RN"|"MD"|"Clerk" };
++  ref?: { type: string; id: string };
++};
++
++type MapT = Record<string, JourneyEvent[]>;
++const eventsByPatient: MapT = {};
++
++function sortByTimeAsc(a: JourneyEvent, b: JourneyEvent) {
++  return Date.parse(a.t) - Date.parse(b.t);
++}
++
++export const journeyStore = {
++  add(patientId: string|number, ev: Omit<JourneyEvent, "id"|"patientId"|"t"> & { t?: string }) {
++    const pid = String(patientId);
++    const list = (eventsByPatient[pid] ||= []);
++    const item: JourneyEvent = {
++      id: `${pid}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
++      patientId: pid,
++      t: ev.t ?? new Date().toISOString(),
++      kind: ev.kind,
++      severity: ev.severity,
++      label: ev.label,
++      detail: ev.detail,
++      actor: ev.actor,
++      ref: ev.ref,
++    };
++    list.push(item);
++    list.sort(sortByTimeAsc);
++    window.dispatchEvent(new CustomEvent("journey:updated", { detail: { patientId: pid }}));
++    return item;
++  },
++  list(patientId: string|number) {
++    const pid = String(patientId);
++    return (eventsByPatient[pid] ||= []).slice().sort(sortByTimeAsc);
++  },
++};
++
++/** Subscribe-ish hook (event + light poll as fallback). */
++export function useJourney(patientId: string|number, pollMs = 1500) {
++  const pid = String(patientId);
++  const [rows, setRows] = useState<JourneyEvent[]>(() => journeyStore.list(pid));
++  useEffect(() => {
++    setRows(journeyStore.list(pid));
++    const id = window.setInterval(() => setRows(journeyStore.list(pid)), pollMs);
++    const onUpd = (e: Event) => {
++      const d = (e as CustomEvent).detail;
++      if (!d?.patientId || String(d.patientId) === pid) {
++        setRows(journeyStore.list(pid));
++      }
++    };
++    window.addEventListener("journey:updated", onUpd as EventListener);
++    return () => { window.clearInterval(id); window.removeEventListener("journey:updated", onUpd as EventListener); };
++  }, [pid, pollMs]);
++  return rows;
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: client/src/components/journey/PatientJourneyInline.tsx
++import React, { useMemo, useState } from "react";
++import { useJourney, JourneyEvent } from "../../stores/journeyStore";
++
++type Props = { patientId: string|number; className?: string; height?: number; };
++
++const KIND_LABEL: Record<JourneyEvent["kind"], string> = {
++  arrival: "Arrival", triage: "Triage", room_change: "Moved",
++  vitals: "Obs", ews_change: "EWS",
++  order: "Order", result: "Result", med_admin: "Med/Fluids",
++  task: "Task", note: "Note", communication: "Comms", alert: "Alert",
++};
++
++const KIND_ICON: Record<JourneyEvent["kind"], string> = {
++  arrival: "🟢", triage: "📝", room_change: "🚪",
++  vitals: "💓", ews_change: "↗︎", order: "🧾", result: "🧪",
++  med_admin: "💉", task: "⏱", note: "🗒", communication: "📣", alert: "⚠️",
++};
++
++export default function PatientJourneyInline({ patientId, className, height = 320 }: Props) {
++  const rows = useJourney(patientId);
++  const [windowH, setWindowH] = useState<4|8|24|72|0>(8); // 0 = all
++  const [filter, setFilter] = useState<"all"|JourneyEvent["kind"]>("all");
++  const now = Date.now();
++  const minT = windowH ? now - windowH * 3600_000 : 0;
++
++  const filtered = useMemo(() => {
++    const list = rows.filter(r => Date.parse(r.t) >= minT);
++    return filter === "all" ? list : list.filter(r => r.kind === filter);
++  }, [rows, minT, filter]);
++
++  // group by hour bucket for simple visual grouping
++  const grouped = useMemo(() => {
++    const byKey: Record<string, JourneyEvent[]> = {};
++    for (const r of filtered) {
++      const d = new Date(r.t);
++      const key = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()} ${d.getHours()}:00`;
++      (byKey[key] ||= []).push(r);
++    }
++    // preserve chronological order
++    return Object.entries(byKey).sort((a,b) => Date.parse(a[0]) - Date.parse(b[0]));
++  }, [filtered]);
++
++  return (
++    <div className={`rounded-2xl border p-3 ${className ?? ""}`}>
++      <div className="flex items-center justify-between mb-2">
++        <div className="text-sm font-medium">Patient journey</div>
++        <div className="flex items-center gap-1 flex-wrap">
++          {[4,8,24,72].map(h => (
++            <button key={h} className={`rounded-full border px-2.5 py-1 text-xs ${windowH===h ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(h as any)}>{h}h</button>
++          ))}
++          <button className={`rounded-full border px-2.5 py-1 text-xs ${windowH===0 ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(0)}>All</button>
++          <div className="mx-2 h-4 w-px bg-border" />
++          {["all","vitals","ews_change","order","result","med_admin","task","room_change","note","alert","communication","triage","arrival"].map(k => (
++            <button key={k} className={`rounded-full border px-2.5 py-1 text-xs ${(filter===k) ? "bg-background shadow" : "opacity-80"}`} onClick={() => setFilter(k as any)}>{k === "all" ? "All" : KIND_LABEL[k as JourneyEvent["kind"]]}</button>
++          ))}
++        </div>
++      </div>
++
++      <div className="rounded-xl border h-[320px] md:h-[400px] overflow-auto p-3" style={{height}}>
++        {grouped.length === 0 ? (
++          <div className="h-full grid place-items-center text-sm text-muted-foreground">
++            No events in the selected window.
++          </div>
++        ) : (
++          <ol className="space-y-4">
++            {grouped.map(([bucket, items]) => {
++              const d = new Date(bucket);
++              const bucketLabel = d.toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
++              return (
++                <li key={bucket}>
++                  <div className="text-xs font-medium text-muted-foreground mb-1">{bucketLabel}</div>
++                  <ul className="space-y-2">
++                    {items.map(ev => {
++                      const t = new Date(ev.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
++                      return (
++                        <li key={ev.id} className="flex items-start gap-3">
++                          <div className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">{t}</div>
++                          <div className="shrink-0 leading-6">{KIND_ICON[ev.kind] ?? "•"}</div>
++                          <div className="grow">
++                            <div className="text-sm">
++                              <span className="font-medium">{KIND_LABEL[ev.kind] ?? ev.kind}</span>
++                              <span className="ml-2">{ev.label}</span>
++                            </div>
++                            {ev.detail && <div className="text-xs text-muted-foreground">{ev.detail}</div>}
++                          </div>
++                          {ev.actor?.role && <div className="text-xs text-muted-foreground shrink-0">{ev.actor.role}</div>}
++                        </li>
++                      );
++                    })}
++                  </ul>
++                </li>
++              );
++            })}
++          </ol>
++        )}
++      </div>
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: client/src/components/notes/NotesInline.tsx
++import React, { useMemo } from "react";
++import { useJourney } from "../../stores/journeyStore";
++
++export default function NotesInline({ patientId, onWriteNote }:{ patientId: string|number; onWriteNote: ()=>void; }) {
++  const events = useJourney(patientId);
++  const notes = useMemo(() => events.filter(e => e.kind === "note").sort((a,b)=> Date.parse(b.t)-Date.parse(a.t)), [events]);
++
++  return (
++    <div className="rounded-2xl border p-3">
++      <div className="flex items-center justify-between mb-2">
++        <div className="text-sm font-medium">Notes</div>
++        <button onClick={onWriteNote} className="rounded-full px-3 py-1 text-sm bg-blue-600 text-white">Write note</button>
++      </div>
++      {notes.length === 0 ? (
++        <div className="text-sm text-muted-foreground">No notes yet.</div>
++      ) : (
++        <ul className="space-y-2">
++          {notes.slice(0,4).map(n => (
++            <li key={n.id} className="rounded-lg border p-2">
++              <div className="text-xs text-muted-foreground">{new Date(n.t).toLocaleString()}</div>
++              <div className="text-sm">{n.detail ?? n.label}</div>
++            </li>
++          ))}
++          {notes.length > 4 && <div className="text-xs text-muted-foreground">Showing latest {Math.min(4, notes.length)} of {notes.length}.</div>}
++        </ul>
++      )}
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Add File: client/src/components/notes/NotesDrawer.tsx
++import React, { useState } from "react";
++import { journeyStore } from "../../stores/journeyStore";
++
++export default function NotesDrawer({ patientId, onSaved }:{ patientId: string|number; onSaved?: ()=>void; }) {
++  const [text, setText] = useState("");
++  const [addToJourney, setAddToJourney] = useState(true);
++  const [tag, setTag] = useState<"Nursing"|"Medical"|"Handover"|"Discharge">("Nursing");
++  const [saving, setSaving] = useState(false);
++
++  return (
++    <div className="space-y-3">
++      <div className="text-sm text-muted-foreground">New note</div>
++      <div className="flex items-center gap-2">
++        {(["Nursing","Medical","Handover","Discharge"] as const).map(t => (
++          <button key={t} className={`rounded-full border px-3 py-1 text-sm ${t===tag?"bg-background shadow":""}`} onClick={()=>setTag(t)}>{t}</button>
++        ))}
++      </div>
++      <textarea className="w-full rounded-xl border p-3 min-h-[160px]" placeholder="Type your note…" value={text} onChange={e=>setText(e.target.value)} />
++      <label className="flex items-center gap-2 text-sm">
++        <input type="checkbox" checked={addToJourney} onChange={e=>setAddToJourney(e.target.checked)} />
++        Add to patient journey
++      </label>
++      <div className="flex items-center justify-end gap-2">
++        <button className="rounded-full border px-4 py-2 text-sm" onClick={()=>setText("")}>Clear</button>
++        <button disabled={saving || !text.trim()} className="rounded-full px-4 py-2 text-sm text-white bg-blue-600 disabled:opacity-50"
++          onClick={()=>{
++            setSaving(true);
++            const label = text.trim().slice(0,80);
++            if (addToJourney) {
++              journeyStore.add(String(patientId), {
++                kind: "note",
++                label: label || "Note",
++                detail: text.trim(),
++                actor: { role: tag==="Nursing"?"RN": tag==="Medical"?"MD":"Clerk" }
++              });
++            }
++            setSaving(false);
++            onSaved?.();
++          }}>Save note</button>
++      </div>
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Update File: client/src/components/obs/ObsQuickForm.tsx
+@@
+-              const obs = { t:new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source:"obs" as const };
+-              vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
+-              // Nudge any listeners (e.g., timeline) to refresh instantly
+-              window.dispatchEvent(new CustomEvent("vitals:updated", { detail: { patientId } }));
++              const obs = { t:new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source:"obs" as const };
++              vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
++              // Journey events: vitals set, and EWS change if applicable
++              try {
++                const prevEws = (last?.rr!=null || last?.hr!=null || last?.sbp!=null || last?.temp!=null || last?.spo2!=null) ? (calcEWS({ rr:last?.rr, spo2:last?.spo2, hr:last?.hr, sbp:last?.sbp, temp:last?.temp, loc })) : undefined;
++                // @ts-ignore lazy import to avoid circular dep at build
++                const { journeyStore } = await import("../..//stores/journeyStore");
++                journeyStore.add(String(patientId), { kind:"vitals", label:`Obs recorded (EWS ${ews})` });
++                if (prevEws!=null && prevEws !== ews) {
++                  journeyStore.add(String(patientId), { kind:"ews_change", label:`EWS ${prevEws} → ${ews}` });
++                }
++              } catch {}
++              // Nudge listeners
++              window.dispatchEvent(new CustomEvent("vitals:updated", { detail: { patientId } }));
+               onSaved?.();
+             } finally { setSaving(false); }
+           }}>
+           Save obs
+         </button>
+*** End Patch
+*** Begin Patch
+*** Update File: client/src/components/patient/PatientCardExpandable.tsx
+@@
+-import VitalsTimelineInline from "../obs/VitalsTimelineInline";
++import VitalsTimelineInline from "../obs/VitalsTimelineInline";
++import PatientJourneyInline from "../journey/PatientJourneyInline";
++import NotesInline from "../notes/NotesInline";
++import NotesDrawer from "../notes/NotesDrawer";
+@@
+-  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "assign" | "triage">(false);
++  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "assign" | "triage" | "note">(false);
+@@
+-            <VitalsCapsuleLive
+-              patientId={patientId}
+-              onAddObs={onAddObs}
+-              hideTimeline={true}
+-            />
+-            {/* Inline combined Vitals Timeline (replaces modal) */}
+-            <VitalsTimelineInline
+-              patientId={patientId}
+-              height={280}
+-            />
++            <VitalsCapsuleLive patientId={patientId} onAddObs={onAddObs} hideTimeline={true} />
++            {/* Inline combined Vitals Timeline */}
++            <VitalsTimelineInline patientId={patientId} height={280} />
+           </div>
+-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+-            <IdentityCapsule patientId={patientId} />
+-            <TasksMini tasks={tasks} onOpen={onOpenFull} />
+-          </div>
++          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
++            <PatientJourneyInline patientId={patientId} height={360} />
++            <div className="space-y-3">
++              <NotesInline patientId={patientId} onWriteNote={()=>setDrawerOpen("note")} />
++              <IdentityCapsule patientId={patientId} />
++              <TasksMini tasks={tasks} onOpen={onOpenFull} />
++            </div>
++          </div>
+@@
+   <AuthoringDrawer
+     title={drawerOpen === "obs" ? `Add observations — ${displayName}`
+           : drawerOpen === "assign" ? `Assign room — ${displayName}`
+-          : drawerOpen === "triage" ? `Triage — ${displayName}` : `${displayName}`}
++          : drawerOpen === "triage" ? `Triage — ${displayName}`
++          : drawerOpen === "note" ? `Write note — ${displayName}` : `${displayName}`}
+     open={!!drawerOpen}
+     onClose={() => setDrawerOpen(false)}
+     widthPx={920}
+   >
+     {drawerOpen === "obs" && (
+       <ObsQuickForm patientId={patientId} onSaved={()=> setDrawerOpen(false)} />
+     )}
+     {drawerOpen === "assign" && /* your AssignRoomPanel here */}
+     {drawerOpen === "triage" && /* your Triage form here */}
++    {drawerOpen === "note" && <NotesDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
+   </AuthoringDrawer>
+*** End Patch
+*** Begin Patch
+*** Update File: client/src/components/board/BoardExpandOverlay.tsx
+@@
+-  // Measure lane width to target ~2 columns, but keep a clinically-usable min width.
++  // Desktop: make the panel ~80% of viewport width (clamped), centered.
+   const targetGeom = useMemo(() => {
+     if (typeof window === "undefined") return null;
+-    const firstLane = document.querySelector<HTMLElement>(".lane-col");
+-    const laneWidth = firstLane
+-      ? firstLane.getBoundingClientRect().width
+-      : Math.min(520, window.innerWidth - 48);
+-    const gap = (() => {
+-      if (!firstLane || !firstLane.parentElement) return 16;
+-      const s = window.getComputedStyle(firstLane.parentElement);
+-      const g = parseFloat(s.columnGap || s.gap || "16");
+-      return isNaN(g) ? 16 : g;
+-    })();
+-    // Bigger target: ~2.5 lane widths + ~1.5 gaps
+-    const target = Math.round(laneWidth * 2.5 + gap * 1.5);
+-    const MIN = 1100;                         // wider min for desktop readability
+-    const MAX = Math.min(1440, window.innerWidth - 32);
+-    const width = Math.max(MIN, Math.min(target, MAX));
++    const MIN = 1100;
++    const MAX = Math.min(1600, window.innerWidth - 32);
++    const eighty = Math.round(window.innerWidth * 0.8);
++    const width = Math.max(MIN, Math.min(eighty, MAX));
+     const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
+     return { width, left };
+   }, [open, recalcTick]);
+*** End Patch
+```
+
+---
+
+## How to apply in Replit
+
+```bash
+git checkout -b feat/journey-notes-bigger-card
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > journey-notes-and-bigger-card.patch
+git apply --reject --whitespace=fix journey-notes-and-bigger-card.patch
+git add -A
+git commit -m "Patient Journey + Notes inline; authoring drawer for notes; expanded card ~80% viewport width"
+```
+
+---
+
+## What you’ll see
+
+* **Expanded Patient Card** is now \~**80% of the viewport** (clamped for readability).
+* A new **Patient Journey** section shows a **vertical timeline** of events with **filter pills** and **time windows**.
+* **Notes** shows latest entries inline; **Write note** opens an authoring drawer. Saving a note posts to the **Journey**.
+* Saving **+Obs** now also posts **“Obs recorded (EWS x)”** and, when it changes, an **“EWS a → b”** event.
+
+If you want me to pre-fill the Journey with existing milestones (arrival, triage, room assignment) just say so—I’ll add small adapters where those actions fire to call `journeyStore.add(...)`.

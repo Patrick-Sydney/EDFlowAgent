@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { vitalsStore, useVitalsLast } from "../../stores/vitalsStore";
+import { journeyStore } from "../../stores/journeyStore";
 import "./obs-slider.css";
 
 type Num = number | undefined;
@@ -169,6 +170,26 @@ export default function ObsQuickForm({ patientId, onSaved }:{
             try{
               const obs = { t:new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source:"obs" as const };
               vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
+              // Journey events: vitals set, and EWS change if applicable
+              try {
+                const last = useVitalsLast(String(patientId));
+                const lastEws = last?.ews ?? 0;
+                journeyStore.add(String(patientId), {
+                  kind: "vitals",
+                  label: `Obs recorded: RR ${rr ?? "—"}, HR ${hr ?? "—"}, SBP ${sbp ?? "—"}, SpO₂ ${spo2 ?? "—"}%, Temp ${temp ?? "—"}°C`,
+                  detail: `EWS: ${ews}`,
+                  actor: { role: "RN" }
+                });
+                if (ews !== lastEws && ews >= 5) {
+                  journeyStore.add(String(patientId), {
+                    kind: "ews_change",
+                    severity: "attention",
+                    label: `EWS increased to ${ews}`,
+                    detail: `Previous: ${lastEws}`,
+                    actor: { role: "RN" }
+                  });
+                }
+              } catch {}
               onSaved?.();
             } finally { setSaving(false); }
           }}>

@@ -49,10 +49,10 @@ export default function BoardExpandOverlay({
       const g = parseFloat(s.columnGap || s.gap || "16");
       return isNaN(g) ? 16 : g;
     })();
-    // Bigger target: ~2.5 lane widths + ~1.5 gaps
-    const target = Math.round(laneWidth * 2.5 + gap * 1.5);
+    // 80% of viewport width for comprehensive clinical workspace
+    const target = Math.round(window.innerWidth * 0.8);
     const MIN = 1100;                         // wider min for desktop readability
-    const MAX = Math.min(1440, window.innerWidth - 32);
+    const MAX = Math.min(target, window.innerWidth - 32);
     const width = Math.max(MIN, Math.min(target, MAX));
     const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
     return { width, left };

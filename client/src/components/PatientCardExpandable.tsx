@@ -20,6 +20,9 @@ import AuthoringDrawer from "./shell/AuthoringDrawer";
 import ObsQuickForm from "./obs/ObsQuickForm";
 import AssignRoomPanel from "./rooms/AssignRoomPanel";
 import VitalsTimelineInline from "./obs/VitalsTimelineInline";
+import PatientJourneyInline from "./journey/PatientJourneyInline";
+import NotesInline from "./notes/NotesInline";
+import NotesDrawer from "./notes/NotesDrawer";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -199,7 +202,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [open, setOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign">(false);
+  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes">(false);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
   const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
@@ -323,6 +326,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
             </div>
             <div className="space-y-3">
+              {/* Patient Journey */}
+              <PatientJourneyInline 
+                patientId={patientId}
+                height={320}
+              />
+
+              {/* Notes Inline */}
+              <NotesInline 
+                patientId={patientId}
+                onWriteNote={() => setDrawerOpen("notes")}
+              />
+
               {/* Results Capsule (if pending) */}
               {(resultsPending && resultsPending > 0) && (
                 <ResultsCapsule 
@@ -331,14 +346,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   onQuickOrders={onQuickOrders}
                 />
               )}
-
-              {/* Notes Tabs Lite */}
-              <NotesTabsLite 
-                triageSummary={triageSummary}
-                assessment={assessment}
-                note={note}
-                onEdit={onEditNotes}
-              />
 
               {/* Identity Slim (moved to end) */}
               <IdentitySlim 
@@ -469,6 +476,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               // TODO: call your real store/API here to persist:
               // roomsStore.assign(patientId, space.id)
             }}
+          />
+        )}
+        {drawerOpen === "notes" && (
+          <NotesDrawer 
+            patientId={patientId} 
+            onSaved={() => setDrawerOpen(false)} 
           />
         )}
         {drawerOpen === "triage" && <div className="text-sm text-muted-foreground">Triage form (hook up existing component here).</div>}
