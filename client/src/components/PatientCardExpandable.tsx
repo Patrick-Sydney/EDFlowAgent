@@ -18,6 +18,7 @@ import IdentitySlim from "./patient/IdentitySlim";
 import BoardExpandOverlay from "./board/BoardExpandOverlay";
 import AuthoringDrawer from "./shell/AuthoringDrawer";
 import ObsQuickForm from "./obs/ObsQuickForm";
+import AssignRoomPanel from "./rooms/AssignRoomPanel";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -198,6 +199,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign">(false);
+  const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
   const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
   const displayName = useMemo(() => {
@@ -239,7 +241,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             name={displayName}
             ageSex={ageSex}
             ats={ats}
-            locationLabel={locationLabel ?? (status?.toLowerCase() === "room" ? undefined : undefined)}
+            locationLabel={localLocationLabel ?? locationLabel ?? undefined}
             chiefComplaint={complaint}
             timerLabel={timer}
           />
@@ -444,7 +446,24 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         {drawerOpen === "obs" && (
           <ObsQuickForm patientId={patientId} onSaved={()=> setDrawerOpen(false)} />
         )}
-        {drawerOpen === "assign" && <div className="text-sm text-muted-foreground">Assign room panel (hook up your existing component here).</div>}
+        {drawerOpen === "assign" && (
+          <AssignRoomPanel
+            patient={{
+              id: patientId,
+              name: displayName,
+              ats: ats ?? null,
+              isolationRequired: !!alertFlags?.isolation,
+              currentLocationLabel: localLocationLabel ?? locationLabel ?? null,
+            }}
+            onAssigned={(space) => {
+              // Update local view immediately for clinical clarity
+              setLocalLocationLabel(space.label);
+              setDrawerOpen(false);
+              // TODO: call your real store/API here to persist:
+              // roomsStore.assign(patientId, space.id)
+            }}
+          />
+        )}
         {drawerOpen === "triage" && <div className="text-sm text-muted-foreground">Triage form (hook up existing component here).</div>}
       </AuthoringDrawer>
     </div>
