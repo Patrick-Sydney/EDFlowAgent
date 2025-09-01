@@ -74,61 +74,51 @@ function getAllVitals(patientId: string | number): Obs[] {
     }
     return [];
   };
-  // Try common accessors first
-  // @ts-ignore
-  if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
-  // @ts-ignore
-  if (typeof vitalsStore?.getSeries === "function") return fromAny(vitalsStore.getSeries(pidStr));
-  // @ts-ignore
-  if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
-  // @ts-ignore
-  if (vitalsStore?.data) {
-    const v = vitalsStore.data[pidStr] ?? vitalsStore.data[pidNum];
-    const rows = fromAny(v);
-    if (rows.length) return rows;
-  }
-  // AUTO-DISCOVER: search any arrays inside vitalsStore that look like obs,
-  // optionally filter by patientId if present.
+  // Try actual vitalsStore API methods first
   try {
-    const candidates: Obs[] = [];
-    const scan = (obj:any) => {
-      if (!obj) return;
-      if (Array.isArray(obj)) {
-        for (const it of obj) {
-          const n = norm(it);
-          if (n) candidates.push(n);
-        }
-        return;
-      }
-      if (typeof obj === "object") {
-        for (const k of Object.keys(obj)) {
-          const v = (obj as any)[k];
-          if (v && (Array.isArray(v) || typeof v === "object")) scan(v);
-        }
-      }
-    };
-    // Limit scan breadth a bit by only scanning enumerable props
-    scan(vitalsStore);
-    let rows = candidates;
-    // If any row carries patientId, filter to ours; else attempt partition by key match
-    if (rows.some(r => r.patientId != null)) {
-      rows = rows.filter(r => String(r.patientId) === pidStr || Number(r.patientId) === pidNum);
+    // @ts-ignore - Check for list method (our actual store method)
+    if (typeof vitalsStore?.list === "function") {
+      const data = vitalsStore.list(pidStr);
+      console.log("VitalsTimeline: using vitalsStore.list for", pidStr, "found", data?.length || 0, "points:", data);
+      return fromAny(data);
     }
-    return rows;
-  } catch {}
+    
+    // @ts-ignore - Common fallbacks
+    if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
+    if (typeof vitalsStore?.getSeries === "function") return fromAny(vitalsStore.getSeries(pidStr));
+    if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
+  } catch (e) {
+    console.log("VitalsTimeline: Error accessing vitalsStore methods:", e);
+  }
+  
+  console.log("VitalsTimeline: No data found for patient", pidStr);
   return [];
 }
 
 // Reactive-ish hook: listen for custom events + short poll fallback
 function useVitalsSeries(patientId: string | number, pollMs = 800) {
-  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
+  const [rows, setRows] = useState<Obs[]>(() => {
+    console.log("VitalsTimeline: Initial fetch for patient", patientId);
+    return getAllVitals(patientId);
+  });
+  
   useEffect(() => {
-    setRows(getAllVitals(patientId));
-    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
+    console.log("VitalsTimeline: useEffect triggered for patient", patientId);
+    const newRows = getAllVitals(patientId);
+    console.log("VitalsTimeline: Setting rows", newRows);
+    setRows(newRows);
+    
+    const id = window.setInterval(() => {
+      const polledRows = getAllVitals(patientId);
+      console.log("VitalsTimeline: Polling update for", patientId, "found", polledRows.length, "rows");
+      setRows(polledRows);
+    }, pollMs);
+    
     const onB = (e: Event) => {
       // Optional filter by patient id if detail is present
       const det = (e as CustomEvent)?.detail;
       if (!det || det.patientId == null || String(det.patientId) === String(patientId)) {
+        console.log("VitalsTimeline: Event-driven update for", patientId);
         setRows(getAllVitals(patientId));
       }
     };
@@ -138,6 +128,8 @@ function useVitalsSeries(patientId: string | number, pollMs = 800) {
       window.removeEventListener("vitals:updated", onB as EventListener);
     };
   }, [patientId, pollMs]);
+  
+  console.log("VitalsTimeline: useVitalsSeries returning", rows.length, "rows for patient", patientId);
   return rows;
 }
 
