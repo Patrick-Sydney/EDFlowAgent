@@ -28,6 +28,7 @@ export default function BoardExpandOverlay({
   const [mounted, setMounted] = useState(false);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const [recalcTick, setRecalcTick] = useState(0);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -50,7 +51,7 @@ export default function BoardExpandOverlay({
     const width = Math.max(MIN, Math.min(target, MAX));
     const left = Math.max(16, Math.round((window.innerWidth - width) / 2));
     return { width, left };
-  }, [open]);
+  }, [open, recalcTick]);
 
   // ESC & scrim close
   useEffect(() => {
@@ -60,40 +61,61 @@ export default function BoardExpandOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange]);
 
+  // Keep centered on resize
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => setRecalcTick((t) => t + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
+
   // FLIP animation
   useLayoutEffect(() => {
     const el = cardRef.current;
     if (!open || !el || !anchorEl || !targetGeom) return;
-    const from = anchorEl.getBoundingClientRect();
-    const to = {
-      top: Math.max(16, Math.min(from.top - 8, window.innerHeight - 100)), // keep near origin, in viewport
-      left: targetGeom.left,
-      width: targetGeom.width,
-    };
-    // Position at final, then invert to from
+
+    // 1) Set final geometry (centered vertically; width as computed)
+    //    Measure content height to choose a centered final height.
     el.style.position = "fixed";
-    el.style.top = `${to.top}px`;
-    el.style.left = `${to.left}px`;
-    el.style.width = `${to.width}px`;
-    el.style.maxHeight = `${Math.round(window.innerHeight - to.top - 16)}px`;
-    el.style.overflow = "auto";
-    el.style.transformOrigin = "top left";
-    // Invert
-    const dx = from.left - to.left;
-    const dy = from.top - to.top;
-    const sx = from.width / to.width;
-    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sx})`;
+    el.style.left = `${targetGeom.left}px`;
+    el.style.width = `${targetGeom.width}px`;
+    el.style.maxHeight = "";   // clear prior constraints
+    el.style.height = "auto";  // let it size to content for measurement
+    el.style.transform = "none";
     el.style.opacity = "0.98";
-    // Play
+    el.style.overflow = "auto";
+    // Force layout to get scrollHeight with the final width applied
+    const contentH = Math.ceil(el.scrollHeight);
+    const MAXH = Math.max(320, window.innerHeight - 32); // keep margins
+    const finalH = Math.min(contentH, MAXH);
+    const top = Math.max(16, Math.round((window.innerHeight - finalH) / 2));
+    el.style.top = `${top}px`;
+    el.style.height = `${finalH}px`;
+    el.style.transformOrigin = "top left";
+
+    // 2) FLIP: invert from anchor card rect to final rect
+    const from = anchorEl.getBoundingClientRect();
+    const toLeft = targetGeom.left;
+    const toTop = top;
+    const toW = targetGeom.width;
+    const toH = finalH;
+    const dx = from.left - toLeft;
+    const dy = from.top - toTop;
+    const sx = from.width / toW;
+    const sy = from.height / toH;
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+
+    // 3) Play animation to identity
     requestAnimationFrame(() => {
-      el.style.transition = "transform 180ms ease, opacity 180ms ease";
-      el.style.transform = "translate(0px, 0px) scale(1,1)";
+      el.style.transition = "transform 200ms ease, opacity 200ms ease";
+      el.style.transform = "translate(0px, 0px) scale(1, 1)";
       el.style.opacity = "1";
     });
-    // Cleanup transition after
-    const t = setTimeout(() => { if (el) el.style.transition = ""; }, 220);
+
+    // Cleanup transition after play
+    const t = setTimeout(() => { if (el) el.style.transition = ""; }, 240);
     return () => clearTimeout(t);
-  }, [open, anchorEl, targetGeom]);
+  }, [open, anchorEl, targetGeom, recalcTick]);
 
   // Contract animation on close
   const onClose = () => {
@@ -104,8 +126,9 @@ export default function BoardExpandOverlay({
     const dx = to.left - from.left;
     const dy = to.top - from.top;
     const sx = to.width / from.width;
+    const sy = to.height / from.height;
     el.style.transition = "transform 160ms ease, opacity 160ms ease";
-    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sx})`;
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
     el.style.opacity = "0.98";
     setTimeout(() => onOpenChange(false), 160);
   };
