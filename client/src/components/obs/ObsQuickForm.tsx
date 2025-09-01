@@ -31,25 +31,51 @@ function FingerSlider({
 
   const visual = value ?? last ?? (min+max)/2;
 
-  // First-tap places the thumb under the finger
-  useEffect(()=>{
-    const el=overlayRef.current;
-    // Only arm overlay when no value AND no last value (true first obs)
-    if(!el || value!=null || last!=null) return;
-    const onDown=(e:PointerEvent)=>{
-      const input=inputRef.current; if(!input) return;
-      const r=input.getBoundingClientRect();
-      const ratio=(e.clientX-r.left)/r.width;
-      const clamped=Math.min(1,Math.max(0,ratio));
-      const v=min+clamped*(max-min);
-      const snapped=Math.round(v/step)*step;
-      onChange(Number(snapped.toFixed(2)));
-      setTouched(true);   // disables overlay for subsequent drags
-      setActive(true); input.focus();
+  // Helper to map pointer X to a snapped value and commit it
+  const commitFromClientX = (clientX:number) => {
+    const input = inputRef.current;
+    if (!input) return;
+    const r = input.getBoundingClientRect();
+    const ratio = (clientX - r.left) / r.width;
+    const clamped = Math.min(1, Math.max(0, ratio));
+    const v = min + clamped * (max - min);
+    const snapped = Math.round(v / step) * step;
+    onChange(Number(snapped.toFixed(2)));
+  };
+
+  // First interaction: the overlay handles drag; then it's disabled forever
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    // Arm overlay ONLY when there is no value and no "last"
+    if (value != null || last != null) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      e.preventDefault();
+      overlay.setPointerCapture(e.pointerId);
+      setActive(true);
+      setTouched(true); // will disable overlay after this interaction
+      commitFromClientX(e.clientX);
     };
-    el.addEventListener("pointerdown",onDown);
-    return ()=> el.removeEventListener("pointerdown",onDown);
-  },[min,max,step,onChange,value,last]);
+    const onPointerMove = (e: PointerEvent) => {
+      if (!active) return;
+      commitFromClientX(e.clientX);
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      try { overlay.releasePointerCapture(e.pointerId); } catch {}
+      setActive(false);
+      // overlay becomes inert; subsequent drags use native input
+    };
+
+    overlay.addEventListener("pointerdown", onPointerDown);
+    overlay.addEventListener("pointermove", onPointerMove);
+    overlay.addEventListener("pointerup", onPointerUp);
+    return () => {
+      overlay.removeEventListener("pointerdown", onPointerDown);
+      overlay.removeEventListener("pointermove", onPointerMove);
+      overlay.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [active, value, last, min, max, step]);
 
   const delta = last!=null && value!=null ? value-last : undefined;
   const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta)}`:`Δ −${Math.abs(delta)}`) : undefined;
@@ -65,12 +91,12 @@ function FingerSlider({
         </div>
       </div>
       <div className="relative">
-        {/* Invisible overlay captures ONLY the very first tap when no value exists.
-            After first touch (or if a last value exists), it becomes inert so the
-            native range input handles drag normally. */}
+        {/* Invisible overlay captures ONLY the very first drag when no value/last exist.
+            After that, it becomes inert so the native range input handles drag. */}
         <div
           ref={overlayRef}
           className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
+          style={{ touchAction: "none" }}
           aria-hidden="true"
         />
         <input

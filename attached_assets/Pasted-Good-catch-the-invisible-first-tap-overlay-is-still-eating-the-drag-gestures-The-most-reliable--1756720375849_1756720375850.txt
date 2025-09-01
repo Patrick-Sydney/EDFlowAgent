@@ -1,0 +1,159 @@
+Good catch — the invisible “first-tap” overlay is still eating the drag gestures. The most reliable fix is to let the overlay handle **only the very first drag** (so we can place the thumb under the finger), and then immediately disable it so all subsequent drags go straight to the native `<input type="range">`.
+
+Here’s a drop-in patch that:
+
+* Implements a tiny **overlay drag controller** (pointerdown/move/up) for the first interaction only
+* Then flips the overlay to `pointer-events: none` so the range input drags normally
+* Adds `touch-action: none` for smooth finger sliding
+
+### Patch: make the slider draggable
+
+**1) Update `ObsQuickForm.tsx` (the `FingerSlider` component only)**
+
+Replace the existing `useEffect`/overlay handling with this:
+
+```diff
+diff --git a/client/src/components/obs/ObsQuickForm.tsx b/client/src/components/obs/ObsQuickForm.tsx
+index 21a4bcd..a7c8f10 100644
+--- a/client/src/components/obs/ObsQuickForm.tsx
++++ b/client/src/components/obs/ObsQuickForm.tsx
+@@ -34,39 +34,72 @@ function FingerSlider({
+ }){
+   const [active,setActive]=useState(false);
+-  const [touched,setTouched]=useState<boolean>(value!=null || last!=null); // controls overlay & thumb
++  const [touched,setTouched]=useState<boolean>(value!=null || last!=null); // controls overlay & thumb
+   const inputRef=useRef<HTMLInputElement|null>(null);
+   const overlayRef=useRef<HTMLDivElement|null>(null);
+ 
+   const visual = value ?? last ?? (min+max)/2;
+ 
+-  // First-tap places the thumb under the finger
+-  useEffect(()=>{
+-    const el=overlayRef.current;
+-    // Only arm overlay when no value AND no last value (true first obs)
+-    if(!el || value!=null || last!=null) return;
+-    const onDown=(e:PointerEvent)=>{
+-      const input=inputRef.current; if(!input) return;
+-      const r=input.getBoundingClientRect();
+-      const ratio=(e.clientX-r.left)/r.width;
+-      const clamped=Math.min(1,Math.max(0,ratio));
+-      const v=min+clamped*(max-min);
+-      const snapped=Math.round(v/step)*step;
+-      onChange(Number(snapped.toFixed(2)));
+-      setTouched(true);   // disables overlay for subsequent drags
+-      setActive(true); input.focus();
+-    };
+-    el.addEventListener("pointerdown",onDown);
+-    return ()=> el.removeEventListener("pointerdown",onDown);
+-  },[min,max,step,onChange,value,last]);
++  // Helper to map pointer X to a snapped value and commit it
++  const commitFromClientX = (clientX:number) => {
++    const input = inputRef.current;
++    if (!input) return;
++    const r = input.getBoundingClientRect();
++    const ratio = (clientX - r.left) / r.width;
++    const clamped = Math.min(1, Math.max(0, ratio));
++    const v = min + clamped * (max - min);
++    const snapped = Math.round(v / step) * step;
++    onChange(Number(snapped.toFixed(2)));
++  };
++
++  // First interaction: the overlay handles drag; then it's disabled forever
++  useEffect(() => {
++    const overlay = overlayRef.current;
++    if (!overlay) return;
++    // Arm overlay ONLY when there is no value and no "last"
++    if (value != null || last != null) return;
++
++    const onPointerDown = (e: PointerEvent) => {
++      e.preventDefault();
++      overlay.setPointerCapture(e.pointerId);
++      setActive(true);
++      setTouched(true); // will disable overlay after this interaction
++      commitFromClientX(e.clientX);
++    };
++    const onPointerMove = (e: PointerEvent) => {
++      if (!active) return;
++      commitFromClientX(e.clientX);
++    };
++    const onPointerUp = (e: PointerEvent) => {
++      try { overlay.releasePointerCapture(e.pointerId); } catch {}
++      setActive(false);
++      // overlay becomes inert; subsequent drags use native input
++    };
++
++    overlay.addEventListener("pointerdown", onPointerDown);
++    overlay.addEventListener("pointermove", onPointerMove);
++    overlay.addEventListener("pointerup", onPointerUp);
++    return () => {
++      overlay.removeEventListener("pointerdown", onPointerDown);
++      overlay.removeEventListener("pointermove", onPointerMove);
++      overlay.removeEventListener("pointerup", onPointerUp);
++    };
++  }, [active, value, last, min, max, step]);
+@@ -86,9 +119,16 @@ function FingerSlider({
+       </div>
+       <div className="relative">
+-        {/* Invisible overlay captures ONLY the very first tap when no value exists.
+-            After first touch (or if a last value exists), it becomes inert so the
+-            native range input handles drag normally. */}
++        {/* Invisible overlay captures ONLY the very first drag when no value/last exist.
++            After that, it becomes inert so the native range input handles drag. */}
+         <div
+           ref={overlayRef}
+-          className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
++          className={`absolute inset-0 z-[1] ${touched ? "pointer-events-none" : "pointer-events-auto"}`}
++          style={{ touchAction: "none" }}
+           aria-hidden="true"
+         />
+         <input
+           ref={inputRef}
+           type="range"
+           className="finger-range z-0"
+           min={min}
+           max={max}
+           step={step}
+           value={visual}
+-          onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
++          onChange={(e) => { onChange(Number(e.target.value)); setTouched(true); }}
+           onPointerDown={() => setActive(true)}
+           onPointerUp={() => setActive(false)}
+           data-active={active ? "true" : "false"}
+           data-hasvalue={touched ? "true" : "false"}
+         />
+```
+
+**2) Update the CSS (one small addition already suggested, keep it if you added earlier)**
+
+```diff
+diff --git a/client/src/components/obs/obs-slider.css b/client/src/components/obs/obs-slider.css
+index 9feeeef..2aa1aac 100644
+--- a/client/src/components/obs/obs-slider.css
++++ b/client/src/components/obs/obs-slider.css
+@@ -6,6 +6,7 @@
+   width: 100%;
+   background: transparent;
+   height: 28px; /* hit target */
+   touch-action: none; /* smooth finger drag; don’t scroll page while sliding */
+   position: relative;
+ }
+```
+
+---
+
+### Why this works
+
+* On the **first** interaction (only when there’s truly no prior value), the overlay captures the drag and we compute the value from the finger position → the thumb appears **under the finger** and follows smoothly.
+* As soon as we’ve touched once, `touched = true` flips the overlay to `pointer-events: none`, so all later drags use the **native range** behavior (fast, reliable).
+* `touch-action: none` prevents the page from scrolling while you slide on mobile.
+
+---
+
+### Quick sanity checks
+
+* Open **+ Obs** drawer → sliders show a calm rail with hidden thumb if no value exists yet.
+* Tap and **drag immediately**: the dot follows your finger; value changes live; EWS updates.
+* Release → Try dragging again: now the **native slider** drags smoothly (overlay is inert).
+* If a **last value** exists, the overlay is **disabled from the start**, and you can drag instantly.
+
+If it’s still fussy on a particular device/browser (e.g., iOS Safari 16 vs 17), tell me which one and I’ll tailor a tiny vendor-specific tweak.
