@@ -182,6 +182,9 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
 
   const hasAny = data.length > 0;
 
+  // Debug logging for troubleshooting
+  console.log("VitalsTimelineInline render:", { patientId: pid, hasAny, dataLength: data.length, rawLength: raw.length });
+
   return (
     <div className={`rounded-2xl border p-3 ${className ?? ""}`}>
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -211,54 +214,48 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
         {!hasAny ? (
           <div className="h-full grid place-items-center text-sm text-muted-foreground">
             No observations in the last {windowHours}h.
+            <div className="text-xs mt-2 opacity-75">
+              Raw data: {raw.length} points • Patient ID: {pid}
+            </div>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
               <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+              <YAxis yAxisId="left" domain={[0, 200]} width={36} tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="right" domain={[70, 220]} orientation="right" width={36} tick={{ fontSize: 11 }} />
 
-              {/* Multi-axes — always render to avoid yAxis id errors */}
-              <YAxis yAxisId="rate"  domain={domRate}  width={36} tick={{ fontSize: 11 }} label={{ value: "HR/RR", angle: -90, position: "insideLeft", fontSize: 11 }} />
-              <YAxis yAxisId="bp"    domain={domBP}    orientation="right" width={36} tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="spo2"  domain={domSpO2}  orientation="right" width={28} hide />
-              <YAxis yAxisId="temp"  domain={domTemp}  orientation="right" width={28} hide />
+              {show.rr   && <Line type="monotone" yAxisId="left"  dataKey="rr"   name="RR"   stroke="#4b9fd6" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
+              {show.hr   && <Line type="monotone" yAxisId="left"  dataKey="hr"   name="HR"   stroke="#6f7fb2" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
+              {show.sbp  && <Line type="monotone" yAxisId="right" dataKey="sbp"  name="SBP"  stroke="#6aa3a1" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
+              {show.spo2 && <Line type="monotone" yAxisId="left"  dataKey="spo2" name="SpO₂" stroke="#7aa386" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
+              {show.temp && <Line type="monotone" yAxisId="left"  dataKey="temp" name="Temp" stroke="#a38b6b" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} connectNulls={false} />}
 
-              {/* Only show lines when data exists and series is enabled */}
-              {hasAny && show.rr   && <Line type="monotone" yAxisId="rate" dataKey="rr"   name="RR"   stroke="#4b9fd6" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
-              {hasAny && show.hr   && <Line type="monotone" yAxisId="rate" dataKey="hr"   name="HR"   stroke="#6f7fb2" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
-              {hasAny && show.sbp  && <Line type="monotone" yAxisId="bp"   dataKey="sbp"  name="SBP"  stroke="#6aa3a1" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
-              {hasAny && show.spo2 && <Line type="monotone" yAxisId="spo2" dataKey="spo2" name="SpO₂" stroke="#7aa386" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
-              {hasAny && show.temp && <Line type="monotone" yAxisId="temp" dataKey="temp" name="Temp" stroke="#a38b6b" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
-
-              {/* EWS ≥5 markers - only when data exists */}
-              {hasAny && markers.map(m => (
+              {markers.map(m => (
                 <ReferenceLine key={`${m.idx}-${m.time}`} x={m.time} stroke="#999" strokeDasharray="4 4" opacity={0.6} />
               ))}
 
-              {hasAny && (
-                <Tooltip
-                  formatter={(value: any, name: string) => {
-                    const v = typeof value === "number" ? value : Number(value);
-                    const unit = name === "SBP" ? "mmHg"
-                                : name === "SpO₂" ? "%"
-                                : name === "Temp" ? "°C"
-                                : "bpm";
-                    return [`${isFinite(v) ? v : value} ${unit}`, name];
-                  }}
-                  labelFormatter={(label: string) => `Time: ${label}`}
-                />
-              )}
-              {hasAny && <Legend wrapperStyle={{ fontSize: 12 }} />}
-              {hasAny && <Brush dataKey="time" height={18} travellerWidth={12} />}
+              <Tooltip
+                formatter={(value: any, name: string) => {
+                  const v = typeof value === "number" ? value : Number(value);
+                  const unit = name === "SBP" ? "mmHg"
+                              : name === "SpO₂" ? "%"
+                              : name === "Temp" ? "°C"
+                              : "bpm";
+                  return [`${isFinite(v) ? v : value} ${unit}`, name];
+                }}
+                labelFormatter={(label: string) => `Time: ${label}`}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Brush dataKey="time" height={18} travellerWidth={12} />
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      {/* Tiny footnote for marker semantics (optional, unobtrusive) */}
       <div className="mt-2 text-[11px] text-muted-foreground">
-        Dashed lines indicate times where EWS ≥ 5.
+        {hasAny ? "Dashed lines indicate times where EWS ≥ 5." : "Add observations using the + Obs button to see trends here."}
       </div>
     </div>
   );
