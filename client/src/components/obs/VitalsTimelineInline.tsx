@@ -218,37 +218,39 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
               <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
               <XAxis dataKey="time" tick={{ fontSize: 12 }} />
 
-              {/* Multi-axes — kept subtle to avoid clutter */}
+              {/* Multi-axes — always render to avoid yAxis id errors */}
               <YAxis yAxisId="rate"  domain={domRate}  width={36} tick={{ fontSize: 11 }} label={{ value: "HR/RR", angle: -90, position: "insideLeft", fontSize: 11 }} />
               <YAxis yAxisId="bp"    domain={domBP}    orientation="right" width={36} tick={{ fontSize: 11 }} />
               <YAxis yAxisId="spo2"  domain={domSpO2}  orientation="right" width={28} hide />
               <YAxis yAxisId="temp"  domain={domTemp}  orientation="right" width={28} hide />
 
-              {/* Calm palette (no alarm colors) */}
-              {show.rr   && <Line type="monotone" yAxisId="rate" dataKey="rr"   name="RR"   stroke="#4b9fd6" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
-              {show.hr   && <Line type="monotone" yAxisId="rate" dataKey="hr"   name="HR"   stroke="#6f7fb2" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
-              {show.sbp  && <Line type="monotone" yAxisId="bp"   dataKey="sbp"  name="SBP"  stroke="#6aa3a1" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
-              {show.spo2 && <Line type="monotone" yAxisId="spo2" dataKey="spo2" name="SpO₂" stroke="#7aa386" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
-              {show.temp && <Line type="monotone" yAxisId="temp" dataKey="temp" name="Temp" stroke="#a38b6b" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />}
+              {/* Only show lines when data exists and series is enabled */}
+              {hasAny && show.rr   && <Line type="monotone" yAxisId="rate" dataKey="rr"   name="RR"   stroke="#4b9fd6" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
+              {hasAny && show.hr   && <Line type="monotone" yAxisId="rate" dataKey="hr"   name="HR"   stroke="#6f7fb2" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
+              {hasAny && show.sbp  && <Line type="monotone" yAxisId="bp"   dataKey="sbp"  name="SBP"  stroke="#6aa3a1" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
+              {hasAny && show.spo2 && <Line type="monotone" yAxisId="spo2" dataKey="spo2" name="SpO₂" stroke="#7aa386" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
+              {hasAny && show.temp && <Line type="monotone" yAxisId="temp" dataKey="temp" name="Temp" stroke="#a38b6b" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} connectNulls={false} />}
 
-              {/* EWS ≥5 markers */}
-              {markers.map(m => (
+              {/* EWS ≥5 markers - only when data exists */}
+              {hasAny && markers.map(m => (
                 <ReferenceLine key={`${m.idx}-${m.time}`} x={m.time} stroke="#999" strokeDasharray="4 4" opacity={0.6} />
               ))}
 
-              <Tooltip
-                formatter={(value: any, name: string) => {
-                  const v = typeof value === "number" ? value : Number(value);
-                  const unit = name === "SBP" ? "mmHg"
-                              : name === "SpO₂" ? "%"
-                              : name === "Temp" ? "°C"
-                              : "bpm";
-                  return [`${isFinite(v) ? v : value} ${unit}`, name];
-                }}
-                labelFormatter={(label: string) => `Time: ${label}`}
-              />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Brush dataKey="time" height={18} travellerWidth={12} />
+              {hasAny && (
+                <Tooltip
+                  formatter={(value: any, name: string) => {
+                    const v = typeof value === "number" ? value : Number(value);
+                    const unit = name === "SBP" ? "mmHg"
+                                : name === "SpO₂" ? "%"
+                                : name === "Temp" ? "°C"
+                                : "bpm";
+                    return [`${isFinite(v) ? v : value} ${unit}`, name];
+                  }}
+                  labelFormatter={(label: string) => `Time: ${label}`}
+                />
+              )}
+              {hasAny && <Legend wrapperStyle={{ fontSize: 12 }} />}
+              {hasAny && <Brush dataKey="time" height={18} travellerWidth={12} />}
             </LineChart>
           </ResponsiveContainer>
         )}
