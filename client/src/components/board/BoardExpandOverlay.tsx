@@ -115,17 +115,17 @@ export default function BoardExpandOverlay({
   if (!open) return null;
 
   return createPortal(
-    <div ref={hostRef} className="fixed inset-0 z-[80]">
+    <div ref={hostRef} className="fixed inset-0 z-[1000]">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div ref={cardRef} className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
         <div
           className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 cursor-pointer"
-          role="button"
-          aria-label="Collapse patient"
           onClick={onClose}
+          role="button"
+          aria-label="Collapse"
         >
           <div className="font-semibold truncate pr-3 select-none">{title ?? "Patient"}</div>
-          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted" onMouseDown={(e)=>e.stopPropagation()}>
+          <button aria-label="Close" onClick={(e)=>{ e.stopPropagation(); onClose(); }} className="rounded-full p-2 hover:bg-muted">
             <X className="h-5 w-5" />
           </button>
         </div>

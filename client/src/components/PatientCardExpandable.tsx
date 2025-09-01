@@ -16,6 +16,7 @@ import TasksMini, { TaskItem } from "./patient/TasksMini";
 import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
 import BoardExpandOverlay from "./board/BoardExpandOverlay";
+import AuthoringDrawer from "./shell/AuthoringDrawer";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -195,6 +196,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [open, setOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign">(false);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
   const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
   const displayName = useMemo(() => {
@@ -269,22 +271,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               role={role} 
               lane={lane} 
               handlers={{
-                onAddObs: onAddObs ? () => {
-                  const patient = {
-                    id: patientId,
-                    displayName: name,
-                    givenName: name.split(' ')[0] || '',
-                    familyName: name.split(' ').slice(1).join(' ') || '',
-                    chiefComplaint: complaint,
-                    ews: ews,
-                    roomName: status
-                  };
-                  onAddObs(patient);
-                } : undefined,
-                onAssignRoom,
-                onOrderSet,
-                onDispo: onOpenFull,
-                onSeeNow: onOpenFull
+                onAddObs: () => setDrawerOpen("obs"),
+                onAssignRoom: () => setDrawerOpen("assign"),
+                onOrderSet: () => setDrawerOpen("triage"),
+                onDispo: () => setDrawerOpen("triage"),
+                onSeeNow: () => setDrawerOpen("triage")
               }} 
             />
           )}
@@ -364,22 +355,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               role={role} 
               lane={lane} 
               handlers={{
-                onAddObs: onAddObs ? () => {
-                  const patient = {
-                    id: patientId,
-                    displayName: name,
-                    givenName: name.split(' ')[0] || '',
-                    familyName: name.split(' ').slice(1).join(' ') || '',
-                    chiefComplaint: complaint,
-                    ews: ews,
-                    roomName: status
-                  };
-                  onAddObs(patient);
-                } : undefined,
-                onAssignRoom,
-                onOrderSet,
-                onDispo: onOpenFull,
-                onSeeNow: onOpenFull
+                onAddObs: () => setDrawerOpen("obs"),
+                onAssignRoom: () => setDrawerOpen("assign"),
+                onOrderSet: () => setDrawerOpen("triage"),
+                onDispo: () => setDrawerOpen("triage"),
+                onSeeNow: () => setDrawerOpen("triage")
               }} 
             />
           )}
@@ -460,6 +440,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           onAddObs(patient);
         } : undefined}
       />
+
+      {/* Authoring Drawer — sits ABOVE the overlay (z-[1100]) */}
+      <AuthoringDrawer title={`${displayName}`} open={!!drawerOpen} onClose={()=> setDrawerOpen(false)}>
+        <div className="text-sm text-muted-foreground">
+          {/* Mount your forms here. Replace these placeholders with your real components. */}
+          {drawerOpen === "obs" && <div>+Obs form goes here.</div>}
+          {drawerOpen === "assign" && <div>Assign room panel goes here.</div>}
+          {drawerOpen === "triage" && <div>Triage form goes here.</div>}
+        </div>
+      </AuthoringDrawer>
     </div>
   );
 }

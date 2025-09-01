@@ -1,0 +1,204 @@
+Great call—let’s lock the “read on card, write in drawer” pattern and fix the layering so **Authoring Drawer always sits above** the expanded Patient Card.
+
+Below is a **single patch** that:
+
+1. Adds a reusable **AuthoringDrawer** (global portal, full-width on phone, 920 px on desktop) with **z-index = 1100**.
+2. Bumps the Patient Card overlay (**BoardExpandOverlay**) to **z-index = 1000** and makes its **header click-to-collapse** (so it’s easy to close).
+3. Shows exactly how to open the drawer from the card (no hard deps on your forms—safe placeholders, you can drop in your existing Triage / +Obs / Assign Room UIs).
+
+---
+
+### `authoring-drawer-integrate.patch`
+
+```diff
+diff --git a/client/src/components/shell/AuthoringDrawer.tsx b/client/src/components/shell/AuthoringDrawer.tsx
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/client/src/components/shell/AuthoringDrawer.tsx
+@@ -0,0 +1,119 @@
++import React, { useEffect } from "react";
++import { createPortal } from "react-dom";
++import { X } from "lucide-react";
++
++type Props = {
++  title: string;
++  open: boolean;
++  onClose: () => void;
++  children: React.ReactNode;
++  widthPx?: number;   // desktop width
++  dirty?: boolean;    // show discard guard if true
++};
++
++export default function AuthoringDrawer({
++  title, open, onClose, children, widthPx = 920, dirty = false,
++}: Props) {
++  useEffect(() => {
++    if (!open) return;
++    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
++    window.addEventListener("keydown", onKey);
++    return () => window.removeEventListener("keydown", onKey);
++  }, [open, onClose]);
++
++  if (!open) return null;
++  return createPortal(
++    <div className="fixed inset-0 z-[1100]">
++      {/* Scrim */}
++      <div
++        className="absolute inset-0 bg-black/35"
++        onClick={() => { if (!dirty || confirm("Discard changes?")) onClose(); }}
++      />
++      {/* Panel */}
++      <div
++        className="absolute right-0 top-0 h-full bg-background border-l shadow-2xl flex flex-col"
++        style={{ width: Math.min(widthPx, window.innerWidth) }}
++      >
++        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
++          <div className="font-semibold">{title}</div>
++          <button
++            className="rounded-full p-2 hover:bg-muted"
++            onClick={() => { if (!dirty || confirm("Discard changes?")) onClose(); }}
++            aria-label="Close"
++          >
++            <X className="h-5 w-5" />
++          </button>
++        </div>
++        <div className="p-3 overflow-auto">{children}</div>
++      </div>
++    </div>,
++    document.body
++  );
++}
+diff --git a/client/src/components/board/BoardExpandOverlay.tsx b/client/src/components/board/BoardExpandOverlay.tsx
+index 1111111..2222222 100644
+--- a/client/src/components/board/BoardExpandOverlay.tsx
++++ b/client/src/components/board/BoardExpandOverlay.tsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+ import { createPortal } from "react-dom";
+-import { X } from "lucide-react";
++import { X } from "lucide-react";
+ 
+ /**
+  * BoardExpandOverlay
+@@ -71,7 +71,7 @@ export default function BoardExpandOverlay({
+   if (!mounted) return null;
+   const portalRoot = document.body;
+   if (!open) return null;
+   return createPortal(
+-    <div className="fixed inset-0 z-[80]">
++    <div className="fixed inset-0 z-[1000]">
+       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
+-      <div className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
+-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+-          <div className="font-semibold truncate pr-3">{title ?? "Patient"}</div>
+-          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-muted">
++      <div className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
++        <div
++          className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 cursor-pointer"
++          onClick={onClose}
++          role="button"
++          aria-label="Collapse"
++        >
++          <div className="font-semibold truncate pr-3 select-none">{title ?? "Patient"}</div>
++          <button aria-label="Close" onClick={(e)=>{ e.stopPropagation(); onClose(); }} className="rounded-full p-2 hover:bg-muted">
+             <X className="h-5 w-5" />
+           </button>
+         </div>
+         <div className="p-3">
+           {children}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index 9999999..aaaaaaa 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -1,12 +1,14 @@
+ import React, { useMemo, useState, useRef } from "react";
+ // …existing imports…
+ import BoardExpandOverlay from "../board/BoardExpandOverlay";
++import AuthoringDrawer from "../shell/AuthoringDrawer";
+ 
+ export default function PatientCardExpandable(props: ExpandableCardProps) {
+   // …existing state…
+   const [desktopOpen, setDesktopOpen] = useState(false);
++  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign">(false);
+   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
+ 
+   // …existing return…
+@@ -40,7 +42,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+       <button className="w-full text-left" onClick={()=>{
+         const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+         if (isDesktop) { setDesktopOpen(true); } else { setOpen(o=>!o); }
+       }} aria-expanded={open} aria-controls={`exp-${name}`}>
+-        <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
++        <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+           {/* collapsed header … */}
+         </div>
+       </button>
+@@ -58,9 +60,17 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+         title={displayName}
+       >
+         <div className="space-y-3">
+           {/* Alerts, ActionBar, Snapshot, etc… */}
++          {/* Example: wire actions to open the Authoring Drawer */}
++          {/* Pass these handlers into your ActionBar: */}
++          {/* onAddObs={() => setDrawerOpen("obs")} */}
++          {/* onAssignRoom={() => setDrawerOpen("assign")} */}
+         </div>
+       </BoardExpandOverlay>
+ 
++      {/* Authoring Drawer — sits ABOVE the overlay (z-[1100]) */}
++      <AuthoringDrawer title={`${displayName}`} open={!!drawerOpen} onClose={()=> setDrawerOpen(false)}>
++        <div className="text-sm text-muted-foreground">
++          {/* Mount your forms here. Replace these placeholders with your real components. */}
++          {drawerOpen === "obs" && <div>+Obs form goes here.</div>}
++          {drawerOpen === "assign" && <div>Assign room panel goes here.</div>}
++          {drawerOpen === "triage" && <div>Triage form goes here.</div>}
++        </div>
++      </AuthoringDrawer>
+       {/* Inline expand for mobile/tablet remains unchanged… */}
+```
+
+---
+
+## How to apply (Replit)
+
+1. In the Shell:
+
+```bash
+git checkout -b ui/authoring-drawer-layering
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > authoring-drawer-integrate.patch
+git apply --reject --whitespace=fix authoring-drawer-integrate.patch
+git add -A
+git commit -m "Authoring Drawer (z-1100) above Patient overlay; overlay header collapses; wiring placeholders"
+```
+
+2. Wire your **ActionBar** to open the drawer:
+
+```tsx
+<ActionBar
+  role={role}
+  lane={lane}
+  handlers={{
+    onAddObs: () => setDrawerOpen("obs"),
+    onAssignRoom: () => setDrawerOpen("assign"),
+    onOrderSet: () => setDrawerOpen("triage"), // or a separate "orders"
+    onDispo: () => setDrawerOpen("triage"),
+    onSeeNow: () => setDrawerOpen("triage"),
+  }}
+/>
+```
+
+3. Drop your actual forms into the drawer:
+
+* Replace the placeholders with your existing components (e.g., `<ObsForm …/>`, `<AssignRoom …/>`).
+* The drawer is **global** and always renders **above** the patient overlay because it portals to `document.body` at **z-index 1100**.
+
+---
+
+### Why this works
+
+* **Clear layering:** Patient overlay at **z-1000**, Authoring Drawer at **z-1100** → the drawer always stacks above, and your board remains in the background.
+* **Easy collapse:** Clicking the overlay header or the Close button collapses without hunting for a small target.
+* **Consistent authoring surface:** All patient-initiated data entry lives in one UX pattern (the drawer), while the card remains a fast, safe *read + trigger* surface.
+
+If you want me to wire your existing **+Obs form** and **Assign Room** into this drawer with proper props, say the word and I’ll ship a second tiny patch that mounts the real components instead of placeholders.
