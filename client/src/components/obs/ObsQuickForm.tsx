@@ -169,6 +169,8 @@ export default function ObsQuickForm({ patientId, onSaved }:{
             try{
               const obs = { t:new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source:"obs" as const };
               vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
+              // Nudge any listeners (e.g., timeline) to refresh instantly
+              window.dispatchEvent(new CustomEvent("vitals:updated", { detail: { patientId } }));
               onSaved?.();
             } finally { setSaving(false); }
           }}>

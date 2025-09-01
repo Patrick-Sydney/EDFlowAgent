@@ -298,7 +298,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               {/* Vitals Capsule Live */}
               <VitalsCapsuleLive 
                 patientId={patientId} 
-                onOpenTimeline={() => setOpenTL(true)} 
                 onAddObs={onAddObs ? () => {
                   const patient = {
                     id: patientId,
@@ -311,6 +310,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   };
                   onAddObs(patient);
                 } : undefined} 
+                hideTimeline={true}
               />
 
               {/* Inline combined vitals timeline */}

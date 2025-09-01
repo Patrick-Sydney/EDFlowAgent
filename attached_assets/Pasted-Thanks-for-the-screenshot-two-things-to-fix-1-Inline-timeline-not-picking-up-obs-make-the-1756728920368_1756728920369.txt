@@ -1,0 +1,274 @@
+Thanks for the screenshot—two things to fix:
+
+1. **Inline timeline not picking up obs** → make the reader tolerant to whatever the `vitalsStore` actually stores (field names/time keys), and nudge it when new obs are saved.
+2. **Remove the old “Timeline” button/modal** from the Vitals capsule.
+
+Here’s a **single patch** that does both. It:
+
+* Makes `VitalsTimelineInline` read from a wide set of shapes (`t|time|ts|timestamp`, `rr|resp|respiratoryRate`, `sbp|bp|systolic`…).
+* Listens for a `vitals:updated` browser event (and we emit it from the +Obs save) so charts refresh instantly.
+* Shortens polling to keep things snappy even if the store isn’t reactive.
+* Hides the legacy **Timeline** button in the Vitals capsule and removes the prop wiring for it.
+
+---
+
+### `fix-timeline-and-remove-modal.patch`
+
+```diff
+diff --git a/client/src/components/obs/VitalsTimelineInline.tsx b/client/src/components/obs/VitalsTimelineInline.tsx
+index a1b2c3d..ab44ee1 100644
+--- a/client/src/components/obs/VitalsTimelineInline.tsx
++++ b/client/src/components/obs/VitalsTimelineInline.tsx
+@@ -1,12 +1,13 @@
+ import React, { useEffect, useMemo, useState } from "react";
+ import {
+   ResponsiveContainer, LineChart, Line,
+   XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ReferenceLine
+ } from "recharts";
+ import { vitalsStore } from "../../stores/vitalsStore";
+ 
+ type Obs = {
+-  t: string;         // ISO time
++  t: string;         // ISO-ish time
+   rr?: number;       // breaths/min
+   hr?: number;       // bpm
+   sbp?: number;      // mmHg (systolic)
+   temp?: number;     // °C
+   spo2?: number;     // %
+   ews?: number;
+   source?: "triage" | "obs" | "device";
+ };
+ 
+-function getAllVitals(patientId: string): Obs[] {
+-  // Be liberal in what we accept from the store
+-  // Try common method names before falling back.
+-  // @ts-ignore
+-  if (typeof vitalsStore?.getAll === "function") return vitalsStore.getAll(patientId) as Obs[];
+-  // @ts-ignore
+-  if (typeof vitalsStore?.getSeries === "function") return vitalsStore.getSeries(patientId) as Obs[];
+-  // @ts-ignore
+-  if (typeof vitalsStore?.all === "function") return vitalsStore.all(patientId) as Obs[];
+-  // @ts-ignore
+-  if (vitalsStore?.data && vitalsStore.data[patientId]) return vitalsStore.data[patientId] as Obs[];
+-  return [];
+-}
++// Tolerant reader: handle different store shapes + key names
++function getAllVitals(patientId: string | number): Obs[] {
++  const pidStr = String(patientId);
++  const pidNum = Number(pidStr);
++  const pick = (obj: any, key: any) => (obj && obj[key] !== undefined ? obj[key] : undefined);
++  const coerceN = (x: any) => (x === null || x === undefined || x === "" ? undefined : Number(x));
++  const coerceISO = (x: any) => {
++    if (!x) return undefined;
++    // accept Date, ISO, unix(ms/s)
++    if (x instanceof Date) return x.toISOString();
++    if (typeof x === "number") return new Date(x > 1e12 ? x : x * 1000).toISOString();
++    return String(x);
++  };
++  const norm = (r: any): Obs | null => {
++    if (!r) return null;
++    const t = coerceISO(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
++    if (!t) return null;
++    const sbpFromObj =
++      typeof r.bp === "object" && r.bp
++        ? r.bp.sbp ?? r.bp.sys ?? r.bp.systolic
++        : undefined;
++    const out: Obs = {
++      t,
++      rr:  coerceN(r.rr ?? r.resp ?? r.respiratory ?? r.respiratoryRate),
++      hr:  coerceN(r.hr ?? r.pulse ?? r.heartRate),
++      sbp: coerceN(r.sbp ?? r.sys ?? r.systolic ?? r.bp ?? sbpFromObj),
++      temp: coerceN(r.temp ?? r.temperature),
++      spo2: coerceN(r.spo2 ?? r.SpO2 ?? r.spo2Pct ?? r.oxygenSaturation),
++      ews: coerceN(r.ews ?? r.news ?? r.score),
++      source: r.source,
++    };
++    // drop rows with no vitals at all
++    if (out.rr==null && out.hr==null && out.sbp==null && out.temp==null && out.spo2==null) return null;
++    return out;
++  };
++  const fromAny = (val: any): Obs[] => {
++    if (!val) return [];
++    if (Array.isArray(val)) return val.map(norm).filter(Boolean) as Obs[];
++    if (typeof val === "object") {
++      // object keyed by time
++      return Object.values(val).map(norm).filter(Boolean) as Obs[];
++    }
++    return [];
++  };
++  // Try common accessors then raw maps
++  // @ts-ignore
++  if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
++  // @ts-ignore
++  if (typeof vitalsStore?.getSeries === "function") return fromAny(vitalsStore.getSeries(pidStr));
++  // @ts-ignore
++  if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
++  // @ts-ignore
++  if (vitalsStore?.data) return fromAny(vitalsStore.data[pidStr] ?? vitalsStore.data[pidNum]);
++  // @ts-ignore
++  if (vitalsStore?.byPatient) return fromAny(vitalsStore.byPatient[pidStr] ?? vitalsStore.byPatient[pidNum]);
++  return [];
++}
+ 
+-// Very light polling fallback so timeline updates even if the store is not reactive
+-function useVitalsSeries(patientId: string, pollMs = 1500) {
+-  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
++// Reactive-ish hook: listen for custom events + short poll fallback
++function useVitalsSeries(patientId: string | number, pollMs = 800) {
++  const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
+   useEffect(() => {
+     setRows(getAllVitals(patientId));
+-    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
+-    return () => window.clearInterval(id);
++    const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
++    const onB = (e: Event) => {
++      // Optional filter by patient id if detail is present
++      const det = (e as CustomEvent)?.detail;
++      if (!det || det.patientId == null || String(det.patientId) === String(patientId)) {
++        setRows(getAllVitals(patientId));
++      }
++    };
++    window.addEventListener("vitals:updated", onB as EventListener);
++    return () => {
++      window.clearInterval(id);
++      window.removeEventListener("vitals:updated", onB as EventListener);
++    };
+   }, [patientId, pollMs]);
+   return rows;
+ }
+ 
+ const fmtTime = (iso: string) => {
+   try {
+     const d = new Date(iso);
+     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+   } catch { return iso; }
+ };
+@@ -27,7 +28,7 @@ export default function VitalsTimelineInline({ patientId, height = 260, classNam
+   const pid = String(patientId);
+   const raw = useVitalsSeries(pid);
+ 
+   // Derive, sort, clamp to selected window
+-  const [windowHours, setWindowHours] = useState<4 | 8 | 24 | 72>(8);
++  const [windowHours, setWindowHours] = useState<4 | 8 | 24 | 72>(8);
+   const now = Date.now();
+   const minTime = now - windowHours * 3600_000;
+ 
+   const data = useMemo(() => {
+     const rows = [...raw].filter(r => {
+       const t = Date.parse(r.t);
+       return isFinite(t) && t >= minTime;
+     }).sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+     return rows.map(r => ({ ...r, time: fmtTime(r.t) }));
+   }, [raw, minTime]);
+diff --git a/client/src/components/patient/VitalsCapsuleLive.tsx b/client/src/components/patient/VitalsCapsuleLive.tsx
+new file mode 100644
+index 0000000..13579bd
+--- /dev/null
++++ b/client/src/components/patient/VitalsCapsuleLive.tsx
+@@ -0,0 +1,62 @@
++import React from "react";
++// NOTE: This is a minimal stub that hides the legacy Timeline button.
++// If you already have this file in your repo, merge the 'hideTimeline' behavior into it instead.
++export default function VitalsCapsuleLive({
++  patientId,
++  onAddObs,
++  hideTimeline = true,
++}: {
++  patientId: string | number;
++  onAddObs?: () => void;
++  hideTimeline?: boolean;
++}) {
++  // Render whatever you already had (mini vitals chips etc.)
++  // IMPORTANT: No "Timeline" button here when hideTimeline is true.
++  return (
++    <div className="rounded-2xl border p-3">
++      <div className="flex items-center justify-between mb-2">
++        <div className="text-sm font-medium">Vitals</div>
++        <div className="flex items-center gap-2">
++          {!hideTimeline && (
++            <button className="rounded-full border px-3 py-1 text-sm opacity-60 cursor-not-allowed">
++              Timeline
++            </button>
++          )}
++          {onAddObs && (
++            <button className="rounded-full bg-blue-600 text-white px-3 py-1 text-sm" onClick={onAddObs}>
++              + Obs
++            </button>
++          )}
++        </div>
++      </div>
++      {/* your vitals chips go here; stubbed to keep the patch focused */}
++      <div className="text-sm text-muted-foreground">Vitals summary…</div>
++    </div>
++  );
++}
+diff --git a/client/src/components/patient/PatientCardExpandable.tsx b/client/src/components/patient/PatientCardExpandable.tsx
+index d0e1f23..e5f2a10 100644
+--- a/client/src/components/patient/PatientCardExpandable.tsx
++++ b/client/src/components/patient/PatientCardExpandable.tsx
+@@ -12,7 +12,7 @@ import BoardExpandOverlay from "../board/BoardExpandOverlay";
+ import AuthoringDrawer from "../shell/AuthoringDrawer";
+ import ObsQuickForm from "../obs/ObsQuickForm";
+ import AssignRoomPanel from "../rooms/AssignRoomPanel";
+-import VitalsTimelineInline from "../obs/VitalsTimelineInline";
++import VitalsTimelineInline from "../obs/VitalsTimelineInline";
+ import VitalsCapsuleLive from "./VitalsCapsuleLive";
+ 
+ // ...existing types...
+ 
+@@ -133,12 +133,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
+           />
+ 
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+-            <VitalsCapsuleLive
+-              patientId={patientId}
+-              onOpenTimeline={onOpenVitals}
+-              onAddObs={onAddObs}
+-            />
+-            {/* Inline combined vitals timeline */}
++            <VitalsCapsuleLive
++              patientId={patientId}
++              onAddObs={onAddObs}
++              hideTimeline={true}
++            />
++            {/* Inline combined Vitals Timeline (replaces modal) */}
+             <VitalsTimelineInline
+               patientId={patientId}
+               height={280}
+             />
+           </div>
+diff --git a/client/src/components/obs/ObsQuickForm.tsx b/client/src/components/obs/ObsQuickForm.tsx
+index d3cbb55..f0f0f0f 100644
+--- a/client/src/components/obs/ObsQuickForm.tsx
++++ b/client/src/components/obs/ObsQuickForm.tsx
+@@ -214,6 +214,8 @@ export default function ObsQuickForm({ patientId, onSaved }:{
+               };
+               vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
++              // Nudge any listeners (e.g., timeline) to refresh instantly
++              window.dispatchEvent(new CustomEvent("vitals:updated", { detail: { patientId } }));
+               onSaved?.();
+             } finally { setSaving(false); }
+           }}>
+           Save obs
+         </button>
+```
+
+---
+
+## How to apply
+
+```bash
+git checkout -b fix/timeline-and-remove-modal
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > fix-timeline-and-remove-modal.patch
+git apply --reject --whitespace=fix fix-timeline-and-remove-modal.patch
+git add -A
+git commit -m "Vitals timeline: tolerant store reader + instant refresh; remove legacy Timeline modal button"
+```
+
+> If you already have a real `VitalsCapsuleLive.tsx` in your repo, **don’t replace it**—open it and add a `hideTimeline?: boolean` prop that simply **doesn’t render the Timeline button** when `true` (and then keep your existing content). Also, remove any code that opens the old modal.
+
+### After this patch
+
+* Saving +Obs emits `vitals:updated` and the inline chart refreshes immediately.
+* The chart now picks up whatever shape the vitals are stored in and shows points within the chosen window.
+* The old **Timeline** button/modal is gone; the chart is the canonical view.

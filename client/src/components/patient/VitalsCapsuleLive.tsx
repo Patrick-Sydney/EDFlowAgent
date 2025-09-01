@@ -5,10 +5,12 @@ export default function VitalsCapsuleLive({
   patientId,
   onOpenTimeline,
   onAddObs,
+  hideTimeline = false,
 }: {
   patientId: string | number;
   onOpenTimeline?: () => void;
   onAddObs?: () => void;
+  hideTimeline?: boolean;
 }) {
   const last = useVitalsLast(patientId);
 
@@ -26,7 +28,7 @@ export default function VitalsCapsuleLive({
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">Vitals</div>
         <div className="flex gap-2">
-          {onOpenTimeline && (
+          {!hideTimeline && onOpenTimeline && (
             <button className="rounded-full border px-3 py-2 text-sm" onClick={onOpenTimeline}>Timeline</button>
           )}
           {onAddObs && (

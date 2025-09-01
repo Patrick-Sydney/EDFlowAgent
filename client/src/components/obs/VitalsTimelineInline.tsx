@@ -16,27 +16,82 @@ type Obs = {
   source?: "triage" | "obs" | "device";
 };
 
-function getAllVitals(patientId: string): Obs[] {
-  // Be liberal in what we accept from the store
-  // Try common method names before falling back.
+// Tolerant reader: handle different store shapes + key names
+function getAllVitals(patientId: string | number): Obs[] {
+  const pidStr = String(patientId);
+  const pidNum = Number(pidStr);
+  const pick = (obj: any, key: any) => (obj && obj[key] !== undefined ? obj[key] : undefined);
+  const coerceN = (x: any) => (x === null || x === undefined || x === "" ? undefined : Number(x));
+  const coerceISO = (x: any) => {
+    if (!x) return undefined;
+    // accept Date, ISO, unix(ms/s)
+    if (x instanceof Date) return x.toISOString();
+    if (typeof x === "number") return new Date(x > 1e12 ? x : x * 1000).toISOString();
+    return String(x);
+  };
+  const norm = (r: any): Obs | null => {
+    if (!r) return null;
+    const t = coerceISO(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
+    if (!t) return null;
+    const sbpFromObj =
+      typeof r.bp === "object" && r.bp
+        ? r.bp.sbp ?? r.bp.sys ?? r.bp.systolic
+        : undefined;
+    const out: Obs = {
+      t,
+      rr:  coerceN(r.rr ?? r.resp ?? r.respiratory ?? r.respiratoryRate),
+      hr:  coerceN(r.hr ?? r.pulse ?? r.heartRate),
+      sbp: coerceN(r.sbp ?? r.sys ?? r.systolic ?? r.bp ?? sbpFromObj),
+      temp: coerceN(r.temp ?? r.temperature),
+      spo2: coerceN(r.spo2 ?? r.SpO2 ?? r.spo2Pct ?? r.oxygenSaturation),
+      ews: coerceN(r.ews ?? r.news ?? r.score),
+      source: r.source,
+    };
+    // drop rows with no vitals at all
+    if (out.rr==null && out.hr==null && out.sbp==null && out.temp==null && out.spo2==null) return null;
+    return out;
+  };
+  const fromAny = (val: any): Obs[] => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.map(norm).filter(Boolean) as Obs[];
+    if (typeof val === "object") {
+      // object keyed by time
+      return Object.values(val).map(norm).filter(Boolean) as Obs[];
+    }
+    return [];
+  };
+  // Try common accessors then raw maps
   // @ts-ignore
-  if (typeof vitalsStore?.getAll === "function") return vitalsStore.getAll(patientId) as Obs[];
+  if (typeof vitalsStore?.getAll === "function") return fromAny(vitalsStore.getAll(pidStr));
   // @ts-ignore
-  if (typeof vitalsStore?.getSeries === "function") return vitalsStore.getSeries(patientId) as Obs[];
+  if (typeof vitalsStore?.getSeries === "function") return fromAny(vitalsStore.getSeries(pidStr));
   // @ts-ignore
-  if (typeof vitalsStore?.all === "function") return vitalsStore.all(patientId) as Obs[];
+  if (typeof vitalsStore?.all === "function") return fromAny(vitalsStore.all(pidStr));
   // @ts-ignore
-  if (vitalsStore?.data && vitalsStore.data[patientId]) return vitalsStore.data[patientId] as Obs[];
+  if (vitalsStore?.data) return fromAny(vitalsStore.data[pidStr] ?? vitalsStore.data[pidNum]);
+  // @ts-ignore
+  if (vitalsStore?.byPatient) return fromAny(vitalsStore.byPatient[pidStr] ?? vitalsStore.byPatient[pidNum]);
   return [];
 }
 
-// Very light polling fallback so timeline updates even if the store is not reactive
-function useVitalsSeries(patientId: string, pollMs = 1500) {
+// Reactive-ish hook: listen for custom events + short poll fallback
+function useVitalsSeries(patientId: string | number, pollMs = 800) {
   const [rows, setRows] = useState<Obs[]>(() => getAllVitals(patientId));
   useEffect(() => {
     setRows(getAllVitals(patientId));
     const id = window.setInterval(() => setRows(getAllVitals(patientId)), pollMs);
-    return () => window.clearInterval(id);
+    const onB = (e: Event) => {
+      // Optional filter by patient id if detail is present
+      const det = (e as CustomEvent)?.detail;
+      if (!det || det.patientId == null || String(det.patientId) === String(patientId)) {
+        setRows(getAllVitals(patientId));
+      }
+    };
+    window.addEventListener("vitals:updated", onB as EventListener);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("vitals:updated", onB as EventListener);
+    };
   }, [patientId, pollMs]);
   return rows;
 }
