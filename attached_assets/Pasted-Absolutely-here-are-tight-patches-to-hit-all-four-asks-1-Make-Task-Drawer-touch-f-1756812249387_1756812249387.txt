@@ -1,0 +1,321 @@
+Absolutely—here are tight patches to hit all four asks:
+
+---
+
+# 1) Make **+Task Drawer** touch-first (bigger tap targets, quick-picks, sticky actions)
+
+### Replace `CreateTaskDrawer.tsx` with this improved version
+
+* Larger controls (48px min heights)
+* Kind as a **2-row chip grid**
+* **Due quick-picks** + custom minutes
+* **Sticky** bottom action bar
+* Keyboard-safe padding on mobile
+* No color styles—keeps with your calm palette
+
+```tsx
+// components/tasks/CreateTaskDrawer.tsx
+import React, { useMemo, useState } from "react";
+import { useTaskStore } from "@/stores/taskStore";
+import { TaskKind } from "@/tasks/types";
+
+type Props = {
+  isOpen: boolean;
+  onClose: () => void;
+  defaultPatientId?: string;
+  defaultOrigin?: "RN" | "Charge";
+};
+
+const KIND_OPTIONS: { value: TaskKind; label: string }[] = [
+  { value: "comfort", label: "Comfort" },
+  { value: "hygiene", label: "Hygiene" },
+  { value: "mobility", label: "Mobility" },
+  { value: "escort", label: "Escort" },
+  { value: "environment", label: "Environment" },
+];
+
+const DUE_PRESETS = [10, 15, 30, 60];
+
+export default function CreateTaskDrawer({
+  isOpen,
+  onClose,
+  defaultPatientId,
+  defaultOrigin = "RN",
+}: Props) {
+  const upsert = useTaskStore((s) => s.upsert);
+  const [kind, setKind] = useState<TaskKind>("comfort");
+  const [label, setLabel] = useState("");
+  const [detail, setDetail] = useState("");
+  const [dueMins, setDueMins] = useState<number | "">("");
+  const [assignTo, setAssignTo] = useState<string | undefined>(undefined);
+
+  const dueAt = useMemo(() => {
+    if (dueMins === "" || !Number.isFinite(Number(dueMins))) return undefined;
+    const t = new Date();
+    t.setMinutes(t.getMinutes() + Number(dueMins));
+    return t.toISOString();
+  }, [dueMins]);
+
+  if (!isOpen) return null;
+
+  const create = () => {
+    if (!label.trim()) return;
+    upsert({
+      label: label.trim(),
+      detail: detail.trim() || undefined,
+      kind,
+      patientId: defaultPatientId,
+      dueAt,
+      assignedTo: assignTo,
+      origin: defaultOrigin,
+      actorId: "current-user", // TODO: wire to auth/user store
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90]"> {/* z bumped; see section #2 */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 flex items-center justify-between border-b">
+          <h2 className="text-lg font-semibold">New Task</h2>
+          <button
+            onClick={onClose}
+            className="px-3 py-2 rounded hover:bg-slate-100"
+          >
+            Close
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 pb-28"> {/* pb for sticky footer */}
+          {/* Kind grid chips */}
+          <label className="block text-sm font-medium">Kind</label>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {KIND_OPTIONS.map((k) => (
+              <button
+                key={k.value}
+                onClick={() => setKind(k.value)}
+                className={`h-12 rounded-lg border text-sm ${
+                  kind === k.value ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-100"
+                }`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Label */}
+          <label className="block mt-5 text-sm font-medium">Label</label>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="mt-2 w-full border rounded-lg p-3 h-12"
+            placeholder="Assist to toilet"
+          />
+
+          {/* Detail */}
+          <label className="block mt-5 text-sm font-medium">Detail (optional)</label>
+          <textarea
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            className="mt-2 w-full border rounded-lg p-3"
+            rows={4}
+            placeholder="Add specifics or safety notes"
+          />
+
+          {/* Due quick-picks */}
+          <label className="block mt-5 text-sm font-medium">Due</label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {DUE_PRESETS.map((m) => (
+              <button
+                key={m}
+                onClick={() => setDueMins(m)}
+                className={`h-10 px-3 rounded-lg border text-sm ${
+                  dueMins === m ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-100"
+                }`}
+              >
+                {m} min
+              </button>
+            ))}
+            <div className="flex items-center gap-2">
+              <input
+                value={dueMins === "" ? "" : Number(dueMins)}
+                onChange={(e) =>
+                  setDueMins(e.target.value === "" ? "" : Number(e.target.value))
+                }
+                inputMode="numeric"
+                min={0}
+                className="h-10 w-24 border rounded-lg p-2"
+                placeholder="Custom"
+              />
+              <span className="text-sm text-slate-500">min</span>
+            </div>
+          </div>
+
+          {/* Assign */}
+          <label className="block mt-5 text-sm font-medium">Assign (optional)</label>
+          <input
+            value={assignTo ?? ""}
+            onChange={(e) => setAssignTo(e.target.value || undefined)}
+            className="mt-2 w-full border rounded-lg p-3 h-12"
+            placeholder="HCA user id or leave blank"
+          />
+        </div>
+
+        {/* Sticky footer actions (touch-first) */}
+        <div className="absolute bottom-0 left-0 right-0 border-t bg-white p-3 flex gap-2">
+          <button
+            onClick={create}
+            className="flex-1 h-12 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium"
+          >
+            Create task
+          </button>
+          <button
+            onClick={onClose}
+            className="h-12 px-4 rounded-lg border font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+# 2) **Z-index**: drawer should sit **above** the Patient Card overlay
+
+Define simple z-layers so we stop guessing:
+
+```ts
+// styles/z.ts (or a comment in your CSS)
+export const Z = {
+  header: "z-30",
+  patientOverlay: "z-[80]",
+  drawer: "z-[90]",
+  modal: "z-[100]",
+};
+```
+
+* In **PatientCardExpandable** wrapper: `className="fixed ... z-[80] ..."`
+* In **CreateTaskDrawer** root container (above): `className="fixed inset-0 z-[90]"`
+
+If you already set the patient card to `z-40`, you can still bump drawer to `z-50+`; the point is drawer > card.
+
+---
+
+# 3) **HCA Role View of lanes = read-only** (no action buttons)
+
+Guard lane actions with role:
+
+```tsx
+// components/lanes/PatientLaneCard.tsx (wherever your lane card actions live)
+import { useRoleStore } from "@/stores/roleStore";
+
+export default function PatientLaneCard(props:any) {
+  const role = useRoleStore((s) => s.role); // "RN" | "Charge" | "MD" | "HCA"
+  const readOnly = role === "HCA";
+
+  return (
+    <div className="rounded-lg border p-3">
+      {/* ... patient summary ... */}
+      <div className="mt-2 flex gap-2">
+        {!readOnly && (
+          <>
+            {/* existing action buttons, eg: Assign room, Start triage, +Obs */}
+            {/* <button className="btn">Assign room</button> ... */}
+          </>
+        )}
+        {readOnly && (
+          <span className="text-xs text-slate-500">Read-only for HCA</span>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+Also hide **Actions bar** in the **Expanded Patient Card** when role = HCA:
+
+```tsx
+// components/patient/PatientCardExpandable.tsx
+const roleView = useRoleStore((s) => s.role);
+const isHCA = roleView === "HCA";
+
+// ... where you render the Actions bar
+{!isHCA && (
+  <div className="flex items-center gap-2">{/* all your action buttons */}</div>
+)}
+```
+
+(HCA still sees **Tasks** panel and context—no authoring actions.)
+
+---
+
+# 4) **HCA Pool Task Board** (where it is & how to reach it)
+
+We *did* build it into the **TaskBoard** tabs:
+
+* **HCA default tabs:** `My Tasks`, `Unassigned (Pool)`, `Done (today)`.
+* The **Pool** view shows **all unassigned, pending** tasks and allows **Claim**.
+
+Make sure HCAs can reach the page quickly:
+
+### Add “Tasks” to header for all roles
+
+```tsx
+// components/shell/AppHeader.tsx (or your nav)
+import Link from "next/link";
+import { useRoleStore } from "@/stores/roleStore";
+
+export default function AppHeader() {
+  const role = useRoleStore(s => s.role);
+  return (
+    <header className="...">
+      {/* ...existing left side... */}
+      <nav className="flex items-center gap-3">
+        {/* other links */}
+        <Link href="/tasks" className="px-3 py-2 rounded hover:bg-slate-100">
+          Tasks
+        </Link>
+      </nav>
+      {/* ...right side */}
+    </header>
+  );
+}
+```
+
+### Ensure TaskBoard defaults to Pool when HCA wants it
+
+If you’d rather land HCAs on **Pool** by default (instead of “My Tasks”), tweak the initial tab:
+
+```tsx
+// components/tasks/TaskBoard.tsx
+const [tab, setTab] = useState<"mine" | "pool" | "all" | "overdue" | "escalated" | "done">(
+  roleView === "HCA" ? "pool" : "all"
+);
+```
+
+> TL;DR: HCA Pool is **/tasks → “Unassigned” tab**. RN/Charge can also see and assign from **All/Overdue**.
+
+---
+
+## Bonus tiny polish (optional)
+
+* **TaskItem**: When `roleView="HCA"` and item is **from Lanes context** (if you reuse TaskItem there), pass `readOnly` to hide all buttons:
+
+```tsx
+// TaskItem.tsx (add prop)
+type Props = { /* ... */ readOnly?: boolean; };
+export default function TaskItem({ task, roleView, readOnly=false, ... }: Props) {
+  // replace `roleView === "HCA"` checks with `readOnly || roleView === "HCA"`
+}
+```
+
+---
+
+If you want, I can scan your **PatientCardExpandable** and **Lane** files to place these guards precisely (names sometimes differ across your repo).

@@ -293,40 +293,45 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           {alertFlags && <AlertsRibbon flags={alertFlags} />}
 
           {/* Action Bar (role-based) */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* RN-specific primary actions */}
-            {userRole === "rn" && (
-              <>
+          {userRole !== "hca" && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* RN-specific primary actions */}
+              {userRole === "rn" && (
+                <>
+                  <button
+                    className="rounded-full border px-3 py-2 text-sm"
+                    onClick={() => setDrawerOpen("register")}
+                    data-testid="button-register-patient"
+                  >
+                    Register patient
+                  </button>
+                  <button
+                    className="rounded-full border px-3 py-2 text-sm"
+                    onClick={() => setDrawerOpen("triage")}
+                    data-testid="button-start-triage"
+                  >
+                    Start triage
+                  </button>
+                </>
+              )}
+              {/* Task creation for RN/Charge */}
+              {(userRole === "rn" || userRole === "charge") && (
                 <button
                   className="rounded-full border px-3 py-2 text-sm"
-                  onClick={() => setDrawerOpen("register")}
-                  data-testid="button-register-patient"
+                  onClick={() => setOpenTaskDrawer(true)}
+                  data-testid="button-new-task"
                 >
-                  Register patient
+                  + Task
                 </button>
-                <button
-                  className="rounded-full border px-3 py-2 text-sm"
-                  onClick={() => setDrawerOpen("triage")}
-                  data-testid="button-start-triage"
-                >
-                  Start triage
-                </button>
-              </>
-            )}
-            {/* Task creation for RN/Charge */}
-            {(userRole === "rn" || userRole === "charge") && (
-              <button
-                className="rounded-full border px-3 py-2 text-sm"
-                onClick={() => setOpenTaskDrawer(true)}
-                data-testid="button-new-task"
-              >
-                + Task
-              </button>
-            )}
-            {/* Always-available actions */}
-            <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
-            <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
-          </div>
+              )}
+              {/* Always-available actions */}
+              <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
+              <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
+            </div>
+          )}
+          {userRole === "hca" && (
+            <div className="text-sm text-slate-500 italic">Read-only view for HCA</div>
+          )}
 
           {/* Clinical Snapshot */}
           <ClinicalSnapshot 
@@ -429,40 +434,45 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           {alertFlags && <AlertsRibbon flags={alertFlags} />}
 
           {/* Action Bar (role-based) */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* RN-specific primary actions */}
-            {userRole === "rn" && (
-              <>
+          {userRole !== "hca" && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* RN-specific primary actions */}
+              {userRole === "rn" && (
+                <>
+                  <button
+                    className="rounded-full border px-3 py-2 text-sm"
+                    onClick={() => setDrawerOpen("register")}
+                    data-testid="button-register-patient"
+                  >
+                    Register patient
+                  </button>
+                  <button
+                    className="rounded-full border px-3 py-2 text-sm"
+                    onClick={() => setDrawerOpen("triage")}
+                    data-testid="button-start-triage"
+                  >
+                    Start triage
+                  </button>
+                </>
+              )}
+              {/* Task creation for RN/Charge */}
+              {(userRole === "rn" || userRole === "charge") && (
                 <button
                   className="rounded-full border px-3 py-2 text-sm"
-                  onClick={() => setDrawerOpen("register")}
-                  data-testid="button-register-patient"
+                  onClick={() => setOpenTaskDrawer(true)}
+                  data-testid="button-new-task"
                 >
-                  Register patient
+                  + Task
                 </button>
-                <button
-                  className="rounded-full border px-3 py-2 text-sm"
-                  onClick={() => setDrawerOpen("triage")}
-                  data-testid="button-start-triage"
-                >
-                  Start triage
-                </button>
-              </>
-            )}
-            {/* Task creation for RN/Charge */}
-            {(userRole === "rn" || userRole === "charge") && (
-              <button
-                className="rounded-full border px-3 py-2 text-sm"
-                onClick={() => setOpenTaskDrawer(true)}
-                data-testid="button-new-task"
-              >
-                + Task
-              </button>
-            )}
-            {/* Always-available actions */}
-            <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
-            <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
-          </div>
+              )}
+              {/* Always-available actions */}
+              <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
+              <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
+            </div>
+          )}
+          {userRole === "hca" && (
+            <div className="text-sm text-slate-500 italic">Read-only view for HCA</div>
+          )}
 
           {/* Clinical Snapshot */}
           <ClinicalSnapshot 

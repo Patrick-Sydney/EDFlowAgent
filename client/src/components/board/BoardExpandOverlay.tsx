@@ -147,7 +147,7 @@ export default function BoardExpandOverlay({
   if (!open) return null;
 
   return createPortal(
-    <div ref={hostRef} className="fixed inset-0 z-[1000]">
+    <div ref={hostRef} className="fixed inset-0 z-[80]">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div ref={cardRef} className="absolute bg-background rounded-2xl shadow-xl border overflow-hidden">
         <div

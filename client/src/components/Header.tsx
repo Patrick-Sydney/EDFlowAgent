@@ -140,6 +140,13 @@ export function Header() {
         <div className="flex items-center gap-2">
           <AppLogo />
           <RoleMenu RoleSelector={<RoleViewPicker compact />} />
+          {/* Tasks navigation link */}
+          <a
+            href="/tasks"
+            className="px-3 py-2 text-sm rounded hover:bg-slate-100 transition-colors"
+          >
+            Tasks
+          </a>
           {demoMode && (
             <ScenariosMenu onRun={(key) => {
               if (key === "baseline") handleResetDemo();

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import RNMobilePage from "@/pages/rn-mobile";
 import NotFound from "@/pages/not-found";
+import TasksPage from "@/pages/tasks";
 import { useTaskStore } from "./stores/taskStore";
 import { seedTasksOnce } from "./demo/seedTasks";
 import { useEffect } from "react";
@@ -15,6 +16,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/rn" component={RNMobilePage} />
+      <Route path="/tasks" component={TasksPage} />
       <Route component={NotFound} />
     </Switch>
   );

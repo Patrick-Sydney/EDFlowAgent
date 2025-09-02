@@ -14,7 +14,7 @@ export default function TaskBoard({ roleView, currentUserId = "hca-1", onSelectP
   const hydrate = useTaskStore(s => s.hydrateFromCache);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"mine" | "pool" | "all" | "overdue" | "escalated" | "done">(
-    roleView === "HCA" ? "mine" : "all"
+    roleView === "HCA" ? "pool" : "all"
   );
 
   useEffect(() => { hydrate(); }, [hydrate]);

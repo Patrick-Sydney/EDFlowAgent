@@ -34,6 +34,9 @@ export default function LanePatientTile({ patient, role, onAddObservations }:{ p
         {(role==='rn' || role==='charge') && (
           <Button size="sm" onClick={()=>setOpen(true)}>+ Obs</Button>
         )}
+        {role==='hca' && (
+          <span className="text-xs text-slate-500">View only</span>
+        )}
       </div>
 
       <ObservationSetModalTouch

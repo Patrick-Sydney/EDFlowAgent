@@ -12,10 +12,17 @@ type Handlers = {
 export default function ActionBar({
   role, lane, handlers,
 }: {
-  role: "RN" | "Charge" | "MD";
+  role: "RN" | "Charge" | "MD" | "HCA";
   lane: string;
   handlers: Handlers;
 }) {
+  // HCA gets read-only view - no actions
+  if (role === "HCA") {
+    return (
+      <div className="text-sm text-slate-500 italic">Read-only view for HCA</div>
+    );
+  }
+
   // Pick up to 4 context actions. Keep it simple and explicit.
   const actions: { key: string; label: string; onClick?: () => void }[] = [];
 
