@@ -45,13 +45,6 @@ function RoleViewPicker({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function ScenariosButton({ onOpenScenarios }: { onOpenScenarios: () => void }) {
-  return (
-    <Button variant="outline" size="sm" onClick={onOpenScenarios}>
-      Scenarios
-    </Button>
-  );
-}
 
 function LiveClock() {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -129,37 +122,18 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-[900] w-full bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-      {/* Height/spacing: phone & tablet use tighter vertical rhythm; desktop a bit taller */}
-      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 md:py-2.5 lg:py-3 flex items-center justify-between gap-2">
-        {/* Left cluster: logo + title (title hidden on phone; subtle on tablet) */}
+      {/* Unified compact header on ALL breakpoints (mobile-style for tablet & desktop too) */}
+      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 lg:py-2 flex items-center justify-between gap-2">
+        {/* Left: app logo opens Combined menu (Role + Scenarios) on all screens */}
         <div className="flex items-center gap-2">
-          {/* Phone/Tablet: logo opens combined menu (Role + Scenarios) */}
-          <div className="block lg:hidden">
-            <CombinedAppMenu
-              Logo={<AppLogo />}
-              RoleSelector={<RoleViewPicker compact />}
-              onOpenScenarios={handleOpenScenarios}
-            />
-          </div>
-          {/* Desktop: static logo + title */}
-          <div className="hidden lg:flex items-center gap-2">
-            <AppLogo />
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">ED Flow Agent</h1>
-              <p className="text-sm text-gray-600">Emergency Department Patient Flow Dashboard</p>
-            </div>
-          </div>
+          <CombinedAppMenu
+            Logo={<AppLogo />}
+            RoleSelector={<RoleViewPicker compact />}
+            onOpenScenarios={handleOpenScenarios}
+          />
         </div>
-
-        {/* Right cluster */}
+        {/* Right: live clock */}
         <div className="flex items-center gap-2">
-          {/* Desktop-only controls (tablet/phone use Combined menu) */}
-          <div className="hidden lg:flex items-center gap-2">
-            <RoleViewPicker />
-            {demoMode && (
-              <ScenariosButton onOpenScenarios={handleOpenScenarios} />
-            )}
-          </div>
           <LiveClock />
         </div>
       </div>

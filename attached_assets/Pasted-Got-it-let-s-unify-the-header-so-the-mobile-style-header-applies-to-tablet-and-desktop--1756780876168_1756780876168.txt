@@ -1,0 +1,117 @@
+Got it — let’s **unify the header** so the **mobile-style header applies to tablet *and* desktop**: reduced height and a **single Combined menu from the app logo** that holds Role + Scenarios. This removes the separate Role/Scenarios controls on large screens too.
+
+Here’s a small patch that does exactly that:
+
+---
+
+### `tablet-desktop-header-unify.patch`
+
+```diff
+*** Begin Patch
+*** Update File: client/src/components/shell/AppHeader.tsx
+@@
+-import React from "react";
+-import CombinedAppMenu from "./CombinedAppMenu";
++import React from "react";
++import CombinedAppMenu from "./CombinedAppMenu";
+ 
+ export default function AppHeader() {
+   return (
+-    <header className="sticky top-0 z-[900] w-full bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+-      {/* Height/spacing: phone & tablet use tighter vertical rhythm; desktop a bit taller */}
+-      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 md:py-2.5 lg:py-3 flex items-center justify-between gap-2">
+-        {/* Left cluster: logo + title (title hidden on phone; subtle on tablet) */}
+-        <div className="flex items-center gap-2">
+-          {/* Phone/Tablet: logo opens combined menu (Role + Scenarios) */}
+-          <div className="block lg:hidden">
+-            <CombinedAppMenu
+-              Logo={<AppLogo />}
+-              RoleSelector={<RoleSelector compact />}
+-              onOpenScenarios={() => window.dispatchEvent(new CustomEvent("ui:open-scenarios"))}
+-            />
+-          </div>
+-          {/* Desktop: static logo + title */}
+-          <div className="hidden lg:flex items-center gap-2">
+-            <AppLogo />
+-            <div className="text-sm text-muted-foreground">Emergency Department Patient Flow Dashboard</div>
+-          </div>
+-        </div>
+-
+-        {/* Right cluster */}
+-        <div className="flex items-center gap-2">
+-          {/* Desktop-only controls (tablet/phone use Combined menu) */}
+-          <div className="hidden lg:flex items-center gap-2">
+-            <RoleSelector />
+-            <ScenariosButton />
+-          </div>
+-          <LiveClock />
+-        </div>
+-      </div>
+-    </header>
++    <header className="sticky top-0 z-[900] w-full bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
++      {/* Unified compact header on ALL breakpoints (mobile-style for tablet & desktop too) */}
++      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 lg:py-2 flex items-center justify-between gap-2">
++        {/* Left: app logo opens Combined menu (Role + Scenarios) on all screens */}
++        <div className="flex items-center gap-2">
++          <CombinedAppMenu
++            Logo={<AppLogo />}
++            RoleSelector={<RoleSelector compact />}
++            onOpenScenarios={() => window.dispatchEvent(new CustomEvent("ui:open-scenarios"))}
++          />
++        </div>
++        {/* Right: live clock */}
++        <div className="flex items-center gap-2">
++          <LiveClock />
++        </div>
++      </div>
++    </header>
+   );
+ }
+ 
+ // You likely already have these wired; kept here for context.
+ function AppLogo() {
+   return (
+     <div className="h-8 w-8 rounded-xl bg-primary/10 grid place-items-center text-primary font-bold">
+       ED
+     </div>
+   );
+ }
+ 
+-function RoleSelector({ compact = false }: { compact?: boolean }) {
+-  // ... your existing implementation; add `compact` to render a smaller control
+-  return <div className={compact ? "text-sm" : ""}>Role</div>;
+-}
+-
+-function ScenariosButton() {
+-  return <button className="rounded-full border px-3 py-1 text-sm">Scenarios</button>;
+-}
++function RoleSelector({ compact = false }: { compact?: boolean }) {
++  // Use your real selector; compact can render a tighter control.
++  return <div className={compact ? "text-sm" : ""}>Role</div>;
++}
+ 
+ function LiveClock() {
+   return <div className="text-sm tabular-nums text-muted-foreground">Live • 12:34</div>;
+ }
+*** End Patch
+```
+
+---
+
+## Apply in Replit
+
+```bash
+git checkout -b ui/header-unify-tablet-desktop
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > tablet-desktop-header-unify.patch
+git apply --reject --whitespace=fix tablet-desktop-header-unify.patch
+git add -A
+git commit -m "Header: unify mobile-style header across tablet & desktop; Role+Scenarios in CombinedAppMenu from logo"
+```
+
+### What you’ll see
+
+* **Tablet & Desktop** now use the **same compact header** as mobile.
+* The **app logo opens one dropdown** that contains **Role** (compact) and **Scenarios**.
+* The separate Role/Scenarios controls are removed on large screens, preventing crowding and ensuring consistent behavior.
+
+If you want the **title/tagline** visible again on desktop but still keep the combined menu, I can add a tiny, muted title that only appears at `xl+` without increasing header height.
