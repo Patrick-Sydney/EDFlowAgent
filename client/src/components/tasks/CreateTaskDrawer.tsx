@@ -54,7 +54,8 @@ export default function CreateTaskDrawer({
       origin: defaultOrigin,
       actorId: "current-user", // TODO: wire to auth/user store
     });
-    onClose();
+    // defer close to avoid nested updates during this render wave
+    queueMicrotask(onClose);
   };
 
   return (

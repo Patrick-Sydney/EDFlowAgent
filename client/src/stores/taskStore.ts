@@ -103,7 +103,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   hydrateFromCache: () => {
     try {
       const cached = localStorage.getItem("edflow.tasks");
-      if (cached) set({ tasks: JSON.parse(cached) });
+      if (!cached) return;
+      const parsed = JSON.parse(cached);
+      const now = get().tasks;
+      // shallow compare to avoid unnecessary set (prevents render churn)
+      const same = Object.keys(parsed).length === Object.keys(now).length &&
+        Object.keys(parsed).every(id => now[id]);
+      if (same) return;
+      set({ tasks: parsed });
     } catch { /* noop */ }
   },
 }));

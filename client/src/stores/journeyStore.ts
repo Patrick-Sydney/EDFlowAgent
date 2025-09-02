@@ -37,6 +37,11 @@ export const journeyStore = {
       actor: ev.actor,
       ref: ev.ref,
     };
+    // guard duplicate write based on recent similar events
+    const last = list.at(-1);
+    if (last && last.label === ev.label && Date.parse(item.t) - Date.parse(last.t) < 100) {
+      return last; // skip duplicate
+    }
     list.push(item);
     list.sort(sortByTimeAsc);
     window.dispatchEvent(new CustomEvent("journey:updated", { detail: { patientId: pid }}));

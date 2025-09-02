@@ -1,0 +1,158 @@
+That error is a classic **infinite re-render loop**. The new pieces that can trigger it are the **Task drawer open/close** and any **store-driven effects** that update during render. Here’s a tight, safe fix set that resolves the usual culprits.
+
+---
+
+# 1) Make the drawer close **after** the task is created (next tick)
+
+If the parent re-renders off store changes and also flips `isOpen`, closing *inside the same tick* can loop. Defer the close:
+
+```tsx
+// CreateTaskDrawer.tsx
+const create = () => {
+  if (!label.trim()) return;
+  upsert({
+    label: label.trim(),
+    detail: detail.trim() || undefined,
+    kind,
+    patientId: defaultPatientId,
+    dueAt,
+    assignedTo: assignTo,
+    origin: defaultOrigin,
+    actorId: "current-user",
+  });
+  // defer close to avoid nested updates during this render wave
+  queueMicrotask(onClose); // or: setTimeout(onClose, 0)
+};
+```
+
+---
+
+# 2) Ensure no **setState in render** for the Patient Card overlay
+
+If the expanded card computes something then immediately sets state, it will loop when the store changes.
+
+```tsx
+// PatientCardExpandable.tsx (or wherever)
+const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
+
+// ❌ Don’t do this in render:
+// if (someCondition) setOpenTaskDrawer(true);
+
+// ✅ Do it in an effect with a guard:
+const wasOpenRef = useRef(false);
+useEffect(() => {
+  if (/* condition to auto-open */ && !wasOpenRef.current) {
+    wasOpenRef.current = true;
+    setOpenTaskDrawer(true);
+  }
+}, [/* only real triggers here */]);
+```
+
+Also, if you’re syncing props -> local state every render, add an equality guard before calling a setter.
+
+---
+
+# 3) Guard any **store <-> store** cross-writes
+
+If a store write triggers a selector that writes back, you get a loop. In our Task store we log to Journey on **complete/escalate** only, not on **create**—that’s good. Double-check Journey effects aren’t writing to Tasks on every append.
+
+Add **no-op guards** on appends:
+
+```ts
+// journeyStore.append (pseudocode)
+append(ev) {
+  const last = get().events.at(-1);
+  if (last && last.id === ev.id) return; // guard duplicate write
+  set(s => ({ events: [...s.events, ev] }));
+}
+```
+
+---
+
+# 4) Don’t hydrate tasks on every render
+
+If you call `hydrateFromCache()` in a component without a stable effect, it can loop.
+
+```tsx
+// TaskBoard.tsx
+const hydrate = useTaskStore(s => s.hydrateFromCache);
+useEffect(() => { hydrate(); }, [hydrate]); // ✅ once
+```
+
+Make sure `hydrateFromCache` itself only `setState` when data actually changes:
+
+```ts
+hydrateFromCache: () => {
+  try {
+    const cached = localStorage.getItem("edflow.tasks");
+    if (!cached) return;
+    const parsed = JSON.parse(cached);
+    const now = get().tasks;
+    // shallow compare to avoid unnecessary set (prevents render churn)
+    const same = Object.keys(parsed).length === Object.keys(now).length;
+    if (same) return;
+    set({ tasks: parsed });
+  } catch { /* noop */ }
+},
+```
+
+---
+
+# 5) Stabilize the drawer mount (avoid double mounts)
+
+Key the drawer by patient to avoid stale state, and keep it mounted only when needed.
+
+```tsx
+{/* PatientCardExpandable.tsx */}
+<CreateTaskDrawer
+  key={patient.id}
+  isOpen={openTaskDrawer}
+  onClose={() => setOpenTaskDrawer(false)}
+  defaultPatientId={patient.id}
+  defaultOrigin={roleView === "Charge" ? "Charge" : "RN"}
+/>
+```
+
+---
+
+# 6) Quick sanity checks
+
+* **No state setters during render:** scan for `setX(...)` outside event handlers/effects.
+* **Effects have correct deps:** no `useEffect(() => setX(...))` without a *real* dependency that eventually stabilizes.
+* **Route on role change runs once:** if you auto-route HCA to `/tasks`, wrap in an effect tied to role changes only.
+
+```tsx
+// RoleMenu or AppShell
+const role = useRoleStore(s => s.role);
+const router = useRouter();
+useEffect(() => {
+  if (role === "HCA") router.replace("/tasks?hcaPool=1");
+}, [role, router]);
+```
+
+---
+
+## Minimal patch you can drop in now
+
+**CreateTaskDrawer.tsx**
+
+```tsx
+// after upsert(...)
+queueMicrotask(onClose);
+```
+
+**TaskBoard.tsx**
+
+```tsx
+useEffect(() => { hydrate(); }, [hydrate]);
+```
+
+**PatientCardExpandable.tsx**
+
+```tsx
+// never call setOpenTaskDrawer in render; only via handlers or guarded effects
+```
+
+---
+
+If this still throws, paste the top 10 lines of the stack (the overlay has a tiny disclosure triangle) and the locations where you call `setOpenTaskDrawer` or `hydrate...` and I’ll pinpoint the exact loop.
