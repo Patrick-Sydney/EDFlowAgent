@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from "react";
+import { runScenario } from "../../demo/scenarioEngine";
 
 type Scenario = { key: string; label: string; subtitle?: string };
 
@@ -30,8 +31,8 @@ export default function ScenariosMenu({ onRun }: { onRun?: (key: string)=>void }
   }, [open]);
 
   const run = (key: string) => {
+    try { runScenario(key); } catch {}
     onRun?.(key);
-    // Also broadcast for any global listeners already in your app
     window.dispatchEvent(new CustomEvent("scenario:run", { detail: { key } }));
     setOpen(false);
   };

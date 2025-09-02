@@ -1,0 +1,302 @@
+Perfect — let’s fix both issues and give you working demo scenarios that actually **seed Journey events and vitals**.
+
+Below is a single patch that:
+
+1. **Removes the “dropdown inside a dropdown”** for Role: the Role popover now shows **three pill buttons** (RN / Charge / MD). Selecting one stores it in `localStorage` and emits a `role:change` event you can already listen for.
+2. **Restores multiple Scenarios** (Baseline, Surge, Sepsis cohort, Stroke cohort, Chest pain cohort) and wires them to a **real seeding engine** that:
+
+   * posts Journey events (arrival, triage, room changes, orders/results, meds),
+   * seeds vitals via your existing `vitalsStore.add(patientId, obs)`,
+   * emits refresh events so the **inline Vitals Timeline** and **Patient Journey** update instantly.
+3. Includes a **patient resolver** so scenarios target your demo people (e.g., *Alex Taylor*, *Moana Rangi*, *Rose Chen*). If your internal IDs differ, just adjust the small mapping file.
+
+---
+
+## Patch — “role pills + working scenarios + journey seeds”
+
+Save as `role-and-scenarios-working.patch` and apply.
+
+```diff
+*** Begin Patch
+*** Update File: client/src/components/shell/RoleMenu.tsx
+@@
+-import React, { useEffect, useId, useRef, useState } from "react";
+-
+-/** A single-layer popover that shows the existing RoleSelector control. */
+-export default function RoleMenu({ RoleSelector }: { RoleSelector: React.ReactNode }) {
++import React, { useEffect, useId, useRef, useState } from "react";
++
++type RoleKey = "rn" | "charge" | "md";
++const LABEL: Record<RoleKey,string> = { rn: "RN view", charge: "Charge view", md: "MD view" };
++const ORDER: RoleKey[] = ["rn","charge","md"];
++
++/** A single-layer popover with pill buttons (no nested select). */
++export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactNode }) {
+   const [open, setOpen] = useState(false);
+   const btnRef = useRef<HTMLButtonElement|null>(null);
+   const popRef = useRef<HTMLDivElement|null>(null);
+   const id = useId();
++  const [role, setRole] = useState<RoleKey>(() => {
++    const saved = (localStorage.getItem("edflow.role") || "").toLowerCase();
++    return (["rn","charge","md"] as RoleKey[]).includes(saved as RoleKey) ? (saved as RoleKey) : "charge";
++  });
+ 
+   useEffect(() => {
+     if (!open) return;
+     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+     const onClick = (e: MouseEvent) => {
+@@
+   return (
+     <div className="relative">
+       <button
+         ref={btnRef}
+         type="button"
+         aria-haspopup="menu"
+         aria-expanded={open}
+         aria-controls={id}
+         className="rounded-xl border px-3 py-1.5 text-sm hover:bg-muted/60"
+         onClick={() => setOpen(v => !v)}
+       >
+         Role
+       </button>
+       {open && (
+         <div
+           ref={popRef}
+           id={id}
+           role="menu"
+-          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0"
++          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0"
+         >
+-          <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Role view</div>
+-          <div className="rounded-xl border p-2">
+-            {RoleSelector}
+-          </div>
++          <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Role view</div>
++          <div className="flex items-center gap-1 flex-wrap">
++            {ORDER.map(k => (
++              <button
++                key={k}
++                role="menuitemradio"
++                aria-checked={role===k}
++                className={`rounded-full border px-3 py-1 text-sm ${role===k ? "bg-background shadow" : "opacity-80"}`}
++                onClick={() => {
++                  setRole(k);
++                  localStorage.setItem("edflow.role", k);
++                  window.dispatchEvent(new CustomEvent("role:change", { detail: { role: k }}));
++                  setOpen(false);
++                }}
++              >
++                {LABEL[k]}
++              </button>
++            ))}
++          </div>
++          {/* If you still want to expose your legacy RoleSelector, keep it below but hidden by default. */}
++          {!!RoleSelector && <div className="sr-only">{RoleSelector}</div>}
+         </div>
+       )}
+     </div>
+   );
+ }
+*** End Patch
+*** Update File: client/src/components/shell/ScenariosMenu.tsx
+@@
+-import React, { useEffect, useId, useRef, useState } from "react";
++import React, { useEffect, useId, useRef, useState } from "react";
++import { runScenario } from "../../demo/scenarioEngine";
+@@
+-const SCENARIOS: Scenario[] = [
++const SCENARIOS: Scenario[] = [
+   { key: "baseline", label: "Baseline", subtitle: "Normal load" },
+   { key: "surge", label: "Surge", subtitle: "High volume" },
+   { key: "cohort-sepsis", label: "Sepsis cohort", subtitle: "Sepsis/abx timing" },
+   { key: "cohort-stroke", label: "Stroke cohort", subtitle: "FAST/CT flow" },
+   { key: "cohort-chestpain", label: "Chest pain cohort", subtitle: "ACS workup" },
+ ];
+@@
+-  const run = (key: string) => {
+-    onRun?.(key);
+-    // Also broadcast for any global listeners already in your app
+-    window.dispatchEvent(new CustomEvent("scenario:run", { detail: { key } }));
+-    setOpen(false);
+-  };
++  const run = (key: string) => {
++    try { runScenario(key); } catch {}
++    onRun?.(key);
++    window.dispatchEvent(new CustomEvent("scenario:run", { detail: { key } }));
++    setOpen(false);
++  };
+*** End Patch
+*** Add File: client/src/demo/demoPatients.ts
++// Map friendly display names to your internal patientIds.
++// Adjust these values to match your actual seeded demo patients.
++export const DEMO_PATIENTS: Record<string, string> = {
++  "Alex Taylor": "alex",
++  "Moana Rangi": "moana",
++  "Rose Chen": "rose",
++};
++
++// Resolve helpers — try various strategies to find a patientId
++export function resolvePatientId(name: string): string | undefined {
++  const fromMap = DEMO_PATIENTS[name];
++  if (fromMap) return fromMap;
++  // If your app exposes a patientsStore with a lookup, try it:
++  // @ts-ignore
++  const ps = (window as any).patientsStore;
++  try {
++    if (ps?.findByName) {
++      const p = ps.findByName(name);
++      return p?.id ?? p?.patientId;
++    }
++    if (ps?.all) {
++      const list = ps.all() || [];
++      const item = list.find((x:any) => x?.name === name || x?.fullName === name);
++      return item?.id ?? item?.patientId;
++    }
++  } catch {}
++  return undefined;
++}
+*** End Patch
+*** Add File: client/src/demo/scenarioEngine.ts
++import { journeyStore } from "../stores/journeyStore";
++import { vitalsStore } from "../stores/vitalsStore";
++import { resolvePatientId } from "./demoPatients";
++
++type Key = "baseline" | "surge" | "cohort-sepsis" | "cohort-stroke" | "cohort-chestpain";
++
++const now = () => Date.now();
++const iso = (ms: number) => new Date(ms).toISOString();
++const minsAgo = (m: number) => iso(now() - m * 60_000);
++
++function addObs(pid: string, rows: Array<Partial<{t:string; rr:number; hr:number; sbp:number; spo2:number; temp:number; ews:number}>>) {
++  for (const r of rows) {
++    const t = r.t ?? minsAgo(0);
++    vitalsStore.add(String(pid), { t, ...r, source: "obs" });
++  }
++  window.dispatchEvent(new CustomEvent("vitals:updated", { detail: { patientId: pid }}));
++}
++
++function addJourney(pid: string, kind: any, label: string, detail?: string, t?: string) {
++  journeyStore.add(pid, { kind, label, detail, t });
++}
++
++function seedBaseline() {
++  const alex = resolvePatientId("Alex Taylor");
++  const moana = resolvePatientId("Moana Rangi");
++  const rose  = resolvePatientId("Rose Chen");
++  const list = [alex, moana, rose].filter(Boolean) as string[];
++  for (const pid of list) {
++    addJourney(pid, "arrival", "Arrived at ED", undefined, minsAgo(180));
++    addJourney(pid, "triage",  "Triage completed (ATS 3)", undefined, minsAgo(160));
++    addJourney(pid, "room_change", "Moved to cubicle", "Roomed", minsAgo(140));
++    addObs(pid, [
++      { t: minsAgo(120), rr: 16, hr: 84, sbp: 132, spo2: 98, temp: 36.7, ews: 1 },
++      { t: minsAgo(60),  rr: 15, hr: 80, sbp: 128, spo2: 98, temp: 36.8, ews: 1 },
++      { t: minsAgo(10),  rr: 16, hr: 78, sbp: 126, spo2: 99, temp: 36.7, ews: 0 },
++    ]);
++    addJourney(pid, "task", "Obs scheduled q30m");
++  }
++}
++
++function seedSurge() {
++  // Keep your existing surge behavior; here we just leave a timeline hint.
++  const alex = resolvePatientId("Alex Taylor");
++  if (alex) addJourney(alex, "alert", "Surge mode activated", "Board capacity high");
++}
++
++function seedSepsisCohort() {
++  const pid = resolvePatientId("Alex Taylor");
++  if (!pid) return;
++  addJourney(pid, "alert", "Sepsis risk flagged", "qSOFA ≥ 2", minsAgo(95));
++  addJourney(pid, "order", "Sepsis bundle ordered", "Blood cultures, lactate, broad-spectrum abx", minsAgo(90));
++  addObs(pid, [
++    { t: minsAgo(100), rr: 24, hr: 112, sbp: 98,  spo2: 94, temp: 38.6, ews: 5 },
++    { t: minsAgo(70),  rr: 22, hr: 118, sbp: 92,  spo2: 93, temp: 38.9, ews: 6 },
++    { t: minsAgo(30),  rr: 20, hr: 110, sbp: 100, spo2: 95, temp: 38.4, ews: 4 },
++  ]);
++  addJourney(pid, "med_admin", "Antibiotics administered", "Piperacillin/tazobactam 4.5g IV", minsAgo(60));
++  addJourney(pid, "task", "Fluids bolus started", "30 mL/kg crystalloid", minsAgo(58));
++  addJourney(pid, "result", "Lactate resulted 3.4 mmol/L", "Critical", minsAgo(45));
++  addJourney(pid, "ews_change", "EWS 6 → 4", undefined, minsAgo(30));
++}
++
++function seedStrokeCohort() {
++  const pid = resolvePatientId("Moana Rangi");
++  if (!pid) return;
++  addJourney(pid, "arrival", "Stroke alert pre-notified by EMS", undefined, minsAgo(75));
++  addJourney(pid, "triage", "FAST positive", "Left arm weakness, aphasia", minsAgo(70));
++  addJourney(pid, "order", "CT brain (non-contrast) ordered", undefined, minsAgo(68));
++  addJourney(pid, "room_change", "To Diagnostics", "CT suite", minsAgo(60));
++  addJourney(pid, "result", "CT completed", "No hemorrhage", minsAgo(50));
++  addJourney(pid, "order", "CT perfusion + CTA", undefined, minsAgo(48));
++  addJourney(pid, "result", "LVO M1 suspected", "Neuro IR paged", minsAgo(40));
++  addObs(pid, [
++    { t: minsAgo(70), rr: 18, hr: 84, sbp: 168, spo2: 96, temp: 36.5, ews: 3 },
++    { t: minsAgo(30), rr: 16, hr: 82, sbp: 158, spo2: 97, temp: 36.5, ews: 2 },
++  ]);
++}
++
++function seedChestPainCohort() {
++  const pid = resolvePatientId("Rose Chen");
++  if (!pid) return;
++  addJourney(pid, "arrival", "Chest pain onset 1h prior", undefined, minsAgo(65));
++  addJourney(pid, "order", "ECG ordered", undefined, minsAgo(62));
++  addJourney(pid, "result", "ECG completed", "T-wave inversion V2–V4", minsAgo(60));
++  addJourney(pid, "order", "Troponin (0/2h)", undefined, minsAgo(60));
++  addObs(pid, [
++    { t: minsAgo(60), rr: 18, hr: 96,  sbp: 142, spo2: 98, temp: 36.8, ews: 1 },
++    { t: minsAgo(30), rr: 16, hr: 92,  sbp: 138, spo2: 98, temp: 36.7, ews: 1 },
++    { t: minsAgo(5),  rr: 16, hr: 105, sbp: 146, spo2: 97, temp: 36.7, ews: 2 },
++  ]);
++  addJourney(pid, "result", "Troponin (0h) 72 ng/L", "Abnormal", minsAgo(20));
++  addJourney(pid, "order", "Aspirin 300 mg PO", undefined, minsAgo(18));
++  addJourney(pid, "med_admin", "Aspirin administered", undefined, minsAgo(15));
++}
++
++export function runScenario(key: string) {
++  const k = key as Key;
++  switch (k) {
++    case "baseline":        seedBaseline(); break;
++    case "surge":           seedSurge(); break;
++    case "cohort-sepsis":   seedSepsisCohort(); break;
++    case "cohort-stroke":   seedStrokeCohort(); break;
++    case "cohort-chestpain":seedChestPainCohort(); break;
++    default: break;
++  }
++}
+*** End Patch
+```
+
+---
+
+## How to apply (Replit)
+
+```bash
+git checkout -b ui/role-pills-scenarios-seeding
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > role-and-scenarios-working.patch
+git apply --reject --whitespace=fix role-and-scenarios-working.patch
+git add -A
+git commit -m "Header Role menu: pill buttons (no nested select). Scenarios: restore & wire to seeding engine; seed Journey + vitals."
+```
+
+---
+
+## Use it
+
+* Click **Role** → pick **RN / Charge / MD** (stored in `localStorage: edflow.role`, event `role:change`).
+* Click **Scenarios** → run **Baseline / Surge / Sepsis cohort / Stroke cohort / Chest pain cohort**.
+
+  * If your internal patient IDs differ, edit `client/src/demo/demoPatients.ts` to map names → ids.
+* After running a scenario:
+
+  * The **Patient Journey** shows the seeded events (orders, results, meds, moves).
+  * The **inline Vitals Timeline** updates immediately (we emit `vitals:updated`).
+  * EWS changes appear as **journey events** and **dashed markers** in the chart if ≥5.
+
+---
+
+### Why this fixes both issues
+
+* **No dropdown-in-dropdown** → role switching is fast and touch-friendly (pills).
+* **Scenarios actually do something** → they populate data in the same stores your UI already reads (`vitalsStore`, `journeyStore`), so cards, chips, and timelines react instantly.
+
+If you want the scenarios to also **move** patients between lanes (Waiting → Triage → Roomed), point me at the function you use for lane transitions (or its filename), and I’ll hook scenario events into that as well.
