@@ -46,7 +46,8 @@ export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactN
           ref={popRef}
           id={id}
           role="menu"
-          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0"
+          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0 origin-top-right"
+          style={{ right: 0, left: "auto", transformOrigin: "top right" }}
         >
           <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Role view</div>
           <div className="flex items-center gap-1 flex-wrap">
@@ -58,8 +59,20 @@ export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactN
                 className={`rounded-full border px-3 py-1 text-sm ${role===k ? "bg-background shadow" : "opacity-80"}`}
                 onClick={() => {
                   setRole(k);
-                  localStorage.setItem("edflow.role", k);
-                  window.dispatchEvent(new CustomEvent("role:change", { detail: { role: k }}));
+                  // ---- Compatibility bridge: update common keys & fire old/new events ----
+                  const v = k as string;
+                  try {
+                    localStorage.setItem("edflow.role", v);
+                    localStorage.setItem("roleView", v);
+                    localStorage.setItem("view", v);
+                  } catch {}
+                  try {
+                    window.dispatchEvent(new CustomEvent("role:change", { detail: { role: v }}));
+                    window.dispatchEvent(new CustomEvent("view:role", { detail: { role: v }}));
+                    window.dispatchEvent(new CustomEvent("settings:changed", { detail: { key: "role", value: v }}));
+                    // If a legacy RoleSelector exposes an imperative setter, call it.
+                    (window as any).__edflowSetRole?.(v);
+                  } catch {}
                   setOpen(false);
                 }}
               >

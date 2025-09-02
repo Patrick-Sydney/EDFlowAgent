@@ -55,7 +55,8 @@ export default function ScenariosMenu({ onRun }: { onRun?: (key: string)=>void }
           ref={popRef}
           id={id}
           role="menu"
-          className="absolute z-[1200] mt-2 w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 right-0"
+          className="absolute z-[1200] mt-2 w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 right-0 origin-top-right"
+          style={{ right: 0, left: "auto", transformOrigin: "top right" }}
         >
           <ul className="max-h-[60vh] overflow-auto">
             {SCENARIOS.map(s => (

@@ -1,0 +1,143 @@
+Great feedback — let’s fix both things:
+
+1. **Menus should open right-aligned** (so they never overflow off the left edge).
+2. **Role selection must actually switch the view**, not stay stuck on Charge.
+
+Below is a compact patch that:
+
+* Forces **right-aligned** popovers with `left:auto; right:0; transform-origin: top right` for both Role and Scenarios menus.
+* Makes role changes **propagate everywhere** using a compatibility bridge:
+
+  * writes multiple localStorage keys (`edflow.role`, `roleView`, `view`)
+  * dispatches events (`role:change`, `view:role`, `settings:changed`)
+  * calls an optional global hook `window.__edflowSetRole?.(role)` if your older RoleSelector exposes it
+* Keeps the pill UI (no nested dropdowns).
+
+---
+
+### `fix-role-rightalign-and-bridge.patch`
+
+```diff
+*** Begin Patch
+*** Update File: client/src/components/shell/RoleMenu.tsx
+@@
+-  return (
++  return (
+     <div className="relative">
+       <button
+         ref={btnRef}
+         type="button"
+         aria-haspopup="menu"
+@@
+-      {open && (
++      {open && (
+         <div
+           ref={popRef}
+           id={id}
+           role="menu"
+-          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0"
++          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0 origin-top-right"
++          style={{ right: 0, left: "auto", transformOrigin: "top right" }}
+         >
+           <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Role view</div>
+           <div className="flex items-center gap-1 flex-wrap">
+             {ORDER.map(k => (
+               <button
+@@
+-                onClick={() => {
+-                  setRole(k);
+-                  localStorage.setItem("edflow.role", k);
+-                  window.dispatchEvent(new CustomEvent("role:change", { detail: { role: k }}));
+-                  setOpen(false);
+-                }}
++                onClick={() => {
++                  setRole(k);
++                  // ---- Compatibility bridge: update common keys & fire old/new events ----
++                  const v = k as string;
++                  try {
++                    localStorage.setItem("edflow.role", v);
++                    localStorage.setItem("roleView", v);
++                    localStorage.setItem("view", v);
++                  } catch {}
++                  try {
++                    window.dispatchEvent(new CustomEvent("role:change", { detail: { role: v }}));
++                    window.dispatchEvent(new CustomEvent("view:role", { detail: { role: v }}));
++                    window.dispatchEvent(new CustomEvent("settings:changed", { detail: { key: "role", value: v }}));
++                    // If a legacy RoleSelector exposes an imperative setter, call it.
++                    (window as any).__edflowSetRole?.(v);
++                  } catch {}
++                  setOpen(false);
++                }}
+               >
+                 {LABEL[k]}
+               </button>
+             ))}
+           </div>
+*** End Patch
+*** Update File: client/src/components/shell/ScenariosMenu.tsx
+@@
+-      {open && (
++      {open && (
+         <div
+           ref={popRef}
+           id={id}
+           role="menu"
+-          className="absolute z-[1200] mt-2 w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 right-0"
++          className="absolute z-[1200] mt-2 w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 right-0 origin-top-right"
++          style={{ right: 0, left: "auto", transformOrigin: "top right" }}
+         >
+           <ul className="max-h-[60vh] overflow-auto">
+             {SCENARIOS.map(s => (
+               <li key={s.key}>
+                 <button
+```
+
+---
+
+## Apply
+
+```bash
+git checkout -b fix/role-rightalign-and-bridge
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > fix-role-rightalign-and-bridge.patch
+git apply --reject --whitespace=fix fix-role-rightalign-and-bridge.patch
+git add -A
+git commit -m "Header menus: right-aligned popovers; role change compatibility bridge (events + localStorage + optional global hook)"
+```
+
+---
+
+## Make role switching take effect (one-liner hook)
+
+If your board currently initializes role from `localStorage` but doesn’t react to changes, add this tiny listener once (e.g., in your board shell or app root):
+
+```ts
+// run once at mount
+useEffect(() => {
+  const sync = (e: any) => {
+    const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
+    setRole(next as any);          // <- your existing setter for role state
+  };
+  window.addEventListener("role:change", sync as EventListener);
+  window.addEventListener("view:role", sync as EventListener);
+  window.addEventListener("settings:changed", sync as EventListener);
+  return () => {
+    window.removeEventListener("role:change", sync as EventListener);
+    window.removeEventListener("view:role", sync as EventListener);
+    window.removeEventListener("settings:changed", sync as EventListener);
+  };
+}, []);
+```
+
+> Replace `setRole` with whatever you already use to switch between **RN / Charge / MD** layouts.
+
+---
+
+## Scenarios not working?
+
+You now have `client/src/demo/scenarioEngine.ts` with **Baseline, Surge, Sepsis, Stroke, Chest Pain** seeds. If some patients don’t populate, update `client/src/demo/demoPatients.ts` so the **names map to your actual patient IDs**. The engine already emits the right events so:
+
+* **Patient Journey** fills with timestamped events,
+* **Inline Vitals Timeline** updates immediately,
+* EWS changes appear as events.
+
+If you want me to also **move patients between lanes** (Waiting → Triage → Roomed) when running scenarios, tell me which function triggers your lane change (file + function name) and I’ll wire it in.

@@ -84,6 +84,22 @@ export function Header() {
   const resetDemo = useDashboardStore((state) => state.resetDemo);
   const { toast } = useToast();
 
+  // Listen for role change events from the new pill-style Role menu
+  useEffect(() => {
+    const sync = (e: any) => {
+      const nextRole = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
+      setRoleView(nextRole);
+    };
+    window.addEventListener("role:change", sync as EventListener);
+    window.addEventListener("view:role", sync as EventListener);
+    window.addEventListener("settings:changed", sync as EventListener);
+    return () => {
+      window.removeEventListener("role:change", sync as EventListener);
+      window.removeEventListener("view:role", sync as EventListener);
+      window.removeEventListener("settings:changed", sync as EventListener);
+    };
+  }, [setRoleView]);
+
   const handleScenario = async (scenario: string) => {
     try {
       await apiRequest('POST', `/api/scenario/${scenario}`);
