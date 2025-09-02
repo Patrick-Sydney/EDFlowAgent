@@ -1,0 +1,185 @@
+Got you—this is the classic **infinite re-render** that surfaced after wiring Tasks into the Patient Card. Here’s a tight **fix pack** that resolves the usual loops caused by that integration. Drop these patches in this order.
+
+---
+
+# 1) Patient Card: stop any state writes during render, and memoize props
+
+### A) Never call setters in render
+
+If you added anything like `setOpenTaskDrawer(true)` or `setOpenTaskId(...)` directly in the JSX path, move it behind an effect with a guard:
+
+```tsx
+// PatientCardExpandable.tsx
+const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
+const wantOpen = false; // compute whatever condition you had
+
+useEffect(() => {
+  if (wantOpen) setOpenTaskDrawer(true);
+}, [wantOpen]);
+```
+
+### B) Memoize the TaskList filter object
+
+Passing a fresh object each render can cascade into effects that set state. Keep it stable:
+
+```tsx
+const taskFilter = useMemo(() => ({ patientId: patient.id }), [patient.id]);
+
+<TaskList
+  roleView={roleView as any}
+  filter={taskFilter}
+/>
+```
+
+> If you keep local state like `const [rows, setRows] = useState(list(...))` and then `useEffect(() => setRows(list(...)), [rows, list])` you’ll loop. **Don’t mirror store lists to local state**—call `list(filter)` directly in render (as in the scaffold I gave).
+
+---
+
+# 2) Create Task Drawer: defer close to next tick (prevents nested update loops)
+
+```tsx
+// CreateTaskDrawer.tsx
+const create = () => {
+  if (!label.trim()) return;
+  upsert({ /* ... */ });
+  queueMicrotask(onClose); // or setTimeout(onClose, 0)
+};
+```
+
+---
+
+# 3) Task store: make persistence side-effect safe
+
+If you placed a global `useTaskStore.subscribe(...)` at module top, it’s fine, but **don’t** resubscribe per render. Also make writes idempotent:
+
+```ts
+// stores/taskStore.ts  (inside upsert / setStatus / assign)
+set(s => ({ tasks: { ...s.tasks, [id]: task } }));
+// only persist if changed (cheap check)
+const json = JSON.stringify(get().tasks);
+if (localStorage.getItem("edflow.tasks") !== json) {
+  localStorage.setItem("edflow.tasks", json);
+}
+```
+
+And hydrate **once**:
+
+```tsx
+// TaskBoard.tsx (or app shell)
+const hydrate = useTaskStore(s => s.hydrateFromCache);
+useEffect(() => { hydrate(); }, [hydrate]);
+```
+
+Ensure `hydrateFromCache` only sets state when different:
+
+```ts
+hydrateFromCache: () => {
+  const cached = localStorage.getItem("edflow.tasks");
+  if (!cached) return;
+  const parsed = JSON.parse(cached);
+  const now = get().tasks;
+  if (Object.keys(parsed).length === Object.keys(now).length) return; // shallow guard
+  set({ tasks: parsed });
+},
+```
+
+---
+
+# 4) TaskCardSheet / bottom sheet: guard close logic & avoid render-time writes
+
+* Don’t call `onClose()` just because `!task`. Simply `return null`.
+* Only call `complete()` / `escalate()` from button handlers.
+* Keep `note` in local state; **no** effects that set store state on mount.
+
+(If you used my scaffold, you’re covered.)
+
+---
+
+# 5) Role routing & lanes: ensure route redirect doesn’t flap
+
+If you auto-route HCAs to `/tasks`, do it once on role change:
+
+```tsx
+const role = useRoleStore(s => s.role);
+const router = useRouter();
+useEffect(() => {
+  if (role === "HCA") router.replace("/tasks?hcaPool=1");
+}, [role, router]);
+```
+
+Don’t also push from inside `RoleMenu` **and** a parent shell—pick one.
+
+---
+
+# 6) Quick sanity diff for PatientCard “Tasks” panel
+
+Here’s a known-good snippet for the panel inside the expanded card:
+
+```tsx
+// PatientCardExpandable.tsx (snippet)
+import { useMemo, useState } from "react";
+import TaskList from "@/components/tasks/TaskList";
+import CreateTaskDrawer from "@/components/tasks/CreateTaskDrawer";
+import { useRoleStore } from "@/stores/roleStore";
+
+const roleView = useRoleStore(s => s.role);
+const isHCA = roleView === "HCA";
+const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
+
+const taskFilter = useMemo(() => ({ patientId: patient.id }), [patient.id]);
+
+<section className="mt-4">
+  <div className="flex items-center justify-between">
+    <h3 className="text-sm font-semibold">Tasks</h3>
+    {!isHCA && (
+      <button
+        onClick={() => setOpenTaskDrawer(true)}
+        className="px-3 py-1.5 rounded bg-slate-800 text-white"
+      >
+        + Task
+      </button>
+    )}
+  </div>
+
+  <TaskList roleView={isHCA ? "HCA" : (roleView as any)} filter={taskFilter} />
+</section>
+
+<CreateTaskDrawer
+  isOpen={openTaskDrawer}
+  onClose={() => setOpenTaskDrawer(false)}
+  defaultPatientId={patient.id}
+  defaultOrigin={roleView === "Charge" ? "Charge" : "RN"}
+/>
+```
+
+> Note: no setters are called during render; the filter is memoized; drawers open only on click.
+
+---
+
+# 7) If the loop persists, the fastest pinpoint
+
+Add a **temporary guard** to React’s setState calls that fire too often:
+
+```ts
+// debug util
+export function oncePerTick<T extends (...args:any[]) => void>(fn: T): T {
+  let ticking = false;
+  return ((...args:any[]) => {
+    if (ticking) return;
+    ticking = true;
+    queueMicrotask(() => { ticking = false; });
+    fn(...args);
+  }) as T;
+}
+```
+
+Wrap any suspicious setter you own (not React’s), e.g., a UI store’s `setSelectedPatientId = oncePerTick((id)=>set({selectedPatientId:id}))`.
+
+---
+
+## Likeliest culprit (based on your screenshot + recent changes)
+
+* A state setter is being **triggered from the Patient Card render path** (often due to trying to auto-open a drawer/sheet or syncing store → local state every render).
+* The fixes above (especially **§1A and §1B**) usually remove the loop immediately.
+
+If you paste the few lines where **PatientCardExpandable** sets local state (open flags, selected ids) I can give you the exact one-line patch—but the fixes here are safe to apply now and won’t change behavior, only stability.

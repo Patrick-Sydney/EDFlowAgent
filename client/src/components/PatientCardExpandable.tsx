@@ -184,7 +184,7 @@ export type ExpandableCardProps = {
   // NEW: for expanded layout
   alertFlags?: AlertFlags;
   lane?: string;
-  role?: "RN" | "Charge" | "MD";
+  expandedRole?: "RN" | "Charge" | "MD";
   o2Label?: string | null;
   resultsPending?: number;
   tasks?: TaskItem[];
@@ -194,14 +194,17 @@ export type ExpandableCardProps = {
   onOpenResults?: () => void;
   onQuickOrders?: () => void;
   onEditNotes?: () => void;
+  age?: number;
+  sex?: string;
+  arrivalTs?: string;
 };
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
   const {
-    ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], role,
+    ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], expandedRole,
     minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
     statusFlags, locationLabel, alertFlags, lane, o2Label, resultsPending, tasks, triageSummary, assessment, note,
-    onOpenResults, onQuickOrders, onEditNotes
+    onOpenResults, onQuickOrders, onEditNotes, age, sex, arrivalTs
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -210,6 +213,9 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes" | "register">(false);
   const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
   const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
+  
+  // Memoize task filter to prevent infinite re-renders
+  const taskFilter = useMemo(() => ({ patientId: String(patientId) }), [patientId]);
 
   // Role awareness (RN-only actions)
   const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
@@ -403,7 +409,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 <TaskList
                   roleView={userRole === "hca" ? "HCA" : userRole === "rn" ? "RN" : userRole === "charge" ? "Charge" : "RN"}
                   currentUserId={userRole === "hca" ? "hca-1" : undefined}
-                  filter={{ patientId: String(patientId) }}
+                  filter={taskFilter}
                   onSelectTaskId={setOpenTaskSheet}
                 />
               </div>
@@ -601,12 +607,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           getPatientSummary={(pid) => ({
             id: String(patientId),
             displayName: displayName,
-            age: props.age,
-            sex: props.sex,
+            age: age,
+            sex: sex,
             room: localLocationLabel ?? locationLabel ?? undefined,
             ats: ats,
-            ews: ews?.score,
-            arrivalTs: props.arrivalTs
+            ews: typeof ews === 'object' ? ews?.score : ews,
+            arrivalTs: arrivalTs
           })}
           currentUserId={userRole === "hca" ? "hca-1" : undefined}
           readOnly={userRole === "hca"}
