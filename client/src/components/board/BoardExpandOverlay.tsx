@@ -93,7 +93,7 @@ export default function BoardExpandOverlay({
     el.style.position = "fixed";
     el.style.left = `${targetGeom.left}px`;
     el.style.width = `${targetGeom.width}px`;
-    const top = Math.max(12, Math.round(window.innerHeight * (targetGeom.topFrac ?? 0.02)));
+    const top = Math.max(80, Math.round(window.innerHeight * (targetGeom.topFrac ?? 0.08)));
     const finalH = Math.max(
       420,
       Math.min(window.innerHeight - top - BOTTOM_MARGIN, window.innerHeight - 32)
