@@ -5,7 +5,8 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import ScenarioMenu from "./ScenarioMenu";
-import CombinedAppMenu from "./shell/CombinedAppMenu";
+import RoleMenu from "./shell/RoleMenu";
+import ScenariosMenu from "./shell/ScenariosMenu";
 
 function AppLogo() {
   return (
@@ -115,24 +116,22 @@ export function Header() {
     }
   };
 
-  const handleOpenScenarios = () => {
-    // For now, just trigger the scenarios - can be enhanced to open a modal/drawer
-    window.dispatchEvent(new CustomEvent("ui:open-scenarios"));
-  };
-
   return (
     <header className="sticky top-0 z-[900] w-full bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-      {/* Unified compact header on ALL breakpoints (mobile-style for tablet & desktop too) */}
-      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 lg:py-2 flex items-center justify-between gap-2">
-        {/* Left: app logo opens Combined menu (Role + Scenarios) on all screens */}
+      {/* Compact header across mobile/tablet/desktop */}
+      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 flex items-center justify-between gap-2">
+        {/* Left cluster: logo + split controls */}
         <div className="flex items-center gap-2">
-          <CombinedAppMenu
-            Logo={<AppLogo />}
-            RoleSelector={<RoleViewPicker compact />}
-            onOpenScenarios={handleOpenScenarios}
-          />
+          <AppLogo />
+          <RoleMenu RoleSelector={<RoleViewPicker compact />} />
+          {demoMode && (
+            <ScenariosMenu onRun={(key) => {
+              if (key === "baseline") handleResetDemo();
+              else handleScenario(key);
+            }} />
+          )}
         </div>
-        {/* Right: live clock */}
+        {/* Right cluster */}
         <div className="flex items-center gap-2">
           <LiveClock />
         </div>
