@@ -10,6 +10,14 @@ export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactN
   const btnRef = useRef<HTMLButtonElement|null>(null);
   const popRef = useRef<HTMLDivElement|null>(null);
   const id = useId();
+  const [coords, setCoords] = useState<{top:number; right:number} | null>(null);
+
+  const recalc = () => {
+    const btn = btnRef.current;
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    setCoords({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
+  };
   const [role, setRole] = useState<RoleKey>(() => {
     const saved = (localStorage.getItem("edflow.role") || "").toLowerCase();
     return (["rn","charge","md"] as RoleKey[]).includes(saved as RoleKey) ? (saved as RoleKey) : "charge";
@@ -23,13 +31,19 @@ export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactN
       if (popRef.current.contains(e.target as Node) || btnRef.current.contains(e.target as Node)) return;
       setOpen(false);
     };
+    recalc();
+    const onResize = () => recalc();
+    const onScroll = () => recalc();
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onClick);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("mousedown", onClick); };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("mousedown", onClick);
+      window.removeEventListener("resize", onResize); window.removeEventListener("scroll", onScroll, true); };
   }, [open]);
 
   return (
-    <div className="relative">
+    <div className="relative inline-block shrink-0">
       <button
         ref={btnRef}
         type="button"
@@ -46,8 +60,8 @@ export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactN
           ref={popRef}
           id={id}
           role="menu"
-          className="absolute z-[1200] mt-2 w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 right-0 origin-top-right"
-          style={{ right: 0, left: "auto", transformOrigin: "top right" }}
+          className="z-[1200] w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 origin-top-right"
+          style={{ position: "fixed", top: coords?.top, right: coords?.right, left: "auto", transformOrigin: "top right" }}
         >
           <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Role view</div>
           <div className="flex items-center gap-1 flex-wrap">
