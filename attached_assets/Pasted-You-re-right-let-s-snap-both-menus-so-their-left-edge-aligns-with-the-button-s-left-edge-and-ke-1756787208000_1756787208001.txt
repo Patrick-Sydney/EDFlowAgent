@@ -1,0 +1,81 @@
+You’re right—let’s snap both menus so their **left edge aligns with the button’s left edge** (and keep them clamped from the screen’s left edge).
+
+Here’s a small patch that switches the popovers to **left-aligned** fixed positioning.
+
+---
+
+### `fix-popover-left-align.patch`
+
+```diff
+*** Begin Patch
+*** Update File: client/src/components/shell/RoleMenu.tsx
+@@
+-  const [coords, setCoords] = useState<{top:number; right:number} | null>(null);
++  const [coords, setCoords] = useState<{top:number; left:number} | null>(null);
+ 
+   const recalc = () => {
+     const btn = btnRef.current;
+     if (!btn) return;
+     const r = btn.getBoundingClientRect();
+-    setCoords({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
++    setCoords({ top: r.bottom + 8, left: Math.max(8, r.left) });
+   };
+@@
+-    <div className="relative inline-block shrink-0">
++    <div className="relative inline-block shrink-0">
+@@
+-      {open && (
++      {open && (
+         <div
+           ref={popRef}
+           id={id}
+           role="menu"
+-          className="z-[1200] w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 origin-top-right"
+-          style={{ position: "fixed", top: coords?.top, right: coords?.right, left: "auto", transformOrigin: "top right" }}
++          className="z-[1200] w-[min(92vw,320px)] rounded-2xl border bg-background shadow-xl p-3 origin-top-left"
++          style={{ position: "fixed", top: coords?.top, left: coords?.left, right: "auto", transformOrigin: "top left" }}
+         >
+           <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Role view</div>
+*** End Patch
+*** Update File: client/src/components/shell/ScenariosMenu.tsx
+@@
+-  const [coords, setCoords] = useState<{top:number; right:number} | null>(null);
++  const [coords, setCoords] = useState<{top:number; left:number} | null>(null);
+   const btnRect = () => {
+     const b = btnRef.current?.getBoundingClientRect();
+     if (!b) return null;
+-    return { top: b.bottom + 8, right: Math.max(8, window.innerWidth - b.right) };
++    return { top: b.bottom + 8, left: Math.max(8, b.left) };
+   };
+@@
+-    <div className="relative inline-block shrink-0">
++    <div className="relative inline-block shrink-0">
+@@
+-      {open && (
++      {open && (
+         <div
+           ref={popRef}
+           id={id}
+           role="menu"
+-          className="z-[1200] w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 origin-top-right"
+-          style={{ position: "fixed", top: coords?.top, right: coords?.right, left: "auto", transformOrigin: "top right" }}
++          className="z-[1200] w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 origin-top-left"
++          style={{ position: "fixed", top: coords?.top, left: coords?.left, right: "auto", transformOrigin: "top left" }}
+         >
+           <ul className="max-h-[60vh] overflow-auto">
+*** End Patch
+```
+
+---
+
+### Apply in Replit
+
+```bash
+git checkout -b fix/popover-left-align
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > fix-popover-left-align.patch
+git apply --reject --whitespace=fix fix-popover-left-align.patch
+git add -A
+git commit -m "Header menus: left-align popovers to trigger; fixed positioning with top-left origin"
+```
+
+After this, both **Role** and **Scenarios** menus will open with their **left edge aligned** to the button’s left edge and won’t drift off-screen.

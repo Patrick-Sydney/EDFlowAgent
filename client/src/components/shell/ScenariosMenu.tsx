@@ -16,11 +16,11 @@ export default function ScenariosMenu({ onRun }: { onRun?: (key: string)=>void }
   const btnRef = useRef<HTMLButtonElement|null>(null);
   const popRef = useRef<HTMLDivElement|null>(null);
   const id = useId();
-  const [coords, setCoords] = useState<{top:number; right:number} | null>(null);
+  const [coords, setCoords] = useState<{top:number; left:number} | null>(null);
   const btnRect = () => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return null;
-    return { top: b.bottom + 8, right: Math.max(8, window.innerWidth - b.right) };
+    return { top: b.bottom + 8, left: Math.max(8, b.left) };
   };
 
   useEffect(() => {
@@ -71,8 +71,8 @@ export default function ScenariosMenu({ onRun }: { onRun?: (key: string)=>void }
           ref={popRef}
           id={id}
           role="menu"
-          className="z-[1200] w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 origin-top-right"
-          style={{ position: "fixed", top: coords?.top, right: coords?.right, left: "auto", transformOrigin: "top right" }}
+          className="z-[1200] w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-2 origin-top-left"
+          style={{ position: "fixed", top: coords?.top, left: coords?.left, right: "auto", transformOrigin: "top left" }}
         >
           <ul className="max-h-[60vh] overflow-auto">
             {SCENARIOS.map(s => (
