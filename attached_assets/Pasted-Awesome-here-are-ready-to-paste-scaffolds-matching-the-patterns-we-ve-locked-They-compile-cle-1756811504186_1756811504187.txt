@@ -1,0 +1,632 @@
+Awesome — here are **ready-to-paste scaffolds** matching the patterns we’ve locked. They compile cleanly, wire into Zustand, and use simple Tailwind classes so you can iterate fast.
+
+---
+
+## `/tasks/types.ts`
+
+```ts
+// tasks/types.ts
+export type Role = "RN" | "Charge" | "MD" | "HCA";
+
+export type TaskKind =
+  | "comfort"      // blankets, settle, reassurance
+  | "hygiene"      // toileting, wash, linen change
+  | "mobility"     // transfer, pressure roll, out-of-bed
+  | "escort"       // chaperone, imaging escort, ECG escort
+  | "environment"; // prepare bay/room, restock
+
+export type TaskStatus = "pending" | "done" | "escalated";
+
+export interface Task {
+  id: string;
+  patientId?: string;     // optional for environment tasks
+  kind: TaskKind;
+  label: string;          // short human label ("Assist to toilet")
+  detail?: string;        // free-text detail from RN/Charge
+  createdAt: string;      // ISO
+  dueAt?: string;         // ISO (overdue = now > dueAt)
+  status: TaskStatus;
+  assignedTo?: string;    // HCA user id (optional = pool)
+  origin: "RN" | "Charge" | "Schedule"; // for now: RN/Charge only
+  actorId?: string;       // creator user id
+}
+
+export const isOverdue = (t: Task): boolean =>
+  !!t.dueAt && t.status === "pending" && new Date(t.dueAt).getTime() < Date.now();
+```
+
+---
+
+## `/stores/taskStore.ts`
+
+```ts
+// stores/taskStore.ts
+import { create } from "zustand";
+import { nanoid } from "nanoid";
+import { Task } from "@/tasks/types";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+type TaskFilter = {
+  assignedTo?: string;
+  patientId?: string;
+  status?: Task["status"] | "overdue";
+  kinds?: Task["kind"][];
+};
+
+type TaskState = {
+  tasks: Record<string, Task>;
+  // CRUD
+  upsert: (input: Omit<Task, "id" | "createdAt" | "status"> & { id?: string; status?: Task["status"] }) => string;
+  setStatus: (id: string, status: Task["status"]) => void;
+  assign: (id: string, hcaUserId?: string) => void;
+  claim: (id: string, hcaUserId: string) => void;
+  escalate: (id: string, note?: string) => void;
+  complete: (id: string, note?: string) => void;
+  list: (filter?: TaskFilter) => Task[];
+  hydrateFromCache: () => void;
+};
+
+export const useTaskStore = create<TaskState>((set, get) => ({
+  tasks: {},
+
+  upsert: (input) => {
+    const id = input.id ?? nanoid();
+    const createdAt = new Date().toISOString();
+    const task: Task = {
+      id,
+      label: input.label,
+      detail: input.detail,
+      kind: input.kind,
+      patientId: input.patientId,
+      dueAt: input.dueAt,
+      assignedTo: input.assignedTo,
+      origin: input.origin,
+      actorId: input.actorId,
+      createdAt,
+      status: input.status ?? "pending",
+    };
+    set(s => ({ tasks: { ...s.tasks, [id]: task } }));
+    // persist minimal
+    localStorage.setItem("edflow.tasks", JSON.stringify(get().tasks));
+    return id;
+  },
+
+  setStatus: (id, status) => {
+    set(s => ({ tasks: { ...s.tasks, [id]: { ...s.tasks[id], status } } }));
+    localStorage.setItem("edflow.tasks", JSON.stringify(get().tasks));
+  },
+
+  assign: (id, hcaUserId) => {
+    set(s => ({ tasks: { ...s.tasks, [id]: { ...s.tasks[id], assignedTo: hcaUserId } } }));
+    localStorage.setItem("edflow.tasks", JSON.stringify(get().tasks));
+  },
+
+  claim: (id, hcaUserId) => {
+    get().assign(id, hcaUserId);
+  },
+
+  escalate: (id, note) => {
+    const { tasks } = get(); const t = tasks[id]; if (!t) return;
+    const journey = useJourneyStore.getState();
+    journey.append({
+      id: nanoid(),
+      patientId: t.patientId ?? "",
+      t: new Date().toISOString(),
+      kind: "alert",
+      severity: "warning",
+      label: `HCA escalated: ${t.label}`,
+      detail: note ?? t.detail,
+      ref: { taskId: id },
+      actor: { id: t.assignedTo ?? "hca", role: "HCA" }
+    });
+    get().setStatus(id, "escalated");
+  },
+
+  complete: (id, note) => {
+    const { tasks } = get(); const t = tasks[id]; if (!t) return;
+    const journey = useJourneyStore.getState();
+    journey.append({
+      id: nanoid(),
+      patientId: t.patientId ?? "",
+      t: new Date().toISOString(),
+      kind: "task",
+      label: `HCA task completed: ${t.label}`,
+      detail: note ?? t.detail,
+      ref: { taskId: id },
+      actor: { id: t.assignedTo ?? "hca", role: "HCA" }
+    });
+    get().setStatus(id, "done");
+  },
+
+  list: (filter) => {
+    const arr = Object.values(get().tasks);
+    if (!filter) return arr;
+    return arr.filter(t => {
+      if (filter.assignedTo && t.assignedTo !== filter.assignedTo) return false;
+      if (filter.patientId && t.patientId !== filter.patientId) return false;
+      if (filter.status) {
+        if (filter.status === "overdue") {
+          const overdue = t.dueAt ? new Date(t.dueAt).getTime() < Date.now() && t.status === "pending" : false;
+          if (!overdue) return false;
+        } else if (t.status !== filter.status) return false;
+      }
+      if (filter.kinds && !filter.kinds.includes(t.kind)) return false;
+      return true;
+    });
+  },
+
+  hydrateFromCache: () => {
+    try {
+      const cached = localStorage.getItem("edflow.tasks");
+      if (cached) set({ tasks: JSON.parse(cached) });
+    } catch { /* noop */ }
+  },
+}));
+```
+
+---
+
+## `/components/tasks/CreateTaskDrawer.tsx`
+
+```tsx
+// components/tasks/CreateTaskDrawer.tsx
+import React, { useMemo, useState } from "react";
+import { useTaskStore } from "@/stores/taskStore";
+import { TaskKind } from "@/tasks/types";
+
+type Props = {
+  isOpen: boolean;
+  onClose: () => void;
+  defaultPatientId?: string;
+  defaultOrigin?: "RN" | "Charge";
+};
+
+const KIND_OPTIONS: { value: TaskKind; label: string }[] = [
+  { value: "comfort", label: "Comfort" },
+  { value: "hygiene", label: "Hygiene" },
+  { value: "mobility", label: "Mobility" },
+  { value: "escort", label: "Escort" },
+  { value: "environment", label: "Environment" },
+];
+
+export default function CreateTaskDrawer({ isOpen, onClose, defaultPatientId, defaultOrigin = "RN" }: Props) {
+  const upsert = useTaskStore(s => s.upsert);
+  const [kind, setKind] = useState<TaskKind>("comfort");
+  const [label, setLabel] = useState("");
+  const [detail, setDetail] = useState("");
+  const [dueMins, setDueMins] = useState<number | "">("");
+  const [assignTo, setAssignTo] = useState<string | undefined>(undefined);
+
+  const dueAt = useMemo(() => {
+    if (dueMins === "" || !Number.isFinite(Number(dueMins))) return undefined;
+    const t = new Date(); t.setMinutes(t.getMinutes() + Number(dueMins)); return t.toISOString();
+  }, [dueMins]);
+
+  if (!isOpen) return null;
+
+  const create = () => {
+    if (!label.trim()) return;
+    upsert({
+      label: label.trim(),
+      detail: detail.trim() || undefined,
+      kind,
+      patientId: defaultPatientId,
+      dueAt,
+      assignedTo: assignTo,
+      origin: defaultOrigin,
+      actorId: "current-user", // TODO: wire actual user id
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl p-4 overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">New Task</h2>
+          <button onClick={onClose} className="px-2 py-1 text-sm rounded hover:bg-slate-100">Close</button>
+        </div>
+
+        <label className="block mt-4 text-sm font-medium">Kind</label>
+        <select value={kind} onChange={e => setKind(e.target.value as TaskKind)} className="mt-1 w-full border rounded p-2">
+          {KIND_OPTIONS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+        </select>
+
+        <label className="block mt-4 text-sm font-medium">Label</label>
+        <input value={label} onChange={e => setLabel(e.target.value)} className="mt-1 w-full border rounded p-2" placeholder="Assist to toilet" />
+
+        <label className="block mt-4 text-sm font-medium">Detail (optional)</label>
+        <textarea value={detail} onChange={e => setDetail(e.target.value)} className="mt-1 w-full border rounded p-2" rows={3} placeholder="Add specifics or safety notes" />
+
+        <label className="block mt-4 text-sm font-medium">Due in (minutes)</label>
+        <input value={dueMins} onChange={e => setDueMins(e.target.value === "" ? "" : Number(e.target.value))} type="number" min={0} className="mt-1 w-full border rounded p-2" placeholder="e.g. 15" />
+
+        {/* TODO: replace with staff picker once users are modeled */}
+        <label className="block mt-4 text-sm font-medium">Assign (optional)</label>
+        <input value={assignTo ?? ""} onChange={e => setAssignTo(e.target.value || undefined)} className="mt-1 w-full border rounded p-2" placeholder="HCA user id or leave blank" />
+
+        <div className="mt-6 flex gap-2">
+          <button onClick={create} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Create task</button>
+          <button onClick={onClose} className="px-4 py-2 rounded border">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## `/components/tasks/TaskItem.tsx`
+
+```tsx
+// components/tasks/TaskItem.tsx
+import React from "react";
+import { Task, isOverdue } from "@/tasks/types";
+import { useTaskStore } from "@/stores/taskStore";
+import clsx from "clsx";
+
+type Props = {
+  task: Task;
+  roleView: "RN" | "Charge" | "HCA";
+  currentUserId?: string;
+  compact?: boolean;
+  onSelectPatient?: (patientId: string) => void;
+};
+
+export default function TaskItem({ task, roleView, currentUserId, compact = false, onSelectPatient }: Props) {
+  const { claim, complete, escalate, assign } = useTaskStore(s => ({
+    claim: s.claim, complete: s.complete, escalate: s.escalate, assign: s.assign
+  }));
+
+  const overdue = isOverdue(task);
+  const dueLabel = task.dueAt ? new Date(task.dueAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+
+  return (
+    <div className={clsx(
+      "rounded-lg border p-3 flex items-start gap-3",
+      overdue && roleView !== "HCA" ? "border-red-400" : overdue ? "border-amber-400" : "border-slate-200"
+    )}>
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm px-2 py-0.5 rounded bg-slate-100">{task.kind}</span>
+          {task.patientId && (
+            <button className="text-xs text-blue-700 hover:underline"
+              onClick={() => task.patientId && onSelectPatient?.(task.patientId)}>
+              Patient: {task.patientId}
+            </button>
+          )}
+          <span className={clsx("ml-auto text-xs px-2 py-0.5 rounded",
+            overdue ? (roleView !== "HCA" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")
+                    : "bg-slate-100 text-slate-700")}>
+            {task.status === "pending" ? (overdue ? "Overdue" : `Due ${dueLabel}`) : task.status}
+          </span>
+        </div>
+        <div className="mt-1 font-medium">{task.label}</div>
+        {task.detail && <div className="text-sm text-slate-600 mt-0.5">{task.detail}</div>}
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col gap-1">
+        {roleView === "HCA" && task.status === "pending" && (
+          <>
+            {!task.assignedTo && (
+              <button onClick={() => claim(task.id, currentUserId!)} className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200">
+                Claim
+              </button>
+            )}
+            {(!task.assignedTo || task.assignedTo === currentUserId) && (
+              <>
+                <button onClick={() => complete(task.id)} className="text-xs px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700">
+                  Complete
+                </button>
+                <button onClick={() => {
+                  const note = prompt("Escalation note (what did you observe)?") ?? undefined;
+                  escalate(task.id, note);
+                }} className="text-xs px-2 py-1 rounded border border-red-500 text-red-600 hover:bg-red-50">
+                  Escalate
+                </button>
+              </>
+            )}
+          </>
+        )}
+        {(roleView === "RN" || roleView === "Charge") && task.status === "pending" && (
+          <>
+            <button onClick={() => {
+              const uid = prompt("Assign to HCA user id (leave empty to unassign)") || undefined;
+              assign(task.id, uid || undefined);
+            }} className="text-xs px-2 py-1 rounded bg-slate-100 hover:bg-slate-200">
+              {task.assignedTo ? "Reassign" : "Assign"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## `/components/tasks/TaskList.tsx`
+
+```tsx
+// components/tasks/TaskList.tsx
+import React, { useMemo } from "react";
+import { useTaskStore } from "@/stores/taskStore";
+import TaskItem from "./TaskItem";
+import { Task } from "@/tasks/types";
+
+type Props = {
+  roleView: "RN" | "Charge" | "HCA";
+  currentUserId?: string;
+  filter?: {
+    myTasks?: boolean;             // HCA "My Tasks"
+    pool?: boolean;                // HCA "Unassigned"
+    patientId?: string;            // per-patient list
+    status?: Task["status"] | "overdue";
+    kinds?: Task["kind"][];
+  };
+  onSelectPatient?: (patientId: string) => void;
+};
+
+export default function TaskList({ roleView, currentUserId, filter, onSelectPatient }: Props) {
+  const list = useTaskStore(s => s.list);
+
+  const tasks = useMemo(() => {
+    const f: any = {};
+    if (filter?.patientId) f.patientId = filter.patientId;
+    if (filter?.status) f.status = filter.status;
+    if (filter?.kinds) f.kinds = filter.kinds;
+
+    let arr = list(f);
+
+    // HCA dashboards
+    if (roleView === "HCA") {
+      if (filter?.myTasks) arr = arr.filter(t => t.assignedTo === currentUserId && t.status === "pending");
+      if (filter?.pool) arr = arr.filter(t => !t.assignedTo && t.status === "pending");
+    }
+
+    // Sort: overdue first, then nearest due, then newest
+    arr.sort((a, b) => {
+      const aOver = isOver(a), bOver = isOver(b);
+      if (aOver !== bOver) return aOver ? -1 : 1;
+      const ad = a.dueAt ? new Date(a.dueAt).getTime() : Infinity;
+      const bd = b.dueAt ? new Date(b.dueAt).getTime() : Infinity;
+      if (ad !== bd) return ad - bd;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return arr;
+  }, [list, roleView, filter, currentUserId]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {tasks.length === 0 && (
+        <div className="text-sm text-slate-500 italic">No tasks here.</div>
+      )}
+      {tasks.map(t => (
+        <TaskItem key={t.id} task={t} roleView={roleView} currentUserId={currentUserId} onSelectPatient={onSelectPatient} />
+      ))}
+    </div>
+  );
+}
+
+const isOver = (t: Task) => !!t.dueAt && t.status === "pending" && new Date(t.dueAt).getTime() < Date.now();
+```
+
+---
+
+## `/components/tasks/TaskBoard.tsx`
+
+```tsx
+// components/tasks/TaskBoard.tsx
+import React, { useEffect, useState } from "react";
+import TaskList from "./TaskList";
+import CreateTaskDrawer from "./CreateTaskDrawer";
+import { useTaskStore } from "@/stores/taskStore";
+
+type Props = {
+  roleView: "RN" | "Charge" | "HCA";
+  currentUserId?: string;
+  onSelectPatient?: (patientId: string) => void;
+};
+
+export default function TaskBoard({ roleView, currentUserId = "hca-1", onSelectPatient }: Props) {
+  const hydrate = useTaskStore(s => s.hydrateFromCache);
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"mine" | "pool" | "all" | "overdue" | "escalated" | "done">(
+    roleView === "HCA" ? "mine" : "all"
+  );
+
+  useEffect(() => { hydrate(); }, [hydrate]);
+
+  return (
+    <div className="p-4 space-y-4">
+      <header className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Tasks</h1>
+        {(roleView === "RN" || roleView === "Charge") && (
+          <button onClick={() => setOpen(true)} className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+            New Task
+          </button>
+        )}
+      </header>
+
+      <nav className="flex gap-2">
+        {roleView === "HCA" ? (
+          <>
+            <TabBtn id="mine" tab={tab} setTab={setTab} label="My Tasks" />
+            <TabBtn id="pool" tab={tab} setTab={setTab} label="Unassigned" />
+            <TabBtn id="done" tab={tab} setTab={setTab} label="Done (today)" />
+          </>
+        ) : (
+          <>
+            <TabBtn id="all" tab={tab} setTab={setTab} label="All" />
+            <TabBtn id="overdue" tab={tab} setTab={setTab} label="Overdue" />
+            <TabBtn id="escalated" tab={tab} setTab={setTab} label="Escalated" />
+            <TabBtn id="done" tab={tab} setTab={setTab} label="Done (24h)" />
+          </>
+        )}
+      </nav>
+
+      <section>
+        {roleView === "HCA" && tab === "mine" && (
+          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ myTasks: true }} onSelectPatient={onSelectPatient} />
+        )}
+        {roleView === "HCA" && tab === "pool" && (
+          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ pool: true }} onSelectPatient={onSelectPatient} />
+        )}
+        {roleView === "HCA" && tab === "done" && (
+          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ status: "done" }} onSelectPatient={onSelectPatient} />
+        )}
+
+        {(roleView === "RN" || roleView === "Charge") && tab === "all" && (
+          <TaskList roleView={roleView} onSelectPatient={onSelectPatient} />
+        )}
+        {(roleView === "RN" || roleView === "Charge") && tab === "overdue" && (
+          <TaskList roleView={roleView} filter={{ status: "overdue" }} onSelectPatient={onSelectPatient} />
+        )}
+        {(roleView === "RN" || roleView === "Charge") && tab === "escalated" && (
+          <TaskList roleView={roleView} filter={{ status: "escalated" }} onSelectPatient={onSelectPatient} />
+        )}
+        {(roleView === "RN" || roleView === "Charge") && tab === "done" && (
+          <TaskList roleView={roleView} filter={{ status: "done" }} onSelectPatient={onSelectPatient} />
+        )}
+      </section>
+
+      <CreateTaskDrawer isOpen={open} onClose={() => setOpen(false)} defaultOrigin={roleView === "Charge" ? "Charge" : "RN"} />
+    </div>
+  );
+}
+
+function TabBtn<T extends string>({ id, tab, setTab, label }:{
+  id: T; tab: T; setTab: (t: T) => void; label: string;
+}) {
+  const active = id === tab;
+  return (
+    <button onClick={() => setTab(id)} className={`px-3 py-1.5 rounded border ${active ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-100"}`}>
+      {label}
+    </button>
+  );
+}
+```
+
+---
+
+## Inject into **Patient Card** (Tasks panel)
+
+### Patch `/components/patient/PatientCardExpandable.tsx`
+
+```tsx
+// ...imports
+import TaskList from "@/components/tasks/TaskList";
+import CreateTaskDrawer from "@/components/tasks/CreateTaskDrawer";
+import { useRoleStore } from "@/stores/roleStore"; // assuming you have this
+
+// Inside component:
+const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
+const roleView = useRoleStore(s => s.role); // "RN" | "Charge" | "MD" | "HCA"
+
+// In the Actions bar (RN/Charge only), add:
+{(roleView === "RN" || roleView === "Charge") && (
+  <button onClick={() => setOpenTaskDrawer(true)} className="px-3 py-2 rounded bg-slate-800 text-white">
+    + Task
+  </button>
+)}
+
+// In the expanded content, add a Tasks panel:
+<section className="mt-4">
+  <h3 className="text-sm font-semibold mb-2">Tasks</h3>
+  {roleView === "HCA" ? (
+    <TaskList roleView="HCA" currentUserId="hca-1" filter={{ patientId: patient.id, myTasks: true }} />
+  ) : (
+    <TaskList roleView={roleView as any} filter={{ patientId: patient.id }} />
+  )}
+</section>
+
+<CreateTaskDrawer
+  isOpen={openTaskDrawer}
+  onClose={() => setOpenTaskDrawer(false)}
+  defaultPatientId={patient.id}
+  defaultOrigin={roleView === "Charge" ? "Charge" : "RN"}
+/>
+```
+
+---
+
+## Add **HCA** to Role menu
+
+### Patch `/components/shell/RoleMenu.tsx`
+
+```tsx
+// Add option:
+const ROLES: Array<{ id: "RN" | "Charge" | "MD" | "HCA"; label: string }> = [
+  { id: "RN", label: "RN" },
+  { id: "Charge", label: "Charge" },
+  { id: "MD", label: "MD" },
+  { id: "HCA", label: "HCA" },
+];
+```
+
+---
+
+## Optional: lightweight route/screen
+
+If you have a routes shell, expose the board:
+
+```tsx
+// pages/tasks.tsx (or a route component)
+import TaskBoard from "@/components/tasks/TaskBoard";
+import { useRoleStore } from "@/stores/roleStore";
+
+export default function TasksPage() {
+  const role = useRoleStore(s => s.role);
+  return <TaskBoard roleView={role as any} />;
+}
+```
+
+---
+
+## Smoke test seed (optional)
+
+Drop a couple of tasks at app start to see UI:
+
+```ts
+// demo/seedTasks.ts
+import { useTaskStore } from "@/stores/taskStore";
+
+export function seedTasksOnce() {
+  const seeded = sessionStorage.getItem("seed.tasks");
+  if (seeded) return;
+  const upsert = useTaskStore.getState().upsert;
+  upsert({ label: "Assist to toilet", kind: "hygiene", patientId: "p001", dueAt: new Date(Date.now()+10*60000).toISOString(), origin: "RN", actorId: "rn-1" });
+  upsert({ label: "Pressure roll", kind: "mobility", patientId: "p002", dueAt: new Date(Date.now()-5*60000).toISOString(), origin: "Charge", actorId: "charge-1" });
+  sessionStorage.setItem("seed.tasks", "1");
+}
+```
+
+Call `seedTasksOnce()` in your app shell after stores hydrate.
+
+---
+
+## Unit-test starter (logic only)
+
+```ts
+// tasks/__tests__/overdue.test.ts
+import { isOverdue, Task } from "@/tasks/types";
+
+test("overdue when pending and dueAt < now", () => {
+  const t: Task = {
+    id: "t1", kind: "comfort", label: "Water", createdAt: new Date().toISOString(),
+    status: "pending", origin: "RN", dueAt: new Date(Date.now()-1000).toISOString()
+  };
+  expect(isOverdue(t)).toBe(true);
+});
+```
+
+---
+
+### What’s next
+
+* If you share your existing **Role store** and **Journey store** signatures, I can align imports exactly.
+* Want me to add a **minimal icon set** for Task kinds and a **results capsule** stub for MD next?

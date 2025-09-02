@@ -1,8 +1,8 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 
-type RoleKey = "rn" | "charge" | "md";
-const LABEL: Record<RoleKey,string> = { rn: "RN view", charge: "Charge view", md: "MD view" };
-const ORDER: RoleKey[] = ["rn","charge","md"];
+type RoleKey = "rn" | "charge" | "md" | "hca";
+const LABEL: Record<RoleKey,string> = { rn: "RN view", charge: "Charge view", md: "MD view", hca: "HCA view" };
+const ORDER: RoleKey[] = ["rn","charge","md","hca"];
 
 /** A single-layer popover with pill buttons (no nested select). */
 export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactNode }) {
@@ -20,7 +20,7 @@ export default function RoleMenu({ RoleSelector }: { RoleSelector?: React.ReactN
   };
   const [role, setRole] = useState<RoleKey>(() => {
     const saved = (localStorage.getItem("edflow.role") || "").toLowerCase();
-    return (["rn","charge","md"] as RoleKey[]).includes(saved as RoleKey) ? (saved as RoleKey) : "charge";
+    return (["rn","charge","md","hca"] as RoleKey[]).includes(saved as RoleKey) ? (saved as RoleKey) : "charge";
   });
 
   useEffect(() => {

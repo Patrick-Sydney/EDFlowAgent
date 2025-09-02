@@ -25,6 +25,8 @@ import NotesInline from "./notes/NotesInline";
 import NotesDrawer from "./notes/NotesDrawer";
 import RegistrationDrawer from "./registration/RegistrationDrawer";
 import TriageDrawer from "./triage/TriageDrawer";
+import TaskList from "./tasks/TaskList";
+import CreateTaskDrawer from "./tasks/CreateTaskDrawer";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -205,6 +207,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes" | "register">(false);
+  const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
 
   // Role awareness (RN-only actions)
   const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
@@ -310,6 +313,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 </button>
               </>
             )}
+            {/* Task creation for RN/Charge */}
+            {(userRole === "rn" || userRole === "charge") && (
+              <button
+                className="rounded-full border px-3 py-2 text-sm"
+                onClick={() => setOpenTaskDrawer(true)}
+                data-testid="button-new-task"
+              >
+                + Task
+              </button>
+            )}
             {/* Always-available actions */}
             <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
             <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
@@ -366,6 +379,27 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 onWriteNote={() => setDrawerOpen("notes")}
               />
 
+              {/* Tasks Panel */}
+              <div className="rounded-xl border p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold">Tasks</h3>
+                  {(userRole === "rn" || userRole === "charge") && (
+                    <button
+                      onClick={() => setOpenTaskDrawer(true)}
+                      className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200 text-blue-700"
+                      data-testid="button-add-task"
+                    >
+                      + Add
+                    </button>
+                  )}
+                </div>
+                <TaskList
+                  roleView={userRole === "hca" ? "HCA" : userRole === "rn" ? "RN" : userRole === "charge" ? "Charge" : "RN"}
+                  currentUserId={userRole === "hca" ? "hca-1" : undefined}
+                  filter={{ patientId: String(patientId) }}
+                />
+              </div>
+
               {/* Results Capsule (if pending) */}
               {(resultsPending && resultsPending > 0) && (
                 <ResultsCapsule 
@@ -414,6 +448,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   Start triage
                 </button>
               </>
+            )}
+            {/* Task creation for RN/Charge */}
+            {(userRole === "rn" || userRole === "charge") && (
+              <button
+                className="rounded-full border px-3 py-2 text-sm"
+                onClick={() => setOpenTaskDrawer(true)}
+                data-testid="button-new-task"
+              >
+                + Task
+              </button>
             )}
             {/* Always-available actions */}
             <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
@@ -527,6 +571,14 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         {drawerOpen === "triage" && <TriageDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
         {drawerOpen === "register" && <RegistrationDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
       </AuthoringDrawer>
+
+      {/* Task Creation Drawer */}
+      <CreateTaskDrawer
+        isOpen={openTaskDrawer}
+        onClose={() => setOpenTaskDrawer(false)}
+        defaultPatientId={String(patientId)}
+        defaultOrigin={userRole === "charge" ? "Charge" : "RN"}
+      />
     </div>
   );
 }

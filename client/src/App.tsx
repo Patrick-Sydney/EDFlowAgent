@@ -6,6 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import RNMobilePage from "@/pages/rn-mobile";
 import NotFound from "@/pages/not-found";
+import { useTaskStore } from "./stores/taskStore";
+import { seedTasksOnce } from "./demo/seedTasks";
+import { useEffect } from "react";
 
 function Router() {
   return (
@@ -18,6 +21,14 @@ function Router() {
 }
 
 function App() {
+  const hydrateFromCache = useTaskStore(s => s.hydrateFromCache);
+  
+  useEffect(() => {
+    // Initialize task store from cache and seed demo tasks
+    hydrateFromCache();
+    seedTasksOnce();
+  }, [hydrateFromCache]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
