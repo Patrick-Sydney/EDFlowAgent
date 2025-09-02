@@ -8,9 +8,10 @@ type Props = {
   roleView: "RN" | "Charge" | "HCA";
   currentUserId?: string;
   onSelectPatient?: (patientId: string) => void;
+  onSelectTaskId?: (taskId: string) => void;
 };
 
-export default function TaskBoard({ roleView, currentUserId = "hca-1", onSelectPatient }: Props) {
+export default function TaskBoard({ roleView, currentUserId = "hca-1", onSelectPatient, onSelectTaskId }: Props) {
   const hydrate = useTaskStore(s => s.hydrateFromCache);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"mine" | "pool" | "all" | "overdue" | "escalated" | "done">(
@@ -49,26 +50,26 @@ export default function TaskBoard({ roleView, currentUserId = "hca-1", onSelectP
 
       <section>
         {roleView === "HCA" && tab === "mine" && (
-          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ myTasks: true }} onSelectPatient={onSelectPatient} />
+          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ myTasks: true }} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
         {roleView === "HCA" && tab === "pool" && (
-          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ pool: true }} onSelectPatient={onSelectPatient} />
+          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ pool: true }} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
         {roleView === "HCA" && tab === "done" && (
-          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ status: "done" }} onSelectPatient={onSelectPatient} />
+          <TaskList roleView="HCA" currentUserId={currentUserId} filter={{ status: "done" }} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
 
         {(roleView === "RN" || roleView === "Charge") && tab === "all" && (
-          <TaskList roleView={roleView} onSelectPatient={onSelectPatient} />
+          <TaskList roleView={roleView} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
         {(roleView === "RN" || roleView === "Charge") && tab === "overdue" && (
-          <TaskList roleView={roleView} filter={{ status: "overdue" }} onSelectPatient={onSelectPatient} />
+          <TaskList roleView={roleView} filter={{ status: "overdue" }} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
         {(roleView === "RN" || roleView === "Charge") && tab === "escalated" && (
-          <TaskList roleView={roleView} filter={{ status: "escalated" }} onSelectPatient={onSelectPatient} />
+          <TaskList roleView={roleView} filter={{ status: "escalated" }} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
         {(roleView === "RN" || roleView === "Charge") && tab === "done" && (
-          <TaskList roleView={roleView} filter={{ status: "done" }} onSelectPatient={onSelectPatient} />
+          <TaskList roleView={roleView} filter={{ status: "done" }} onSelectPatient={onSelectPatient} onSelectTaskId={onSelectTaskId} />
         )}
       </section>
 

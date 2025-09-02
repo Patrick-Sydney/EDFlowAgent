@@ -15,9 +15,10 @@ type Props = {
     kinds?: Task["kind"][];
   };
   onSelectPatient?: (patientId: string) => void;
+  onSelectTaskId?: (taskId: string) => void;
 };
 
-export default function TaskList({ roleView, currentUserId, filter, onSelectPatient }: Props) {
+export default function TaskList({ roleView, currentUserId, filter, onSelectPatient, onSelectTaskId }: Props) {
   const list = useTaskStore(s => s.list);
 
   const tasks = useMemo(() => {
@@ -52,7 +53,7 @@ export default function TaskList({ roleView, currentUserId, filter, onSelectPati
         <div className="text-sm text-slate-500 italic">No tasks here.</div>
       )}
       {tasks.map(t => (
-        <TaskItem key={t.id} task={t} roleView={roleView} currentUserId={currentUserId} onSelectPatient={onSelectPatient} />
+        <TaskItem key={t.id} task={t} roleView={roleView} currentUserId={currentUserId} onSelectPatient={onSelectPatient} onSelectTask={onSelectTaskId} />
       ))}
     </div>
   );

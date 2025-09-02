@@ -10,9 +10,10 @@ type Props = {
   currentUserId?: string;
   compact?: boolean;
   onSelectPatient?: (patientId: string) => void;
+  onSelectTask?: (taskId: string) => void;
 };
 
-export default function TaskItem({ task, roleView, currentUserId, compact = false, onSelectPatient }: Props) {
+export default function TaskItem({ task, roleView, currentUserId, compact = false, onSelectPatient, onSelectTask }: Props) {
   const { claim, complete, escalate, assign } = useTaskStore(s => ({
     claim: s.claim, complete: s.complete, escalate: s.escalate, assign: s.assign
   }));
@@ -22,9 +23,11 @@ export default function TaskItem({ task, roleView, currentUserId, compact = fals
 
   return (
     <div className={clsx(
-      "rounded-lg border p-3 flex items-start gap-3",
+      "rounded-lg border p-3 flex items-start gap-3 cursor-pointer hover:bg-slate-50",
       overdue && roleView !== "HCA" ? "border-red-400" : overdue ? "border-amber-400" : "border-slate-200"
-    )}>
+    )}
+    onClick={() => onSelectTask?.(task.id)}
+    data-testid={`task-item-${task.id}`}>
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm px-2 py-0.5 rounded bg-slate-100">{task.kind}</span>

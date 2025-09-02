@@ -27,6 +27,7 @@ import RegistrationDrawer from "./registration/RegistrationDrawer";
 import TriageDrawer from "./triage/TriageDrawer";
 import TaskList from "./tasks/TaskList";
 import CreateTaskDrawer from "./tasks/CreateTaskDrawer";
+import TaskCardSheet from "./tasks/TaskCardSheet";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -208,6 +209,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes" | "register">(false);
   const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
+  const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
 
   // Role awareness (RN-only actions)
   const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
@@ -402,6 +404,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   roleView={userRole === "hca" ? "HCA" : userRole === "rn" ? "RN" : userRole === "charge" ? "Charge" : "RN"}
                   currentUserId={userRole === "hca" ? "hca-1" : undefined}
                   filter={{ patientId: String(patientId) }}
+                  onSelectTaskId={setOpenTaskSheet}
                 />
               </div>
 
@@ -589,6 +592,26 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         defaultPatientId={String(patientId)}
         defaultOrigin={userRole === "charge" ? "Charge" : "RN"}
       />
+
+      {/* Task Card Sheet */}
+      {openTaskSheet && (
+        <TaskCardSheet
+          taskId={openTaskSheet}
+          onClose={() => setOpenTaskSheet(null)}
+          getPatientSummary={(pid) => ({
+            id: String(patientId),
+            displayName: displayName,
+            age: props.age,
+            sex: props.sex,
+            room: localLocationLabel ?? locationLabel ?? undefined,
+            ats: ats,
+            ews: ews?.score,
+            arrivalTs: props.arrivalTs
+          })}
+          currentUserId={userRole === "hca" ? "hca-1" : undefined}
+          readOnly={userRole === "hca"}
+        />
+      )}
     </div>
   );
 }
