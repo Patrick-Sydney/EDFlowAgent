@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -23,6 +23,8 @@ import VitalsTimelineInline from "./obs/VitalsTimelineInline";
 import PatientJourneyInline from "./journey/PatientJourneyInline";
 import NotesInline from "./notes/NotesInline";
 import NotesDrawer from "./notes/NotesDrawer";
+import RegistrationDrawer from "./registration/RegistrationDrawer";
+import TriageDrawer from "./triage/TriageDrawer";
 
 // ------------------------------------------------------------------
 // Small inline Identity block (calm, masked identifiers)
@@ -202,7 +204,22 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [open, setOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes">(false);
+  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes" | "register">(false);
+
+  // Role awareness (RN-only actions)
+  const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
+  useEffect(() => {
+    const sync = (e: any) => {
+      const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
+      setUserRole(next);
+    };
+    window.addEventListener("role:change", sync as EventListener);
+    window.addEventListener("view:role", sync as EventListener);
+    return () => {
+      window.removeEventListener("role:change", sync as EventListener);
+      window.removeEventListener("view:role", sync as EventListener);
+    };
+  }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
   const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
@@ -273,19 +290,30 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           {alertFlags && <AlertsRibbon flags={alertFlags} />}
 
           {/* Action Bar (role-based) */}
-          {role && lane && (
-            <ActionBar 
-              role={role} 
-              lane={lane} 
-              handlers={{
-                onAddObs: () => setDrawerOpen("obs"),
-                onAssignRoom: () => setDrawerOpen("assign"),
-                onOrderSet: () => setDrawerOpen("triage"),
-                onDispo: () => setDrawerOpen("triage"),
-                onSeeNow: () => setDrawerOpen("triage")
-              }} 
-            />
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* RN-specific primary actions */}
+            {userRole === "rn" && (
+              <>
+                <button
+                  className="rounded-full border px-3 py-2 text-sm"
+                  onClick={() => setDrawerOpen("register")}
+                  data-testid="button-register-patient"
+                >
+                  Register patient
+                </button>
+                <button
+                  className="rounded-full border px-3 py-2 text-sm"
+                  onClick={() => setDrawerOpen("triage")}
+                  data-testid="button-start-triage"
+                >
+                  Start triage
+                </button>
+              </>
+            )}
+            {/* Always-available actions */}
+            <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
+            <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
+          </div>
 
           {/* Clinical Snapshot */}
           <ClinicalSnapshot 
@@ -367,19 +395,30 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           {alertFlags && <AlertsRibbon flags={alertFlags} />}
 
           {/* Action Bar (role-based) */}
-          {role && lane && (
-            <ActionBar 
-              role={role} 
-              lane={lane} 
-              handlers={{
-                onAddObs: () => setDrawerOpen("obs"),
-                onAssignRoom: () => setDrawerOpen("assign"),
-                onOrderSet: () => setDrawerOpen("triage"),
-                onDispo: () => setDrawerOpen("triage"),
-                onSeeNow: () => setDrawerOpen("triage")
-              }} 
-            />
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* RN-specific primary actions */}
+            {userRole === "rn" && (
+              <>
+                <button
+                  className="rounded-full border px-3 py-2 text-sm"
+                  onClick={() => setDrawerOpen("register")}
+                  data-testid="button-register-patient"
+                >
+                  Register patient
+                </button>
+                <button
+                  className="rounded-full border px-3 py-2 text-sm"
+                  onClick={() => setDrawerOpen("triage")}
+                  data-testid="button-start-triage"
+                >
+                  Start triage
+                </button>
+              </>
+            )}
+            {/* Always-available actions */}
+            <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
+            <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
+          </div>
 
           {/* Clinical Snapshot */}
           <ClinicalSnapshot 
@@ -452,7 +491,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         title={drawerOpen === "obs" ? `Add observations — ${displayName}`
               : drawerOpen === "assign" ? `Assign room — ${displayName}`
               : drawerOpen === "triage" ? `Triage — ${displayName}`
-              : `${displayName}`}
+              : drawerOpen === "register" ? `Register patient — ${displayName}`
+              : drawerOpen === "notes" ? `Write note — ${displayName}` : `${displayName}`}
         open={!!drawerOpen}
         onClose={()=> setDrawerOpen(false)}
         widthPx={920}
@@ -484,7 +524,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             onSaved={() => setDrawerOpen(false)} 
           />
         )}
-        {drawerOpen === "triage" && <div className="text-sm text-muted-foreground">Triage form (hook up existing component here).</div>}
+        {drawerOpen === "triage" && <TriageDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
+        {drawerOpen === "register" && <RegistrationDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
       </AuthoringDrawer>
     </div>
   );

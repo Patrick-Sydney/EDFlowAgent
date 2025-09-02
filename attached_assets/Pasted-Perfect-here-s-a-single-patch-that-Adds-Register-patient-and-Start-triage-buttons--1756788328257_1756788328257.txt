@@ -1,0 +1,227 @@
+Perfect—here’s a **single patch** that:
+
+* Adds **Register patient** and **Start triage** buttons to the **Actions bar** of the expanded Patient Card.
+* Shows them **only in RN role** (reads role from `localStorage` and listens for `role:change`).
+* Wires buttons to the **Authoring Drawer**:
+
+  * **Register patient** → new `RegistrationDrawer` (lightweight prototype form).
+  * **Start triage** → new `TriageDrawer` (prototype ATS + notes).
+* Posts **Journey** events on save so your **Patient Journey** timeline updates instantly.
+
+---
+
+### `rn-actions-register-triage.patch`
+
+```diff
+*** Begin Patch
+*** Update File: client/src/components/patient/PatientCardExpandable.tsx
+@@
+-import VitalsTimelineInline from "../obs/VitalsTimelineInline";
++import VitalsTimelineInline from "../obs/VitalsTimelineInline";
+ import PatientJourneyInline from "../journey/PatientJourneyInline";
+ import NotesInline from "../notes/NotesInline";
+ import NotesDrawer from "../notes/NotesDrawer";
++import RegistrationDrawer from "../registration/RegistrationDrawer";
++import TriageDrawer from "../triage/TriageDrawer";
+@@
+-  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "assign" | "triage" | "note">(false);
++  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "assign" | "triage" | "note" | "register">(false);
++
++  // Role awareness (RN-only actions)
++  const [role, setRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
++  useEffect(() => {
++    const sync = (e: any) => {
++      const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
++      setRole(next);
++    };
++    window.addEventListener("role:change", sync as EventListener);
++    window.addEventListener("view:role", sync as EventListener);
++    return () => {
++      window.removeEventListener("role:change", sync as EventListener);
++      window.removeEventListener("view:role", sync as EventListener);
++    };
++  }, []);
+@@
+-        <div className="flex items-center gap-2">
+-          <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")}>Assign room</button>
+-          <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")}>+ Obs</button>
+-        </div>
++        <div className="flex items-center gap-2 flex-wrap">
++          {/* RN-specific primary actions */}
++          {role === "rn" && (
++            <>
++              <button
++                className="rounded-full border px-3 py-2 text-sm"
++                onClick={() => setDrawerOpen("register")}
++              >
++                Register patient
++              </button>
++              <button
++                className="rounded-full border px-3 py-2 text-sm"
++                onClick={() => setDrawerOpen("triage")}
++              >
++                Start triage
++              </button>
++            </>
++          )}
++          {/* Always-available actions */}
++          <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")}>Assign room</button>
++          <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")}>+ Obs</button>
++        </div>
+@@
+   <AuthoringDrawer
+     title={drawerOpen === "obs" ? `Add observations — ${displayName}`
+           : drawerOpen === "assign" ? `Assign room — ${displayName}`
+-          : drawerOpen === "triage" ? `Triage — ${displayName}`
+-          : drawerOpen === "note" ? `Write note — ${displayName}` : `${displayName}`}
++          : drawerOpen === "triage" ? `Triage — ${displayName}`
++          : drawerOpen === "register" ? `Register patient — ${displayName}`
++          : drawerOpen === "note" ? `Write note — ${displayName}` : `${displayName}`}
+     open={!!drawerOpen}
+     onClose={() => setDrawerOpen(false)}
+     widthPx={920}
+   >
+     {drawerOpen === "obs" && (
+       <ObsQuickForm patientId={patientId} onSaved={()=> setDrawerOpen(false)} />
+     )}
+     {drawerOpen === "assign" && /* your AssignRoomPanel here */}
+-    {drawerOpen === "triage" && /* your Triage form here */}
++    {drawerOpen === "triage" && <TriageDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
++    {drawerOpen === "register" && <RegistrationDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
+     {drawerOpen === "note" && <NotesDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
+   </AuthoringDrawer>
+*** End Patch
+*** Add File: client/src/components/registration/RegistrationDrawer.tsx
++import React, { useState } from "react";
++import { journeyStore } from "../../stores/journeyStore";
++
++export default function RegistrationDrawer({ patientId, onSaved }:{ patientId: string|number; onSaved?: ()=>void; }) {
++  const [nhi, setNhi] = useState("");
++  const [mrn, setMrn] = useState("");
++  const [dob, setDob] = useState("");
++  const [sex, setSex] = useState<"M"|"F"|"X"|"U"|"">("");
++  const [saving, setSaving] = useState(false);
++
++  return (
++    <div className="space-y-3">
++      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
++        <div>
++          <div className="text-xs text-muted-foreground mb-1">NHI</div>
++          <input className="w-full rounded-xl border px-3 py-2" value={nhi} onChange={e=>setNhi(e.target.value.toUpperCase())} placeholder="e.g., ABC001" />
++        </div>
++        <div>
++          <div className="text-xs text-muted-foreground mb-1">MRN</div>
++          <input className="w-full rounded-xl border px-3 py-2" value={mrn} onChange={e=>setMrn(e.target.value)} placeholder="optional" />
++        </div>
++        <div>
++          <div className="text-xs text-muted-foreground mb-1">DOB</div>
++          <input className="w-full rounded-xl border px-3 py-2" type="date" value={dob} onChange={e=>setDob(e.target.value)} />
++        </div>
++        <div>
++          <div className="text-xs text-muted-foreground mb-1">Sex</div>
++          <div className="flex gap-1">
++            {(["M","F","X","U"] as const).map(s => (
++              <button key={s} className={`rounded-full border px-3 py-1 ${sex===s?"bg-background shadow":""}`} onClick={()=>setSex(s)}>{s}</button>
++            ))}
++          </div>
++        </div>
++      </div>
++      <div className="flex items-center justify-end gap-2">
++        <button className="rounded-full border px-4 py-2 text-sm" onClick={()=>{ setNhi(""); setMrn(""); setDob(""); setSex(""); }}>Clear</button>
++        <button
++          disabled={saving}
++          className="rounded-full px-4 py-2 text-sm text-white bg-blue-600 disabled:opacity-50"
++          onClick={()=>{
++            setSaving(true);
++            // You can persist these to your patient store here if available.
++            try {
++              journeyStore.add(String(patientId), { kind:"arrival", label:"Patient registered", detail:[nhi && `NHI ${nhi}`, mrn && `MRN ${mrn}`, dob && `DOB ${dob}`, sex && `Sex ${sex}`].filter(Boolean).join(" • ") });
++            } finally {
++              setSaving(false);
++              onSaved?.();
++            }
++          }}
++        >
++          Save registration
++        </button>
++      </div>
++    </div>
++  );
++}
++
+*** End Patch
+*** Add File: client/src/components/triage/TriageDrawer.tsx
++import React, { useState } from "react";
++import { journeyStore } from "../../stores/journeyStore";
++
++export default function TriageDrawer({ patientId, onSaved }:{ patientId: string|number; onSaved?: ()=>void; }) {
++  const [ats, setAts] = useState<1|2|3|4|5|undefined>(undefined);
++  const [presenting, setPresenting] = useState("");
++  const [saving, setSaving] = useState(false);
++
++  return (
++    <div className="space-y-3">
++      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
++        <div>
++          <div className="text-xs text-muted-foreground mb-1">ATS</div>
++          <div className="flex gap-1">
++            {[1,2,3,4,5].map(n => (
++              <button key={n} className={`rounded-full border px-3 py-1 ${ats===n?"bg-background shadow":""}`} onClick={()=>setAts(n as any)}>ATS {n}</button>
++            ))}
++          </div>
++        </div>
++        <div>
++          <div className="text-xs text-muted-foreground mb-1">Presenting complaint</div>
++          <input className="w-full rounded-xl border px-3 py-2" value={presenting} onChange={e=>setPresenting(e.target.value)} placeholder="e.g., chest pain, shortness of breath" />
++        </div>
++      </div>
++
++      <div className="flex items-center justify-end gap-2">
++        <button className="rounded-full border px-4 py-2 text-sm" onClick={()=>{ setAts(undefined); setPresenting(""); }}>Clear</button>
++        <button
++          disabled={saving || !ats}
++          className="rounded-full px-4 py-2 text-sm text-white bg-blue-600 disabled:opacity-50"
++          onClick={()=>{
++            setSaving(true);
++            try {
++              journeyStore.add(String(patientId), { kind:"triage", label:`Triage completed (ATS ${ats})`, detail: presenting || undefined });
++              // Broadcast for any chips/badges that mirror ATS
++              window.dispatchEvent(new CustomEvent("patient:triageUpdated", { detail: { patientId, ats } }));
++            } finally {
++              setSaving(false);
++              onSaved?.();
++            }
++          }}
++        >
++          Save triage
++        </button>
++      </div>
++    </div>
++  );
++}
++
+*** End Patch
+```
+
+---
+
+### How to apply in Replit
+
+```bash
+git checkout -b feat/rn-actions-register-triage
+printf "%s\n" 'PASTE THE PATCH ABOVE HERE' > rn-actions-register-triage.patch
+git apply --reject --whitespace=fix rn-actions-register-triage.patch
+git add -A
+git commit -m "RN role: add Register patient & Start triage actions; wire drawers; post Journey events"
+```
+
+### What you get
+
+* **RN view** shows **Register patient** and **Start triage** in the Patient Card’s **Actions bar**.
+* Buttons open **Authoring drawers**:
+
+  * **Registration** (NHI/MRN/DOB/Sex) → logs **“Patient registered”** Journey event.
+  * **Triage** (ATS + presenting complaint) → logs **“Triage completed (ATS n)”** Journey event and emits `patient:triageUpdated`.
+* **Charge/MD** won’t see those buttons; they still see **Assign room** and **+ Obs**.
+
+If you’d like the registration form to also **persist** NHI/MRN/DOB/Sex into your patient model (FHIR Patient), point me to your patient store file and I’ll patch the save accordingly.
