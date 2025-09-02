@@ -1,0 +1,213 @@
+Love it — tablet should feel like “big phone,” not “small desktop.” Here’s a **single patch** that:
+
+* **Matches mobile header styling on tablet** (reduced height/spacing).
+* **Combines Role + Scenarios** into a single dropdown **opened from the app logo** for **tablet & mobile**.
+* Keeps the **full desktop header** unchanged for large screens.
+* Avoids right-edge overflow and ensures the dropdown is keyboard/ARIA friendly.
+
+---
+
+### `tablet-header-combined-menu.patch`
+
+```diff
+*** Begin Patch
+*** Add File: client/src/components/shell/CombinedAppMenu.tsx
++import React, { useId, useState, useRef, useEffect } from "react";
++
++/**
++ * Combined dropdown for Role & Scenarios, opened from app logo.
++ * Shown on phone/tablet; desktop keeps separate controls.
++ *
++ * Usage:
++ *   <CombinedAppMenu
++ *     Logo={<AppLogo />}
++ *     RoleSelector={<RoleSelector compact />}
++ *     onOpenScenarios={() => window.dispatchEvent(new CustomEvent("ui:open-scenarios"))}
++ *   />
++ */
++export default function CombinedAppMenu({
++  Logo,
++  RoleSelector,
++  onOpenScenarios,
++}: {
++  Logo: React.ReactNode;
++  RoleSelector: React.ReactNode;     // pass your existing Role control here
++  onOpenScenarios: () => void;
++}) {
++  const [open, setOpen] = useState(false);
++  const btnRef = useRef<HTMLButtonElement|null>(null);
++  const popRef = useRef<HTMLDivElement|null>(null);
++  const labelId = useId();
++
++  // Close on outside click / ESC
++  useEffect(() => {
++    if (!open) return;
++    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
++    const onClick = (e: MouseEvent) => {
++      if (!popRef.current || !btnRef.current) return;
++      if (popRef.current.contains(e.target as Node) || btnRef.current.contains(e.target as Node)) return;
++      setOpen(false);
++    };
++    window.addEventListener("keydown", onKey);
++    window.addEventListener("mousedown", onClick);
++    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("mousedown", onClick); };
++  }, [open]);
++
++  return (
++    <div className="relative">
++      <button
++        ref={btnRef}
++        type="button"
++        aria-haspopup="menu"
++        aria-expanded={open}
++        aria-controls={labelId}
++        className="flex items-center gap-2 rounded-xl px-2 py-1 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring"
++        onClick={() => setOpen(v => !v)}
++      >
++        {Logo}
++        <svg width="14" height="14" viewBox="0 0 20 20" className="opacity-70">
++          <path d="M5 7l5 6 5-6H5z" fill="currentColor" />
++        </svg>
++      </button>
++
++      {open && (
++        <div
++          ref={popRef}
++          id={labelId}
++          role="menu"
++          className="absolute z-[1200] mt-2 w-[min(92vw,360px)] rounded-2xl border bg-background shadow-xl p-3 right-0 md:left-0 md:right-auto"
++        >
++          <div className="text-xs font-medium text-muted-foreground px-1 pb-2">Quick settings</div>
++          <div className="rounded-xl border p-2 mb-2">
++            <div className="text-xs text-muted-foreground px-1 pb-1">Role view</div>
++            {/* Reuse your existing role selector control */}
++            {RoleSelector}
++          </div>
++          <button
++            role="menuitem"
++            className="w-full rounded-xl border px-3 py-2 text-left hover:bg-muted/60"
++            onClick={() => { setOpen(false); onOpenScenarios(); }}
++          >
++            Scenarios
++          </button>
++        </div>
++      )}
++    </div>
++  );
++}
++
+*** End Patch
+*** Begin Patch
+*** Update File: client/src/components/shell/AppHeader.tsx
+@@
+-import React from "react";
++import React from "react";
++import CombinedAppMenu from "./CombinedAppMenu";
+ 
+ export default function AppHeader() {
+-  return (
+-    <header className="sticky top-0 z-[900] w-full bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+-      <div className="mx-auto max-w-[1600px] px-4 py-3 flex items-center justify-between gap-3">
+-        <div className="flex items-center gap-3">
+-          <AppLogo />
+-          <div className="hidden md:block text-sm text-muted-foreground">Emergency Department Patient Flow Dashboard</div>
+-        </div>
+-        <div className="flex items-center gap-2">
+-          <RoleSelector />
+-          <ScenariosButton />
+-          <LiveClock />
+-        </div>
+-      </div>
+-    </header>
+-  );
++  return (
++    <header className="sticky top-0 z-[900] w-full bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
++      {/* Height/spacing: phone & tablet use tighter vertical rhythm; desktop a bit taller */}
++      <div className="mx-auto max-w-[1600px] px-3 md:px-4 lg:px-6 py-2 md:py-2.5 lg:py-3 flex items-center justify-between gap-2">
++        {/* Left cluster: logo + title (title hidden on phone; subtle on tablet) */}
++        <div className="flex items-center gap-2">
++          {/* Phone/Tablet: logo opens combined menu (Role + Scenarios) */}
++          <div className="block lg:hidden">
++            <CombinedAppMenu
++              Logo={<AppLogo />}
++              RoleSelector={<RoleSelector compact />}
++              onOpenScenarios={() => window.dispatchEvent(new CustomEvent("ui:open-scenarios"))}
++            />
++          </div>
++          {/* Desktop: static logo + title */}
++          <div className="hidden lg:flex items-center gap-2">
++            <AppLogo />
++            <div className="text-sm text-muted-foreground">Emergency Department Patient Flow Dashboard</div>
++          </div>
++        </div>
++
++        {/* Right cluster */}
++        <div className="flex items-center gap-2">
++          {/* Desktop-only controls (tablet/phone use Combined menu) */}
++          <div className="hidden lg:flex items-center gap-2">
++            <RoleSelector />
++            <ScenariosButton />
++          </div>
++          <LiveClock />
++        </div>
++      </div>
++    </header>
++  );
+ }
+ 
+ // You likely already have these wired; kept here for context.
+ function AppLogo() {
+   return (
+     <div className="h-8 w-8 rounded-xl bg-primary/10 grid place-items-center text-primary font-bold">
+       ED
+     </div>
+   );
+ }
+ 
+ function RoleSelector({ compact = false }: { compact?: boolean }) {
+   // ... your existing implementation; add `compact` to render a smaller control
+   return <div className={compact ? "text-sm" : ""}>Role</div>;
+ }
+ 
+ function ScenariosButton() {
+   return <button className="rounded-full border px-3 py-1 text-sm">Scenarios</button>;
+ }
+ 
+ function LiveClock() {
+   return <div className="text-sm tabular-nums text-muted-foreground">Live • 12:34</div>;
+ }
+*** End Patch
+```
+
+---
+
+## What this does
+
+* **Tablet (≤1279px) & Phone (≤767px)**
+
+  * Header uses **tighter vertical padding** (same feel as mobile).
+  * The **app logo becomes an affordance**: tapping it opens a **Combined menu** containing
+    your **Role selector** and a **Scenarios** item.
+  * The separate Role/Scenarios controls are **hidden** to save space and prevent crowding.
+
+* **Desktop (≥1280px)**
+
+  * Keeps the **full header** with Role and Scenarios buttons visible.
+  * Slightly larger padding for comfortable desktop targeting.
+
+* **Accessibility**
+
+  * Dropdown is focusable, closes on **ESC / outside click**, and exposes proper `aria` roles.
+
+---
+
+## Hook-up notes
+
+* If your `RoleSelector` and `ScenariosButton` already exist, pass your real components:
+
+  * `RoleSelector` should accept a `compact` prop (or just ignore it).
+  * `onOpenScenarios` currently dispatches a `ui:open-scenarios` event; replace with your real handler if you have one.
+* If your header file is not `AppHeader.tsx`, adapt the patch to your actual header component file.
+* The layout uses Tailwind classes already present in your project.
+
+If you want the **title** also moved into the combined menu on tablet (for an even slimmer header), I can add that as a follow-up tweak.
