@@ -22,6 +22,7 @@ import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { useCurrentRoom } from "@/stores/selectors";
 import { useRoomAndPhase } from "@/hooks/useRoomAndPhase";
+import { useJourneyStore } from "@/stores/journeyStore";
 // import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
 // import PathwayTimers from "./patient/PathwayTimers";
 // import PerVitalSparklines from "./patient/PerVitalSparklines";
@@ -268,6 +269,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const currentRoom = useCurrentRoom(String(patientId));
   const { room, phase } = useRoomAndPhase(String(patientId));
+
+  // Read live room from Journey store for expanded header
+  const liveRoom = useJourneyStore((s) => {
+    const ev = [...s.events].reverse().find(e =>
+      e.patientId === String(patientId) &&
+      (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location")
+    );
+    return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
+  });
+
+  // Debug: Journey events count
+  const eventsCount = useJourneyStore(s => s.events.length);
   
   // Journey filter state - default to "All" so room changes are visible immediately
   const [journeyMode, setJourneyMode] = React.useState("All");
@@ -369,9 +382,10 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 <Chip>
                   <span className="inline-flex items-center gap-1">
                     <Bed className="h-3.5 w-3.5" />
-                    Location {room ?? currentRoom ?? status ?? "—"}
+                    Location {liveRoom ?? room ?? currentRoom ?? status ?? "—"}
                   </span>
                 </Chip>
+                <Chip tone="info">debug: evs {eventsCount}</Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">

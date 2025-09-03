@@ -105,33 +105,33 @@ export default function RoomManagementDrawer() {
     console.log("[DEBUG] confirm() called - selected:", selected);
     if (!selected) return;
     setPending(true);
+    
     try {
-      const r = isReassign
-        ? await reassignSpace(enc.id, selected.id, reason || "Reassign")
-        : await assignSpace(enc.id, selected.id, reason || undefined);
-      if (!r?.ok) { 
-        alert(r?.error || "Failed"); 
-        return; 
-      }
-      
-      // Single source of truth: append a Journey event
-      const journeyEvent = {
+      // 1) Write Journey event FIRST (single source of truth)
+      console.debug("[AssignRoom] click", { patientId: String(enc.id), selectedRoom: selected.id, t: new Date().toISOString() });
+      useJourneyStore.getState().append({
         id: crypto.randomUUID(),
         patientId: String(enc.id),
         t: new Date().toISOString(),
-        kind: "room_change" as const,       // <- this is what the index listens for
-        label: selected.id,        // <- room name goes here
-        actor: { name: "Charge RN", role: "RN" as const },
+        kind: "room_change",
+        label: selected.id,
+        actor: { name: "Charge RN", role: "RN" },
         detail: isReassign ? "Reassigned" : "Assigned",
-      };
-      console.log("[DEBUG] About to append journey event:", journeyEvent);
-      useJourneyStore.getState().append(journeyEvent);
-      console.log("[DEBUG] Journey events after append:", useJourneyStore.getState().events);
+      });
 
-      
-      // The SSE broadcast will automatically update the encounter
-      
-      // Close drawer on next tick to avoid nested updates
+      // 2) Try API call for backend persistence (non-blocking for UX)
+      try {
+        const r = isReassign
+          ? await reassignSpace(enc.id, selected.id, reason || "Reassign")
+          : await assignSpace(enc.id, selected.id, reason || undefined);
+        if (!r?.ok) { 
+          console.warn("API call failed but Journey updated:", r?.error || "Failed"); 
+        }
+      } catch (apiError) {
+        console.warn("API error but Journey event saved:", apiError);
+      }
+
+      // 3) Close after the state change is queued
       queueMicrotask(() => closeRoom());
     } finally { 
       setPending(false); 
