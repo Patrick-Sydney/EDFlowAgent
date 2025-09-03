@@ -1,16 +1,44 @@
+import React from "react";
+import clsx from "clsx";
+
+type SimpleSegmentedProps = {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+};
+export default function SegmentedDefault({ options, value, onChange, className }: SimpleSegmentedProps) {
+  return (
+    <div className={clsx("inline-flex rounded-lg border bg-white p-0.5", className)}>
+      {options.map(opt => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          className={clsx(
+            "px-3 py-1.5 rounded-md text-sm",
+            value === opt ? "bg-slate-900 text-white" : "hover:bg-slate-100"
+          )}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface SegmentedOption {
   value: string;
   label: string;
 }
 
-interface SegmentedProps {
+interface SegmentedPropsOld {
   value: string;
   onChange: (value: string) => void;
   options: (string | SegmentedOption)[];
   className?: string;
 }
 
-export function Segmented({ value, onChange, options, className = "" }: SegmentedProps) {
+export function Segmented({ value, onChange, options, className = "" }: SegmentedPropsOld) {
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
       {options.map(opt => {

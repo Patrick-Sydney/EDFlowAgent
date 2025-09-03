@@ -1,27 +1,36 @@
-import React from "react";
-import { FlaskConical } from "lucide-react";
+import React, { useMemo } from "react";
+import Chip from "@/components/ui/Chip";
+import { journeyStore, JourneyEvent } from "@/stores/journeyStore";
 
-export default function ResultsCapsule({
-  resultsPending = 0,
-  onOpenResults,
-  onQuickOrders,
-}: {
-  resultsPending?: number;
-  onOpenResults?: () => void;
-  onQuickOrders?: () => void;
-}) {
+type Props = { patientId: string };
+
+export default function ResultsCapsule({ patientId }: Props) {
+  const latest = useMemo(() => {
+    const evs = journeyStore.list(patientId).filter((e: JourneyEvent) => e.kind === "result");
+    const pick = (name: string) =>
+      [...evs].reverse().find(e => (e.label || "").toLowerCase().includes(name));
+    return {
+      ecg: pick("ecg"),
+      troponin: pick("trop"),
+      lactate: pick("lact"),
+      ct: pick("ct"),
+      cta: pick("cta"),
+    };
+  }, [patientId]);
+
+  const fmt = (ev?: any, fallback = "—") =>
+    ev ? new Date(ev.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : fallback;
+
   return (
-    <div className="rounded-xl border p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">Results</div>
-        <div className="flex items-center gap-2">
-          <button className="rounded-full border px-3 py-2 text-sm" onClick={onOpenResults}>Open</button>
-          <button className="rounded-full border px-3 py-2 text-sm" onClick={onQuickOrders}>Quick orders</button>
-        </div>
+    <section className="rounded-lg border p-3">
+      <div className="text-sm font-semibold mb-2">Results</div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        <Chip title="Latest ECG">{`ECG: ${fmt(latest.ecg)}`}</Chip>
+        <Chip title="Latest Troponin">{`Troponin: ${fmt(latest.troponin)}`}</Chip>
+        <Chip title="Latest Lactate">{`Lactate: ${fmt(latest.lactate)}`}</Chip>
+        <Chip title="Latest CT">{`CT: ${fmt(latest.ct)}`}</Chip>
+        <Chip title="Latest CTA">{`CTA: ${fmt(latest.cta)}`}</Chip>
       </div>
-      <div className="mt-2 text-sm text-muted-foreground inline-flex items-center gap-1">
-        <FlaskConical className="h-4 w-4"/> {resultsPending} pending
-      </div>
-    </div>
+    </section>
   );
 }

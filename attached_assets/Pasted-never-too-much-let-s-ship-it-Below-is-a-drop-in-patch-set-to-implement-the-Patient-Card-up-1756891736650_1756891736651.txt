@@ -1,0 +1,482 @@
+never too much — let’s ship it 💪
+Below is a **drop-in patch set** to implement the Patient Card upgrades + the task-bottom-sheet pattern you approved. I’ve split it into **new files** and **surgical edits** so Replit Agent can build immediately.
+
+---
+
+# ✅ New files (add these)
+
+### 1) `components/ui/Chip.tsx`
+
+```tsx
+import React from "react";
+import clsx from "clsx";
+
+type Props = {
+  children: React.ReactNode;
+  tone?: "default" | "info" | "warning" | "critical";
+  className?: string;
+  onClick?: () => void;
+  title?: string;
+};
+export default function Chip({ children, tone = "default", className, onClick, title }: Props) {
+  const tones: Record<string, string> = {
+    default: "bg-slate-100 text-slate-700",
+    info: "bg-blue-50 text-blue-700",
+    warning: "bg-amber-50 text-amber-700",
+    critical: "bg-red-100 text-red-700",
+  };
+  return (
+    <span
+      title={title}
+      onClick={onClick}
+      className={clsx(
+        "inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs select-none",
+        tones[tone],
+        onClick && "cursor-pointer hover:opacity-80",
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+```
+
+### 2) `components/ui/Segmented.tsx`
+
+```tsx
+import React from "react";
+import clsx from "clsx";
+
+type Props = {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+};
+export default function Segmented({ options, value, onChange, className }: Props) {
+  return (
+    <div className={clsx("inline-flex rounded-lg border bg-white p-0.5", className)}>
+      {options.map(opt => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          className={clsx(
+            "px-3 py-1.5 rounded-md text-sm",
+            value === opt ? "bg-slate-900 text-white" : "hover:bg-slate-100"
+          )}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+### 3) `components/patient/ResultsCapsule.tsx`
+
+```tsx
+import React, { useMemo } from "react";
+import Chip from "@/components/ui/Chip";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+type Props = { patientId: string };
+
+export default function ResultsCapsule({ patientId }: Props) {
+  const events = useJourneyStore(s => s.events); // array of JourneyEvent
+  const latest = useMemo(() => {
+    const evs = events.filter(e => e.patientId === patientId && e.kind === "result");
+    const pick = (name: string) =>
+      [...evs].reverse().find(e => (e.label || "").toLowerCase().includes(name));
+    return {
+      ecg: pick("ecg"),
+      troponin: pick("trop"),
+      lactate: pick("lact"),
+      ct: pick("ct"),
+      cta: pick("cta"),
+    };
+  }, [events, patientId]);
+
+  const fmt = (ev?: any, fallback = "—") =>
+    ev ? new Date(ev.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : fallback;
+
+  return (
+    <section className="rounded-lg border p-3">
+      <div className="text-sm font-semibold mb-2">Results</div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        <Chip title="Latest ECG">{`ECG: ${fmt(latest.ecg)}`}</Chip>
+        <Chip title="Latest Troponin">{`Troponin: ${fmt(latest.troponin)}`}</Chip>
+        <Chip title="Latest Lactate">{`Lactate: ${fmt(latest.lactate)}`}</Chip>
+        <Chip title="Latest CT">{`CT: ${fmt(latest.ct)}`}</Chip>
+        <Chip title="Latest CTA">{`CTA: ${fmt(latest.cta)}`}</Chip>
+      </div>
+    </section>
+  );
+}
+```
+
+### 4) `lib/nextObs.ts`
+
+```ts
+// Compute "next obs due" using simple rule: last vitals + interval based on last EWS
+// EWS >=5 => 15m, EWS >=3 => 30m, else 60m
+import { useJourneyStore } from "@/stores/journeyStore";
+
+export function nextObsDueISO(patientId: string): string | null {
+  const evs = useJourneyStore.getState().events
+    .filter(e => e.patientId === patientId)
+    .sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+
+  const lastVitals = [...evs].reverse().find(e => e.kind === "vitals");
+  if (!lastVitals) return null;
+
+  // try to find last EWS value
+  let ews = 0;
+  const lastEws = [...evs].reverse().find(e => e.kind === "ews_change");
+  if (lastEws && typeof lastEws.detail === "string") {
+    const m = lastEws.detail.match(/(\d+)/); // crude parse if detail="EWS=5"
+    if (m) ews = Number(m[1]);
+  }
+
+  const base = new Date(lastVitals.t);
+  const mins = ews >= 5 ? 15 : ews >= 3 ? 30 : 60;
+  base.setMinutes(base.getMinutes() + mins);
+  return base.toISOString();
+}
+```
+
+### 5) `components/patient/PathwayClocks.tsx`
+
+```tsx
+import React, { useMemo } from "react";
+import Chip from "@/components/ui/Chip";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+type Props = { patientId: string; complaint?: string };
+
+export default function PathwayClocks({ patientId, complaint }: Props) {
+  const lower = (complaint || "").toLowerCase();
+  const isACS = /chest|sob|shortness of breath|acs|ami/.test(lower);
+  const isSepsis = /sepsis|fever|rigor|infection/.test(lower);
+  const events = useJourneyStore(s => s.events);
+
+  const status = useMemo(() => {
+    const evs = events.filter(e => e.patientId === patientId);
+    const has = (s: string) => evs.some(e => (e.label || "").toLowerCase().includes(s));
+    return {
+      ecgDone: has("ecg"),
+      aspirinGiven: has("aspirin") || has("asa"),
+      tropTaken: has("trop"),
+      lactateDone: has("lactate"),
+      abxGiven: has("antibiot"),
+    };
+  }, [events, patientId]);
+
+  if (!isACS && !isSepsis) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+      {isACS && (
+        <>
+          <Chip tone={status.ecgDone ? "default" : "warning"} title="Time-to-ECG">
+            {status.ecgDone ? "ECG: done" : "ECG: due <10m"}
+          </Chip>
+          <Chip tone={status.tropTaken ? "default" : "warning"} title="First troponin">
+            {status.tropTaken ? "Troponin: taken" : "Troponin: due"}
+          </Chip>
+          <Chip tone={status.aspirinGiven ? "default" : "warning"} title="Aspirin">
+            {status.aspirinGiven ? "Aspirin: given" : "Aspirin: due"}
+          </Chip>
+        </>
+      )}
+      {isSepsis && (
+        <>
+          <Chip tone={status.abxGiven ? "default" : "warning"} title="Antibiotics">
+            {status.abxGiven ? "Antibiotics: given" : "Antibiotics: due"}
+          </Chip>
+          <Chip tone={status.lactateDone ? "default" : "warning"} title="Lactate">
+            {status.lactateDone ? "Lactate: taken" : "Lactate: due"}
+          </Chip>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+### 6) (Optional) `components/tasks/TaskSheet.tsx`
+
+Bottom-sheet container that hosts your `TaskBoard` (common UI for all roles).
+
+```tsx
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import TaskBoard from "@/components/tasks/TaskBoard";
+import clsx from "clsx";
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  roleView: "RN" | "Charge" | "MD" | "HCA";
+};
+
+export default function TaskSheet({ open, onClose, roleView }: Props) {
+  const [show, setShow] = useState(open);
+  useEffect(() => setShow(open), [open]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[95] flex flex-col justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className={clsx(
+        "relative w-full bg-white border-t shadow-2xl transition-transform duration-150",
+        show ? "translate-y-0" : "translate-y-full",
+        "max-h-[90vh]"
+      )}>
+        <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+          <div className="h-1.5 w-10 rounded-full bg-slate-300 md:hidden" />
+          <div className="text-sm font-semibold">Tasks</div>
+          <button onClick={onClose} className="px-3 py-1.5 rounded hover:bg-slate-100 text-sm">Close</button>
+        </div>
+        <div className="p-2 overflow-y-auto">
+          <TaskBoard roleView={roleView} />
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+```
+
+---
+
+# ✂️ Surgical edits (patch current files)
+
+### 7) `components/patient/PatientCardExpandable.tsx` — identity header, risk ribbon, next-obs, results, pathway clocks, journey filter simplification, z-index & top offset
+
+```tsx
+// ⬇ add imports near top
+import Chip from "@/components/ui/Chip";
+import Segmented from "@/components/ui/Segmented";
+import ResultsCapsule from "@/components/patient/ResultsCapsule";
+import PathwayClocks from "@/components/patient/PathwayClocks";
+import { nextObsDueISO } from "@/lib/nextObs";
+import { useRoleStore } from "@/stores/roleStore";
+import { useJourneyStore } from "@/stores/journeyStore";
+// … keep your existing imports
+
+// ⬇ inside component:
+const roleView = useRoleStore(s => s.role);
+const isHCA = roleView === "HCA";
+
+// --- Layout shell: ensure overlay sits below header & above other layers
+return (
+  <div className="fixed inset-0 z-[80] flex justify-center items-start pt-[6%]"> {/* moved down */}
+    <div className="w-[80%] max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+      {/* Sticky identity + risk */}
+      <header className="sticky top-0 bg-white z-[1] p-4 border-b">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-lg font-semibold">{patient.name}</div>
+            <div className="mt-1 flex flex-wrap gap-2 text-xs">
+              <Chip>Age {patient.age ?? "—"}</Chip>
+              <Chip>NHI {patient.nhiMasked ?? "•••"}</Chip>
+              <Chip>Room {patient.room ?? "—"}</Chip>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Chip tone={patient.ews >= 5 ? "critical" : patient.ews >= 3 ? "warning" : "info"}>
+                EWS {patient.ews ?? "—"} {patient.ewsTrend ?? ""}
+              </Chip>
+              <Chip>ATS {patient.ats ?? "—"}</Chip>
+              {patient.allergy && <Chip tone="warning">Allergy: {patient.allergy}</Chip>}
+              {patient.isolation && <Chip tone="warning">Isolation</Chip>}
+              {patient.falls && <Chip tone="warning">Falls risk</Chip>}
+            </div>
+          </div>
+
+          {/* Primary actions (role-aware) */}
+          {!isHCA && (
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 rounded border">Assign room</button>
+              {(roleView === "RN" || roleView === "MD") && (
+                <button onClick={openObsDrawer} className="px-3 py-1.5 rounded bg-blue-600 text-white">+ Obs</button>
+              )}
+              {roleView === "MD" && (
+                <button className="px-3 py-1.5 rounded border">Order set</button>
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Presenting complaint + pathway clocks */}
+      <section className="px-4 pt-3">
+        <div className="text-sm font-medium text-slate-700">{patient.complaint}</div>
+        <PathwayClocks patientId={patient.id} complaint={patient.complaint} />
+      </section>
+
+      {/* MAIN GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4">
+        {/* Left: Vitals */}
+        <section className="rounded-lg border p-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Vitals</h3>
+            {/* Next obs chip */}
+            {(() => {
+              const iso = nextObsDueISO(patient.id);
+              if (!iso) return null;
+              const due = new Date(iso);
+              const overdue = Date.now() > due.getTime();
+              return (
+                <Chip tone={overdue ? "critical" : "default"}>
+                  Next obs: {due.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {overdue && <span className="ml-1">Overdue</span>}
+                </Chip>
+              );
+            })()}
+          </div>
+
+          {/* your vitals capsules remain here */}
+
+          {/* your combined VitalsTimelineInline remains unchanged (no Timeline/+Obs buttons) */}
+          <div className="mt-3">
+            <VitalsTimelineInline patientId={patient.id} />
+          </div>
+        </section>
+
+        {/* Right column */}
+        <section className="space-y-3">
+          {/* Results capsule */}
+          <ResultsCapsule patientId={patient.id} />
+
+          {/* Journey with simplified filters */}
+          <div className="rounded-lg border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Patient journey</h3>
+              {/* simplify to a segmented control */}
+              <JourneyFilters patientId={patient.id} />
+            </div>
+            <PatientJourneyInline patientId={patient.id} />
+          </div>
+
+          {/* Notes with quick phrases */}
+          <div className="rounded-lg border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Notes</h3>
+              {!isHCA && (
+                <button onClick={openNotesDrawer} className="px-3 py-1.5 rounded bg-blue-600 text-white">
+                  Write note
+                </button>
+              )}
+            </div>
+            {notes?.length ? (
+              <div className="text-sm text-slate-700">{/* preview your last 1–2 notes */}</div>
+            ) : (
+              <div className="text-sm text-slate-500">No notes yet.</div>
+            )}
+            {!isHCA && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {["Patient settled", "Analgesia effective", "Family updated"].map(q => (
+                  <Chip key={q} onClick={() => openNotesDrawer(q)}>{q}</Chip>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Tasks panel */}
+          <div className="rounded-lg border p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Tasks</h3>
+              <button onClick={() => openTaskSheetForPatient(patient.id)} className="px-3 py-1.5 rounded border">
+                View in Task Sheet
+              </button>
+            </div>
+            {/* Keep your per-patient TaskList here if desired (pending/overdue only) */}
+            {/* <TaskList ... /> */}
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+);
+```
+
+**Helper component for Journey filter simplification**
+Add this just above (or in its own file):
+
+```tsx
+function JourneyFilters({ patientId }: { patientId: string }) {
+  const [mode, setMode] = React.useState<"Clinical"|"Moves"|"All">("Clinical");
+  const [win, setWin] = React.useState<"4h"|"8h"|"24h"|"72h">("8h");
+  const setFilters = useJourneyStore(s => s.setUiFilters); // if you have ui filters; else pass via props
+
+  React.useEffect(() => {
+    // Push a single fused filter back to your JourneyInline (adapt to your API)
+    setFilters?.({ patientId, mode, window: win });
+  }, [mode, win, patientId, setFilters]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <Segmented options={["Clinical","Moves","All"]} value={mode} onChange={v => setMode(v as any)} />
+      <Segmented options={["4h","8h","24h","72h"]} value={win} onChange={v => setWin(v as any)} />
+    </div>
+  );
+}
+```
+
+> If `PatientJourneyInline` expects props instead of store-driven filters, replace the store call with prop state in the parent.
+
+### 8) `components/patient/NotesDrawer.tsx` — allow prefilled text (quick phrases)
+
+```tsx
+// accept optional prop `initialText?: string`
+export default function NotesDrawer({ isOpen, onClose, initialText = "" /* ... */ }) {
+  const [text, setText] = React.useState(initialText);
+  React.useEffect(() => { if (isOpen) setText(initialText); }, [isOpen, initialText]);
+  // rest unchanged
+}
+```
+
+And from Patient Card, call `openNotesDrawer("Patient settled")` when a quick chip is tapped.
+
+### 9) (Optional) App header → open bottom Task Sheet
+
+Wherever your header “Tasks” button lives:
+
+```tsx
+// components/shell/AppHeader.tsx
+const role = useRoleStore(s => s.role);
+const [taskSheetOpen, setTaskSheetOpen] = React.useState(false);
+
+// in header:
+<button onClick={() => setTaskSheetOpen(true)} className="px-3 py-2 rounded hover:bg-slate-100">Tasks</button>
+
+{taskSheetOpen && (
+  <TaskSheet open={taskSheetOpen} onClose={() => setTaskSheetOpen(false)} roleView={role as any} />
+)}
+```
+
+---
+
+# 🧪 Notes on safety / loops
+
+* No state setters are called during render; memoize any object props passed into lists.
+* `nextObsDueISO` reads from the journey store only (no writes).
+* The simplified Journey filter uses a single `useEffect` to push filters—replace with prop wiring if your Journey component is prop-driven (safer).
+* Right drawer **still** handles authoring (+Obs, Notes, Tasks create). Bottom sheet is strictly for **doing** tasks.
+
+---
+
+# What’s left to hook to your repo (1–2 tiny bits)
+
+* **`useJourneyStore.setUiFilters`** — if your Journey component is prop-based, pass `{mode, window}` directly instead.
+* **`openTaskSheetForPatient`** — implement to open `TaskSheet` and optionally pre-filter to that patient (or just open and let HCA see Pool/My Tasks).
+* **`openObsDrawer`, `openNotesDrawer`** — you already have these; just ensure the buttons call them.
+
+---
+
+If you paste these files/patches in, your **Patient Card** will have: sticky identity + risk ribbon, **pathway clocks** (ACS/sepsis), **Next Obs** chip, simplified **Journey filters**, a **Results capsule**, quick-phrase **Notes**, and a **Task bottom sheet** accessible from the header or the patient.
+
+Want me to generate a small PR-style checklist so you can tick each change as you commit?

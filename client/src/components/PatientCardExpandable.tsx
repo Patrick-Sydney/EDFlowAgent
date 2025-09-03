@@ -431,14 +431,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 /> */}
               </div>
 
-              {/* Results Capsule (if pending) */}
-              {(resultsPending && resultsPending > 0) && (
-                <ResultsCapsule 
-                  resultsPending={resultsPending}
-                  onOpenResults={onOpenResults}
-                  onQuickOrders={onQuickOrders}
-                />
-              )}
+              {/* Results Capsule */}
+              <ResultsCapsule patientId={String(patientId)} />
 
               {/* Identity Slim (moved to end) */}
               <IdentitySlim 
@@ -512,20 +506,13 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <VitalsCapsuleLive 
             patientId={patientId} 
             onOpenTimeline={() => setOpenTL(true)} 
-            onAddObs={() => setDrawerOpen("obs")} 
           />
 
           {/* Tasks Mini (if any) */}
           {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
 
-          {/* Results Capsule (if pending) */}
-          {(resultsPending && resultsPending > 0) && (
-            <ResultsCapsule 
-              resultsPending={resultsPending}
-              onOpenResults={onOpenResults}
-              onQuickOrders={onQuickOrders}
-            />
-          )}
+          {/* Results Capsule */}
+          <ResultsCapsule patientId={String(patientId)} />
 
           {/* Notes Tabs Lite */}
           <NotesTabsLite 
