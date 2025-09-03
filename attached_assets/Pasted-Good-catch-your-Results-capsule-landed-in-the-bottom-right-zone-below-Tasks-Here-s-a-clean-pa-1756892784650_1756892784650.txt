@@ -1,0 +1,98 @@
+Good catch—your Results capsule landed in the **bottom-right zone** (below Tasks). Here’s a clean patch that:
+
+1. moves **Results** to the **top of the right column (above Journey)**, and
+2. locks the right-column stack order you wanted: **Results → Journey → Notes → Tasks**.
+
+I’m keeping this focused on *just the placement*, so you can paste-and-build immediately.
+
+---
+
+# Patch: `components/patient/PatientCardExpandable.tsx`
+
+### 1) Ensure these imports are present
+
+```tsx
+import ResultsCapsule from "@/components/patient/ResultsCapsule";
+// (leave your other imports as-is)
+```
+
+### 2) Replace your main 2-column layout with this skeleton
+
+(Keep your existing vitals and journey components where indicated.)
+
+```tsx
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4">
+  {/* LEFT: Vitals card + timeline stays on the left */}
+  <section className="rounded-lg border p-3">
+    <div className="flex items-center justify-between">
+      <h3 className="text-sm font-semibold">Vitals</h3>
+      {/* (If you added “Next obs” chip, keep it here) */}
+    </div>
+
+    {/* Your vitals capsules */}
+    {/* ... */}
+
+    <div className="mt-3">
+      {/* Your combined vitals timeline component */}
+      {/* <VitalsTimelineInline patientId={patient.id} /> */}
+    </div>
+  </section>
+
+  {/* RIGHT: results → journey → notes → tasks  */}
+  <section className="space-y-3">
+    {/* 1) RESULTS — TOP OF RIGHT COLUMN */}
+    <ResultsCapsule patientId={patient.id} />
+
+    {/* 2) JOURNEY */}
+    <div className="rounded-lg border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold">Patient journey</h3>
+        {/* keep your time-window/filter controls here */}
+      </div>
+      {/* <PatientJourneyInline patientId={patient.id} /> */}
+    </div>
+
+    {/* 3) NOTES */}
+    <div className="rounded-lg border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold">Notes</h3>
+        {/* “Write note” button (role-aware) */}
+      </div>
+      {/* notes preview / empty state */}
+    </div>
+
+    {/* 4) TASKS */}
+    <div className="rounded-lg border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold">Tasks</h3>
+        {/* “View in Task Sheet” / “+ Add” (role-aware) */}
+      </div>
+      {/* per-patient TaskList (pending/overdue) or your current disabled message */}
+    </div>
+  </section>
+</div>
+```
+
+### 3) Remove any **other** `ResultsCapsule` instances
+
+You likely have one currently rendered **below Tasks**. Delete that block to avoid duplicates:
+
+```tsx
+{/* REMOVE this block if it appears under Tasks */}
+{/* <div className="rounded-lg border p-3"> 
+     <h3>Results</h3>
+     <ResultsCapsule patientId={patient.id} />
+   </div> */}
+```
+
+---
+
+## Quick visual check
+
+* Right column now stacks: **Results (top) → Journey → Notes → Tasks**.
+* Left column remains Vitals + Timeline.
+* On small screens (`lg` breakpoint not active), the blocks appear in this **same order**, because the right column is a single `section` with `space-y-3`.
+
+---
+
+If you want me to also drop in the **identity/risk ribbon**, **pathway clocks**, and the **“Next obs”** chip we discussed, I can paste those blocks next—but this patch fixes the misplacement you’re seeing right now.

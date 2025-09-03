@@ -395,6 +395,9 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
             </div>
             <div className="space-y-3">
+              {/* Results Capsule - TOP OF RIGHT COLUMN */}
+              <ResultsCapsule patientId={String(patientId)} />
+
               {/* Patient Journey */}
               <PatientJourneyInline 
                 patientId={patientId}
@@ -430,9 +433,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   onSelectTaskId={setOpenTaskSheet}
                 /> */}
               </div>
-
-              {/* Results Capsule */}
-              <ResultsCapsule patientId={String(patientId)} />
 
               {/* Identity Slim (moved to end) */}
               <IdentitySlim 
