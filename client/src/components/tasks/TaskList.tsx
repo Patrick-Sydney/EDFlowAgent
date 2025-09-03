@@ -19,15 +19,30 @@ type Props = {
 };
 
 export default function TaskList({ roleView, currentUserId, filter, onSelectPatient, onSelectTaskId }: Props) {
-  const list = useTaskStore(s => s.list);
+  // Get the tasks directly instead of the list function to prevent infinite loops
+  const allTasks = useTaskStore(s => s.tasks);
 
   const tasks = useMemo(() => {
-    const f: any = {};
-    if (filter?.patientId) f.patientId = filter.patientId;
-    if (filter?.status) f.status = filter.status;
-    if (filter?.kinds) f.kinds = filter.kinds;
-
-    let arr = list(f);
+    // Convert tasks object to array and apply filters directly
+    let arr = Object.values(allTasks);
+    
+    // Apply basic filters
+    if (filter?.patientId) {
+      arr = arr.filter(t => t.patientId === filter.patientId);
+    }
+    if (filter?.status) {
+      if (filter.status === "overdue") {
+        arr = arr.filter(t => {
+          const overdue = t.dueAt ? new Date(t.dueAt).getTime() < Date.now() && t.status === "pending" : false;
+          return overdue;
+        });
+      } else {
+        arr = arr.filter(t => t.status === filter.status);
+      }
+    }
+    if (filter?.kinds) {
+      arr = arr.filter(t => filter.kinds!.includes(t.kind));
+    }
 
     // HCA dashboards
     if (roleView === "HCA") {
@@ -45,7 +60,7 @@ export default function TaskList({ roleView, currentUserId, filter, onSelectPati
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     return arr;
-  }, [list, roleView, filter, currentUserId]);
+  }, [allTasks, roleView, filter, currentUserId]);
 
   return (
     <div className="flex flex-col gap-2">

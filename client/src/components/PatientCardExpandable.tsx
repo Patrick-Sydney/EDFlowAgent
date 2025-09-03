@@ -418,7 +418,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 onWriteNote={() => setDrawerOpen("notes")}
               />
 
-              {/* Tasks Panel - TEMPORARILY DISABLED FOR DEBUGGING */}
+              {/* Tasks Panel */}
               <div className="rounded-xl border p-3">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-semibold">Tasks</h3>
@@ -432,13 +432,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                     </button>
                   )}
                 </div>
-                <div className="text-sm text-slate-500 italic">Tasks temporarily disabled for debugging</div>
-                {/* <TaskList
+                <TaskList
                   roleView={userRole === "hca" ? "HCA" : userRole === "rn" ? "RN" : userRole === "charge" ? "Charge" : "RN"}
                   currentUserId={userRole === "hca" ? "hca-1" : undefined}
                   filter={taskFilter}
-                  onSelectTaskId={undefined}
-                /> */}
+                  onSelectTaskId={setOpenTaskSheet}
+                />
               </div>
 
               {/* Results Capsule (if pending) */}
@@ -626,8 +625,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         defaultOrigin={userRole === "charge" ? "Charge" : "RN"}
       />
 
-      {/* Task Card Sheet - TEMPORARILY DISABLED FOR DEBUGGING */}
-      {/* {openTaskSheet && (
+      {/* Task Card Sheet */}
+      {openTaskSheet && (
         <TaskCardSheet
           taskId={openTaskSheet}
           onClose={() => setOpenTaskSheet(null)}
@@ -635,7 +634,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           currentUserId={userRole === "hca" ? "hca-1" : undefined}
           readOnly={userRole === "hca"}
         />
-      )} */}
+      )}
     </div>
   );
 }
