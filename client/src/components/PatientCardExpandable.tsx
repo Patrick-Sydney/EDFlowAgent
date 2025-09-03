@@ -328,7 +328,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             name={displayName}
             ageSex={ageSex}
             ats={ats}
-            locationLabel={localLocationLabel ?? locationLabel ?? undefined}
+            locationLabel={room ?? localLocationLabel ?? locationLabel ?? undefined}
             chiefComplaint={complaint}
             timerLabel={timer}
           />
