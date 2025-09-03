@@ -89,6 +89,8 @@ export default function RoomManagementDrawer() {
   }, [spaces, filters]);
 
   if (!roomOpen || !enc) return null;
+  
+  console.log("[DEBUG] RoomManagementDrawer render - selected:", selected, "pending:", pending, "isReassign:", isReassign, "reason:", reason);
 
   const check = (s: any) => {
     if (!s) return { isoOk: true, monOk: true, safe: true };
@@ -402,6 +404,7 @@ export default function RoomManagementDrawer() {
               haptic(); 
             })}
             disabled={!selected || pending || (isReassign && !reason.trim())}
+            style={{opacity: (!selected || pending || (isReassign && !reason.trim())) ? 0.5 : 1}}
             data-testid="button-confirm-room"
           >
             {pending ? "Assigning..." : isReassign ? "Reassign Room" : "Assign Room"}
