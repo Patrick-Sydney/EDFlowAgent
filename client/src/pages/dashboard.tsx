@@ -5,7 +5,7 @@ import { StatsBar } from "@/components/StatsBar";
 import { PatientLane } from "@/components/PatientLane";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { sseManager } from "@/lib/sse";
-import { useJourneyStore } from "@/stores/journeyStore";
+import { useRoomsIndex } from "@/stores/roomsIndexStore";
 import { type Encounter, LANES } from "@shared/schema";
 import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
@@ -105,7 +105,8 @@ export default function Dashboard() {
   }, [data, config, setEncounters, setDemoMode, setRoleView]);
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
-  const phaseById = useJourneyStore((s) => s.phaseById);
+  const phaseById = useRoomsIndex((s) => s.phaseById);
+  const version = useRoomsIndex((s) => s.version);
   
   // Calculate time since arrival for each patient
   const calculateWaitingTime = (arrivalTime: Date) => {
@@ -506,9 +507,7 @@ export default function Dashboard() {
           <div className="sm:overflow-x-auto">
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6 pb-4 sm:min-w-[1960px]">
               {filteredLanes.map(lane => {
-                // Get encounters by lane, then re-classify using phaseById for reactive movement
-                const baseEncounters = getEncountersByLane(lane);
-                const phaseKey = lane.toLowerCase() as keyof typeof phaseById;
+                // Filter encounters by live phase map for instant reactivity
                 const phaseFilteredEncounters = encounters.filter(enc => {
                   const phase = phaseById[enc.id] ?? "Waiting";
                   // Map phases to lane names

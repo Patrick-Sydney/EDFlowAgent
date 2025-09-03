@@ -1,0 +1,182 @@
+Thanks for testing—let’s make this bullet-proof. I’m going to wire a tiny **derived index store** that listens to Journey events and exposes **live `roomById` + `phaseById`**. Then we’ll read *that* in the header and in the lane builder. This works even if your Patient object is stale or you hydrate scenarios after the event.
+
+---
+
+# 1) Add a derived index store
+
+## `stores/roomsIndexStore.ts` (new)
+
+```ts
+import { create } from "zustand";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+// Keep in sync with your app's lane names
+export type LanePhase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Review";
+
+type RoomsIndexState = {
+  roomById: Record<string, string | undefined>;
+  phaseById: Record<string, LanePhase>;
+  /** ticks whenever we recompute, useful for forcing memos to refresh */
+  version: number;
+  recompute: () => void;
+};
+
+// Build maps from Journey events
+function build(events: any[]) {
+  const roomById: Record<string, string | undefined> = {};
+  const phaseById: Record<string, LanePhase> = {};
+  for (const ev of events) {
+    const pid = ev.patientId;
+    if (!pid) continue;
+    if (!phaseById[pid]) phaseById[pid] = "Waiting";
+
+    switch (ev.kind) {
+      case "triage":
+        phaseById[pid] = "In Triage";
+        break;
+      case "room_change":
+      case "room_assigned":             // tolerate alternate names
+      case "encounter.location":        // tolerate FHIR-ish event
+        // Try several places for the room label
+        const label =
+          ev.label ??
+          (typeof ev.detail === "string" ? ev.detail : ev.detail?.room) ??
+          undefined;
+        if (label) roomById[pid] = label;
+        phaseById[pid] = "Roomed";
+        break;
+      case "order":
+        if (phaseById[pid] === "Roomed") phaseById[pid] = "Diagnostics";
+        break;
+      case "result":
+        if (phaseById[pid] === "Diagnostics") phaseById[pid] = "Review";
+        break;
+      default:
+        break;
+    }
+  }
+  return { roomById, phaseById };
+}
+
+export const useRoomsIndex = create<RoomsIndexState>((set) => ({
+  roomById: {},
+  phaseById: {},
+  version: 0,
+  recompute: () => {
+    const events = useJourneyStore.getState().events;
+    const { roomById, phaseById } = build(events);
+    set({ roomById, phaseById, version: Date.now() });
+  },
+}));
+
+// Keep the index in sync with Journey, including on first load
+useJourneyStore.subscribe(
+  (s) => s.events,
+  () => useRoomsIndex.getState().recompute()
+);
+useRoomsIndex.getState().recompute();
+```
+
+---
+
+# 2) Ensure the drawer writes the **right event**
+
+## `components/room/RoomAssignDrawer.tsx` (save handler)
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+function onSave(roomLabel: string) {
+  const { patientId, onClose } = props;
+
+  // Single source of truth: append a Journey event
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId,
+    t: new Date().toISOString(),
+    kind: "room_change",       // <- this is what the index listens for
+    label: roomLabel,          // <- room name goes here
+    actor: "Charge RN",
+    detail: "Assigned",
+  });
+
+  // Defer close one tick to avoid nested update warnings
+  queueMicrotask(onClose);
+
+  // (Optional debug)
+  console.debug("[room_assign] appended", { patientId, roomLabel });
+}
+```
+
+> If your drawer used a different `kind` or put the room name somewhere else, the index above already tolerates `room_assigned` and `encounter.location` and will also look in `detail.room`.
+
+---
+
+# 3) Read the **live** room in the header (not from the `patient` prop)
+
+## `components/patient/PatientCardExpandable.tsx` (header chip)
+
+```tsx
+import { useRoomsIndex } from "@/stores/roomsIndexStore";
+// ...
+const liveRoom = useRoomsIndex((s) => s.roomById[patient.id]);
+// ...
+<Chip>Location {liveRoom ?? "—"}</Chip>
+```
+
+That chip should flip the instant you click “Save” in the drawer.
+
+---
+
+# 4) Build lanes from the **live phase map**
+
+Wherever you assemble lane arrays, consume `phaseById`. If you memoize, include the version or the map in deps.
+
+## `components/lanes/Lanes.tsx` (or equivalent)
+
+```tsx
+import { useRoomsIndex } from "@/stores/roomsIndexStore";
+
+export default function Lanes() {
+  const roster = usePatientsRoster(); // however you list patients
+  const phaseById = useRoomsIndex((s) => s.phaseById);
+  const version   = useRoomsIndex((s) => s.version); // use if you memo
+
+  // If you memoize, include 'phaseById' or 'version' in deps
+  // const lists = useMemo(() => { ... }, [roster, phaseById]);
+
+  const waiting = roster.filter(p => (phaseById[p.id] ?? "Waiting") === "Waiting");
+  const triage  = roster.filter(p => phaseById[p.id] === "In Triage");
+  const roomed  = roster.filter(p => phaseById[p.id] === "Roomed");
+  const diag    = roster.filter(p => phaseById[p.id] === "Diagnostics");
+  const review  = roster.filter(p => phaseById[p.id] === "Review");
+
+  // ...render columns
+}
+```
+
+**Common gotcha:** if you had `useMemo(..., [roster])`, it will never see phase changes. Add `phaseById` (or `version`) to that dependency list.
+
+---
+
+# 5) One-minute sanity check
+
+Add this temporary debug chip to the header to prove the wiring (remove after):
+
+```tsx
+const phase = useRoomsIndex((s) => s.phaseById[patient.id] ?? "Waiting");
+<Chip tone="info" title="Debug">{phase}</Chip>
+```
+
+* Assign a room → the debug chip should jump to **Roomed** and the **Location** chip should show the new room.
+* The card should move to the **Roomed** lane (lane lists now read the same phase map).
+
+---
+
+## Why this will fix your case
+
+* It doesn’t depend on how/where the patient object is held; the header and lanes subscribe to a **reactive index** that updates whenever Journey changes.
+* It’s resilient to event naming differences and to scenario-hydration overwrites.
+* It avoids any setState-in-render patterns that could loop.
+
+If, after this, the chip still doesn’t flip, it means the drawer isn’t appending an event at all (or it’s never hitting the handler). In that case, the `console.debug` I added will be silent—paste the console output and I’ll point you to the exact line to fix.
