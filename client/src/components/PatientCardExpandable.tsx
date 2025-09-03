@@ -20,6 +20,7 @@ import Chip from "./ui/Chip";
 import SegmentedComponent from "./ui/Segmented";
 import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
+import { useCurrentRoom } from "@/stores/selectors";
 // import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
 // import PathwayTimers from "./patient/PathwayTimers";
 // import PerVitalSparklines from "./patient/PerVitalSparklines";
@@ -261,6 +262,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     };
   }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
+  const currentRoom = useCurrentRoom(String(patientId));
   
   // Sync location label only when props change, not on every render
   useEffect(() => {
@@ -355,7 +357,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <div className="mt-1 flex flex-wrap gap-2 text-xs">
                 <Chip>Age {age ?? "—"}</Chip>
                 <Chip>NHI {maskTail(nhi, 3)}</Chip>
-                <Chip>Room {status ?? "—"}</Chip>
+                <Chip>Room {currentRoom ?? status ?? "—"}</Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">

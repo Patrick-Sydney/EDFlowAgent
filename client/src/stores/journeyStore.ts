@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { create } from "zustand";
+
+export type LanePhase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Review";
 
 export type JourneyEvent = {
   id: string;
@@ -22,6 +25,66 @@ function sortByTimeAsc(a: JourneyEvent, b: JourneyEvent) {
   return Date.parse(a.t) - Date.parse(b.t);
 }
 
+// helper: build indexes once per mutation
+function buildIndexes(events: JourneyEvent[]) {
+  const currentRoomById: Record<string, string | undefined> = {};
+  const phaseById: Record<string, LanePhase> = {};
+
+  // We assume time ascending; if not guaranteed, sort a copy by time
+  const evs = [...events].sort((a,b)=> new Date(a.t).getTime() - new Date(b.t).getTime());
+
+  for (const ev of evs) {
+    const pid = ev.patientId;
+    if (!phaseById[pid]) phaseById[pid] = "Waiting";
+
+    switch (ev.kind) {
+      case "triage":
+        phaseById[pid] = "In Triage";
+        break;
+      case "room_change":
+        // update room and bump phase
+        currentRoomById[pid] = ev.label;
+        phaseById[pid] = "Roomed";
+        break;
+      case "order":
+        if (phaseById[pid] === "Roomed") phaseById[pid] = "Diagnostics";
+        break;
+      case "result":
+        // simple heuristic: after first results, move to Review if not already
+        if (phaseById[pid] === "Diagnostics") phaseById[pid] = "Review";
+        break;
+      default:
+        break;
+    }
+  }
+  return { currentRoomById, phaseById };
+}
+
+type JourneyState = {
+  events: JourneyEvent[];
+  // NEW live indexes
+  currentRoomById: Record<string, string | undefined>;
+  phaseById: Record<string, LanePhase>;
+  append: (ev: JourneyEvent) => void;
+  hydrate?: (evs: JourneyEvent[]) => void;
+};
+
+export const useJourneyStore = create<JourneyState>((set, get) => ({
+  events: [],
+  currentRoomById: {},
+  phaseById: {},
+  append: (ev) => {
+    const events = [...get().events, ev];
+    const idx = buildIndexes(events);
+    set({ events, ...idx });
+    window.dispatchEvent(new CustomEvent("journey:updated", { detail: { patientId: ev.patientId }}));
+  },
+  hydrate: (evs) => {
+    const idx = buildIndexes(evs);
+    set({ events: evs, ...idx });
+  },
+}));
+
 export const journeyStore = {
   add(patientId: string|number, ev: Omit<JourneyEvent, "id"|"patientId"|"t"> & { t?: string }) {
     const pid = String(patientId);
@@ -44,7 +107,10 @@ export const journeyStore = {
     }
     list.push(item);
     list.sort(sortByTimeAsc);
-    window.dispatchEvent(new CustomEvent("journey:updated", { detail: { patientId: pid }}));
+    // Also update the zustand store
+    const fullEvent: JourneyEvent = item;
+    // Also update the zustand store
+    useJourneyStore.getState().append(fullEvent);
     return item;
   },
   list(patientId: string|number) {

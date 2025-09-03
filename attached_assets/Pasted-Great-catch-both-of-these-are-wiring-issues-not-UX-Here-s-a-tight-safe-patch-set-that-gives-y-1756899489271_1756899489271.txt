@@ -1,0 +1,184 @@
+Great catch—both of these are wiring issues, not UX. Here’s a **tight, safe patch set** that gives you:
+
+* **Instant header update** after room assignment (no reload).
+* **Auto-lane move** → Waiting/Triage ➜ **Roomed** when a room is assigned.
+
+I’ve kept this to **Zustand-only** changes (no setState-in-render, no loops).
+
+---
+
+# 1) Extend `journeyStore` with live **indexes** (room + phase)
+
+> One source of truth: we derive the patient’s **current room** and **current phase** from Journey events and keep fast indexes in the store.
+
+**`stores/journeyStore.ts` (additions)**
+
+```ts
+// types
+export type LanePhase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Review";
+
+// helper: build indexes once per mutation
+function buildIndexes(events: JourneyEvent[]) {
+  const currentRoomById: Record<string, string | undefined> = {};
+  const phaseById: Record<string, LanePhase> = {};
+
+  // We assume time ascending; if not guaranteed, sort a copy by time
+  // const evs = [...events].sort((a,b)=> new Date(a.t).getTime() - new Date(b.t).getTime());
+  const evs = events;
+
+  for (const ev of evs) {
+    const pid = ev.patientId;
+    if (!phaseById[pid]) phaseById[pid] = "Waiting";
+
+    switch (ev.kind) {
+      case "triage":
+        phaseById[pid] = "In Triage";
+        break;
+      case "room_change":
+        // update room and bump phase
+        currentRoomById[pid] = ev.label;
+        phaseById[pid] = "Roomed";
+        break;
+      case "order":
+        if (phaseById[pid] === "Roomed") phaseById[pid] = "Diagnostics";
+        break;
+      case "result":
+        // simple heuristic: after first results, move to Review if not already
+        if (phaseById[pid] === "Diagnostics") phaseById[pid] = "Review";
+        break;
+      default:
+        break;
+    }
+  }
+  return { currentRoomById, phaseById };
+}
+
+type JourneyState = {
+  events: JourneyEvent[];
+  // NEW live indexes
+  currentRoomById: Record<string, string | undefined>;
+  phaseById: Record<string, LanePhase>;
+  append: (ev: JourneyEvent) => void;
+  hydrate?: (evs: JourneyEvent[]) => void;
+};
+
+export const useJourneyStore = create<JourneyState>((set, get) => ({
+  events: [],
+  currentRoomById: {},
+  phaseById: {},
+  append: (ev) => {
+    const events = [...get().events, ev];
+    const idx = buildIndexes(events);
+    set({ events, ...idx });
+  },
+  hydrate: (evs) => {
+    const idx = buildIndexes(evs);
+    set({ events: evs, ...idx });
+  },
+}));
+```
+
+### Tiny selectors (optional)
+
+```ts
+// stores/selectors.ts
+export const useCurrentRoom = (patientId: string) =>
+  useJourneyStore((s) => s.currentRoomById[patientId]);
+export const usePhase = (patientId: string) =>
+  useJourneyStore((s) => s.phaseById[patientId] ?? "Waiting");
+```
+
+---
+
+# 2) **Assign Room** action writes one event; indexes do the rest
+
+Your room drawer should **only** append a `room_change` Journey event. The header chip and lanes will update automatically because of the indexes above.
+
+**`components/room/RoomAssignDrawer.tsx` (save handler)**
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+function onSave(roomLabel: string) {
+  const patientId = props.patientId;
+  const append = useJourneyStore.getState().append;
+
+  append({
+    id: crypto.randomUUID(),
+    patientId,
+    t: new Date().toISOString(),
+    kind: "room_change",
+    label: roomLabel,            // e.g., "Room 12"
+    actor: currentUserName,      // optional
+    detail: "Assigned",
+  });
+
+  // close drawer on next tick to avoid nested updates
+  queueMicrotask(props.onClose);
+}
+```
+
+> No extra “lane” state to juggle—**the indexes** make the header and lanes react instantly.
+
+---
+
+# 3) Patient Card header reads **live room** from the store
+
+Replace any static `patient.room` reads with the selector:
+
+```tsx
+import { useCurrentRoom } from "@/stores/selectors"; // or useJourneyStore directly
+
+const room = useCurrentRoom(patient.id);
+// ...
+<Chip>Location {room ?? "—"}</Chip>
+```
+
+Now saving the drawer will immediately update this chip.
+
+---
+
+# 4) Lanes: classify by **phaseById** (auto-move to Roomed)
+
+Where you build lane lists, switch to the indexed phase:
+
+**`components/lanes/Lanes.tsx` (or equivalent)**
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+export default function Lanes() {
+  const patients = usePatientsRoster(); // however you list patient IDs
+  const phaseById = useJourneyStore((s) => s.phaseById);
+
+  const waiting   = patients.filter(p => (phaseById[p.id] ?? "Waiting") === "Waiting");
+  const triage    = patients.filter(p => phaseById[p.id] === "In Triage");
+  const roomed    = patients.filter(p => phaseById[p.id] === "Roomed");
+  const diag      = patients.filter(p => phaseById[p.id] === "Diagnostics");
+  const review    = patients.filter(p => phaseById[p.id] === "Review");
+
+  // ...render your lane columns from these arrays
+}
+```
+
+> Now, **assigning a room** (room\_change event) automatically pulls the card from **Waiting/Triage** into **Roomed** on the next render—no extra imperative move calls.
+
+---
+
+# 5) (Optional) Seed/hydrate path respects indexes
+
+If you hydrate Journey from demo/scenario engine, call `useJourneyStore.getState().hydrate(seedEvents)` so indexes are built once.
+
+---
+
+## Acceptance checks
+
+* Open Patient Card → **Assign room “Room 12”** → close drawer
+  → Header chip changes to **Location Room 12** immediately.
+* Patient visible in **Waiting/Triage** before assignment
+  → After assignment (one event), the card **moves to Roomed** lane.
+* Reassign to another room: append `room_change` again → header chip updates; patient stays in Roomed.
+
+---
+
+If your room drawer already writes a Journey event, the only changes you likely need are **(1)** the `journeyStore` indexes and **(3/4)** swapping reads to those indexes.

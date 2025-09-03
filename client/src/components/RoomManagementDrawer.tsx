@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
+import { useJourneyStore } from "@/stores/journeyStore";
 import { X, Bed, Monitor, Droplets, Shield, Clock, AlertTriangle, CheckCircle } from "lucide-react";
 import TButton from "./ui/TButton";
 import { Segmented, Chips } from "./ui/Segmented";
@@ -109,7 +110,21 @@ export default function RoomManagementDrawer() {
         alert(r?.error || "Failed"); 
         return; 
       }
-      closeRoom();
+      
+      // Add journey event for room assignment
+      const append = useJourneyStore.getState().append;
+      append({
+        id: crypto.randomUUID(),
+        patientId: String(enc.id),
+        t: new Date().toISOString(),
+        kind: "room_change",
+        label: selected.id,
+        detail: isReassign ? "Reassigned" : "Assigned",
+        actor: { name: "Current User", role: "RN" }, // TODO: get from user store
+      });
+      
+      // Close drawer on next tick to avoid nested updates
+      queueMicrotask(() => closeRoom());
     } finally { 
       setPending(false); 
     }
