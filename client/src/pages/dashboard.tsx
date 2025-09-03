@@ -510,8 +510,19 @@ export default function Dashboard() {
               console.log("[DEBUG] Test room assignment button clicked");
               const firstPatient = encounters[0];
               if (firstPatient) {
+                console.log("[DEBUG] About to call assignRoomEvent - patient ID:", String(firstPatient.id), "name:", firstPatient.name);
                 assignRoomEvent(String(firstPatient.id), "Room1", "Charge RN");
-                console.log("[DEBUG] Called assignRoomEvent for:", firstPatient.name);
+                console.log("[DEBUG] assignRoomEvent call completed");
+                
+                // Let's also check the store state after the call
+                setTimeout(() => {
+                  const storeState = useJourneyStore.getState();
+                  console.log("[DEBUG] Store state after assignment:", {
+                    eventsCount: storeState.events.length,
+                    currentRoomById: storeState.currentRoomById,
+                    phaseById: storeState.phaseById
+                  });
+                }, 100);
               }
             }}
           >
