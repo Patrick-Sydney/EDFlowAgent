@@ -29,8 +29,6 @@ export function useRoomAndPhase(patientId: string): { room?: string; phase: Lane
           phase = "In Triage";
           break;
         case "room_change":
-        case "room_assigned":
-        case "encounter.location":
           room = extractRoom(ev) ?? room;
           phase = "Roomed";
           break;
@@ -61,8 +59,6 @@ export function usePhaseMap(patientIds: string[]): Record<string, LanePhase> {
         case "triage":
           map[pid] = "In Triage"; break;
         case "room_change":
-        case "room_assigned":
-        case "encounter.location":
           map[pid] = "Roomed"; break;
         case "order":
           if (map[pid] === "Roomed") map[pid] = "Diagnostics"; break;

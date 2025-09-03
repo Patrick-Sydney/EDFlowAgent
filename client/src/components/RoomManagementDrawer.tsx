@@ -112,15 +112,18 @@ export default function RoomManagementDrawer() {
       }
       
       // Single source of truth: append a Journey event
-      useJourneyStore.getState().append({
+      const journeyEvent = {
         id: crypto.randomUUID(),
         patientId: String(enc.id),
         t: new Date().toISOString(),
-        kind: "room_change",       // <- this is what the index listens for
+        kind: "room_change" as const,       // <- this is what the index listens for
         label: selected.id,        // <- room name goes here
         actor: { name: "Charge RN", role: "RN" },
         detail: isReassign ? "Reassigned" : "Assigned",
-      });
+      };
+      console.log("[DEBUG] About to append journey event:", journeyEvent);
+      useJourneyStore.getState().append(journeyEvent);
+      console.log("[DEBUG] Journey events after append:", useJourneyStore.getState().events);
 
       
       // The SSE broadcast will automatically update the encounter

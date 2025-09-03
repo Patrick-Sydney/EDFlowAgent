@@ -265,6 +265,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const currentRoom = useCurrentRoom(String(patientId));
   const { room, phase } = useRoomAndPhase(String(patientId));
+  console.log("[DEBUG] Patient", String(patientId), "hook result:", { room, phase });
   
   // Sync location label only when props change, not on every render
   useEffect(() => {
