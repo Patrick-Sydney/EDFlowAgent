@@ -90,6 +90,8 @@ export default function RoomManagementDrawer() {
 
   if (!roomOpen || !enc) return null;
   
+  const isReassign = !!enc.room;
+  
   console.log("[DEBUG] RoomManagementDrawer render - selected:", selected, "pending:", pending, "isReassign:", isReassign, "reason:", reason);
 
   const check = (s: any) => {
@@ -99,8 +101,6 @@ export default function RoomManagementDrawer() {
     return { isoOk, monOk, safe: isoOk && monOk };
   };
   const checks = check(selected);
-
-  const isReassign = !!enc.room;
   const confirm = async () => {
     console.log("[DEBUG] confirm() called - selected:", selected);
     if (!selected) return;
@@ -108,7 +108,7 @@ export default function RoomManagementDrawer() {
     try {
       const r = isReassign
         ? await reassignSpace(enc.id, selected.id, reason || "Reassign")
-        : await assignSpace(enc.id, selected.id, reason || null);
+        : await assignSpace(enc.id, selected.id, reason || undefined);
       if (!r?.ok) { 
         alert(r?.error || "Failed"); 
         return; 
@@ -121,7 +121,7 @@ export default function RoomManagementDrawer() {
         t: new Date().toISOString(),
         kind: "room_change" as const,       // <- this is what the index listens for
         label: selected.id,        // <- room name goes here
-        actor: { name: "Charge RN", role: "RN" },
+        actor: { name: "Charge RN", role: "RN" as const },
         detail: isReassign ? "Reassigned" : "Assigned",
       };
       console.log("[DEBUG] About to append journey event:", journeyEvent);
