@@ -357,7 +357,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <div className="mt-1 flex flex-wrap gap-2 text-xs">
                 <Chip>Age {age ?? "—"}</Chip>
                 <Chip>NHI {maskTail(nhi, 3)}</Chip>
-                <Chip>Room {currentRoom ?? status ?? "—"}</Chip>
+                <Chip>Location {currentRoom ?? status ?? "—"}</Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">

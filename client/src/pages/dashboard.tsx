@@ -5,6 +5,7 @@ import { StatsBar } from "@/components/StatsBar";
 import { PatientLane } from "@/components/PatientLane";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { sseManager } from "@/lib/sse";
+import { useJourneyStore } from "@/stores/journeyStore";
 import { type Encounter, LANES } from "@shared/schema";
 import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
@@ -104,6 +105,7 @@ export default function Dashboard() {
   }, [data, config, setEncounters, setDemoMode, setRoleView]);
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
+  const phaseById = useJourneyStore((s) => s.phaseById);
   
   // Calculate time since arrival for each patient
   const calculateWaitingTime = (arrivalTime: Date) => {
@@ -503,13 +505,31 @@ export default function Dashboard() {
           {/* Mobile: Single column stack, Desktop: Horizontal scroll */}
           <div className="sm:overflow-x-auto">
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-6 pb-4 sm:min-w-[1960px]">
-              {filteredLanes.map(lane => (
-                <PatientLane
-                  key={lane}
-                  lane={lane}
-                  encounters={getEncountersByLane(lane)}
-                />
-              ))}
+              {filteredLanes.map(lane => {
+                // Get encounters by lane, then re-classify using phaseById for reactive movement
+                const baseEncounters = getEncountersByLane(lane);
+                const phaseKey = lane.toLowerCase() as keyof typeof phaseById;
+                const phaseFilteredEncounters = encounters.filter(enc => {
+                  const phase = phaseById[enc.id] ?? "Waiting";
+                  // Map phases to lane names
+                  const phaseToLane: Record<string, string> = {
+                    "Waiting": "waiting",
+                    "In Triage": "triage", 
+                    "Roomed": "roomed",
+                    "Diagnostics": "diagnostics",
+                    "Review": "review"
+                  };
+                  return phaseToLane[phase] === lane;
+                });
+                
+                return (
+                  <PatientLane
+                    key={lane}
+                    lane={lane}
+                    encounters={phaseFilteredEncounters}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

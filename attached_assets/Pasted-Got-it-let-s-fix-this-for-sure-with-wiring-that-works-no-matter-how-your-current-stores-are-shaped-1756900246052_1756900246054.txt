@@ -1,0 +1,162 @@
+Got it—let’s fix this *for sure* with wiring that works no matter how your current stores are shaped. Two things need to happen:
+
+1. **The header must bind to a reactive room source** (not a stale `patient` prop).
+2. **Lanes must classify by a reactive phase** that flips to **Roomed** the moment a room is assigned.
+
+Below are drop-in patches. If your store names differ, use the “OR” lines I’ve added—functionally identical.
+
+---
+
+# 1) Make Journey the single source of truth for **room** and **phase**
+
+### `stores/journeyStore.ts` (add/extend)
+
+```ts
+// ✅ add these helpers + indexes
+export type LanePhase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Review";
+
+function buildIndexes(events: JourneyEvent[]) {
+  const currentRoomById: Record<string, string | undefined> = {};
+  const phaseById: Record<string, LanePhase> = {};
+
+  for (const ev of events) {
+    const pid = ev.patientId;
+    if (!phaseById[pid]) phaseById[pid] = "Waiting";
+
+    if (ev.kind === "triage") phaseById[pid] = "In Triage";
+
+    if (ev.kind === "room_change") {
+      currentRoomById[pid] = ev.label;         // <-- room label
+      phaseById[pid] = "Roomed";               // <-- flip lane
+    }
+
+    if (ev.kind === "order" && phaseById[pid] === "Roomed") phaseById[pid] = "Diagnostics";
+    if (ev.kind === "result" && phaseById[pid] === "Diagnostics") phaseById[pid] = "Review";
+  }
+  return { currentRoomById, phaseById };
+}
+
+type JourneyState = {
+  events: JourneyEvent[];
+  currentRoomById: Record<string, string | undefined>;
+  phaseById: Record<string, LanePhase>;
+  append: (ev: JourneyEvent) => void;
+  hydrate?: (evs: JourneyEvent[]) => void;
+};
+
+export const useJourneyStore = create<JourneyState>((set, get) => ({
+  events: [],
+  currentRoomById: {},
+  phaseById: {},
+  append: (ev) => {
+    const events = [...get().events, ev];
+    const idx = buildIndexes(events);
+    set({ events, ...idx });                    // <-- header & lanes react immediately
+  },
+  hydrate: (evs) => {
+    const idx = buildIndexes(evs);
+    set({ events: evs, ...idx });
+  },
+}));
+```
+
+> If you already have `append`, **just replace** its body with the `events = [...]; set({ events, ...buildIndexes(events) })`.
+
+---
+
+# 2) Assign Room drawer: write **one** Journey event (and optionally mirror to any patient store)
+
+### `components/room/RoomAssignDrawer.tsx` (save handler)
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+// OPTIONAL mirror:
+import { usePatientsStore } from "@/stores/patientsStore"; // OR whatever your roster store is called
+
+function onSave(roomLabel: string) {
+  const { patientId, onClose } = props;
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId,
+    t: new Date().toISOString(),
+    kind: "room_change",
+    label: roomLabel,             // e.g. "Room 12"
+    actor: "Charge RN",
+    detail: "Assigned",
+  });
+
+  // (Optional) mirror so legacy reads keep working until you swap them to selectors
+  try { usePatientsStore.getState()?.update?.(patientId, { room: roomLabel, phase: "Roomed" }); } catch {}
+
+  queueMicrotask(onClose);        // avoid nested update loop
+}
+```
+
+---
+
+# 3) Patient Card header: **bind to store**, not the `patient` prop
+
+Anywhere you show room (and lane/phase), **read from the store** so it updates the instant `append()` runs.
+
+### `components/patient/PatientCardExpandable.tsx` (header ribbon)
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+const room = useJourneyStore((s) => s.currentRoomById[patient.id]);
+/* fallback for older data, optional: */
+const legacyRoom = patient.room;
+
+<Chip>Location {room ?? legacyRoom ?? "—"}</Chip>
+```
+
+> If you render lane chips anywhere, use `useJourneyStore(s => s.phaseById[patient.id] ?? "Waiting")`.
+
+---
+
+# 4) Lanes view: **classify by phaseById** (auto-move to Roomed)
+
+### `components/lanes/Lanes.tsx` (or equivalent)
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+export default function Lanes() {
+  const roster = usePatientsRoster();  // however you list patient ids
+  const phaseById = useJourneyStore((s) => s.phaseById); // <-- reactive key
+
+  const waiting = roster.filter(p => (phaseById[p.id] ?? "Waiting") === "Waiting");
+  const triage  = roster.filter(p => phaseById[p.id] === "In Triage");
+  const roomed  = roster.filter(p => phaseById[p.id] === "Roomed");
+  const diag    = roster.filter(p => phaseById[p.id] === "Diagnostics");
+  const review  = roster.filter(p => phaseById[p.id] === "Review");
+
+  // render columns...
+}
+```
+
+**Important:** if you previously had `useMemo` that only depended on `roster`, remove it or include `phaseById` in its deps. Otherwise React will keep the old lane lists and you won’t see movement.
+
+---
+
+# 5) Common gotchas (quick checks)
+
+* **Header uses a `patient` prop snapshot**: switch room/lane chips to **store selectors** (above).
+* **Two different `append()`s**: make sure the drawer calls **the same** `useJourneyStore.getState().append` used elsewhere.
+* **Lane arrays memoized without `phaseById`**: add it to deps or remove the memo.
+* **Room label stored under a different key**: we read `ev.label`—if you used `ev.detail` for the room name, swap the field in `buildIndexes`.
+
+---
+
+## Minimal test
+
+1. Open a patient in **Waiting** (or **In Triage**).
+2. Assign **Room 5** via the drawer.
+3. On save:
+
+   * Header chip should change to **Location Room 5** immediately.
+   * Card should move to the **Roomed** lane.
+
+This wiring is intentionally **redundant-safe**: even if some screens still read from a legacy `patientsStore`, the mirrored update keeps them in sync—while the *real* source of truth is the Journey event + live indexes.
+
+If you still don’t see the move or header change after these exact swaps, the culprit will be a stale memo or a different store API name. Ping me the names of the lane-building file and the room drawer save function (just their signatures), and I’ll hand you the 3-line diff for your repo’s exact shape.

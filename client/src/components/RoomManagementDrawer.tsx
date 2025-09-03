@@ -111,16 +111,15 @@ export default function RoomManagementDrawer() {
         return; 
       }
       
-      // Add journey event for room assignment
-      const append = useJourneyStore.getState().append;
-      append({
+      // Add journey event for room assignment - single source of truth
+      useJourneyStore.getState().append({
         id: crypto.randomUUID(),
         patientId: String(enc.id),
         t: new Date().toISOString(),
         kind: "room_change",
-        label: selected.id,
+        label: selected.id,             // e.g. "Room1"
+        actor: { name: "Charge RN", role: "RN" },
         detail: isReassign ? "Reassigned" : "Assigned",
-        actor: { name: "Current User", role: "RN" }, // TODO: get from user store
       });
       
       // The SSE broadcast will automatically update the encounter
