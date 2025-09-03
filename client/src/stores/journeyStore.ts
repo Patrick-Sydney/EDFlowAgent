@@ -73,8 +73,14 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
   events: [],
   currentRoomById: {},
   phaseById: {},
-  append: (ev) =>
-    set((s) => ({ events: [...s.events, ev] })),
+  append: (ev) => {
+    console.log("[DEBUG] JourneyStore.append called with:", ev);
+    set((s) => {
+      const newEvents = [...s.events, ev];
+      console.log("[DEBUG] JourneyStore.append - new events array:", newEvents);
+      return { events: newEvents };
+    });
+  },
   hydrate: (evs) => set({ events: [...evs] }),
 }));
 

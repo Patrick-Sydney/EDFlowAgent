@@ -100,6 +100,7 @@ export default function RoomManagementDrawer() {
 
   const isReassign = !!enc.room;
   const confirm = async () => {
+    console.log("[DEBUG] confirm() called - selected:", selected);
     if (!selected) return;
     setPending(true);
     try {
@@ -395,7 +396,11 @@ export default function RoomManagementDrawer() {
         <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
           <TButton 
             className="bg-blue-600 text-white flex-1 min-h-[50px]"
-            onClick={once(() => { confirm(); haptic(); })}
+            onClick={once(() => { 
+              console.log("[DEBUG] Button clicked!");
+              confirm(); 
+              haptic(); 
+            })}
             disabled={!selected || pending || (isReassign && !reason.trim())}
             data-testid="button-confirm-room"
           >
