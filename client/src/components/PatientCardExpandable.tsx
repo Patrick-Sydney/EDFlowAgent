@@ -349,8 +349,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   </button>
                 </>
               )}
-              {/* Task creation for RN/Charge */}
-              {(userRole === "rn" || userRole === "charge") && (
+              {/* Task creation for RN/Charge - DISABLED */}
+              {/* {(userRole === "rn" || userRole === "charge") && (
                 <button
                   className="rounded-full border px-3 py-2 text-sm"
                   onClick={() => setOpenTaskDrawer(true)}
@@ -358,7 +358,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 >
                   + Task
                 </button>
-              )}
+              )} */}
               {/* Always-available actions */}
               <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
               <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
@@ -383,18 +383,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <VitalsCapsuleLive 
                 patientId={patientId} 
                 onOpenTimeline={() => setOpenTL(true)} 
-                onAddObs={onAddObs ? () => {
-                  const patient = {
-                    id: patientId,
-                    displayName: name,
-                    givenName: name.split(' ')[0] || '',
-                    familyName: name.split(' ').slice(1).join(' ') || '',
-                    chiefComplaint: complaint,
-                    ews: ews,
-                    roomName: status
-                  };
-                  onAddObs(patient);
-                } : undefined} 
               />
 
               {/* Inline combined vitals timeline */}
@@ -493,8 +481,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   </button>
                 </>
               )}
-              {/* Task creation for RN/Charge */}
-              {(userRole === "rn" || userRole === "charge") && (
+              {/* Task creation for RN/Charge - DISABLED */}
+              {/* {(userRole === "rn" || userRole === "charge") && (
                 <button
                   className="rounded-full border px-3 py-2 text-sm"
                   onClick={() => setOpenTaskDrawer(true)}
@@ -502,7 +490,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 >
                   + Task
                 </button>
-              )}
+              )} */}
               {/* Always-available actions */}
               <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
               <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>

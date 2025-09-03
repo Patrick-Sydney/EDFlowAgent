@@ -1,0 +1,74 @@
+Got it. Here’s a clean removal that keeps **+Obs** available from the **Actions bar** (RN/MD) but **removes “Timeline” and “+Obs” buttons from the Vitals section** on the Patient Card.
+
+---
+
+## 1) Patient Card — strip buttons from Vitals header
+
+**File:** `components/patient/PatientCardExpandable.tsx` (or wherever you render the Vitals section header)
+
+```tsx
+// BEFORE
+<div className="flex items-center justify-between">
+  <h3 className="text-sm font-semibold">Vitals</h3>
+  <div className="flex items-center gap-2">
+    <button className="px-3 py-1.5 rounded border">Timeline</button>
+    <button onClick={openObsDrawer} className="px-3 py-1.5 rounded bg-blue-600 text-white">
+      + Obs
+    </button>
+  </div>
+</div>
+
+// AFTER (buttons removed)
+<div className="flex items-center justify-between">
+  <h3 className="text-sm font-semibold">Vitals</h3>
+</div>
+```
+
+If the header is abstracted (e.g., `VitalsHeader.tsx`), make the same change there.
+
+---
+
+## 2) Remove now-unused state/handlers (if present)
+
+If you had a timeline toggle or only-used handler for this header button, delete them:
+
+```tsx
+// REMOVE if only used by the header buttons you removed
+// const [showTimeline, setShowTimeline] = useState(false);
+// const handleToggleTimeline = () => setShowTimeline(v => !v);
+
+// KEEP this if used elsewhere (e.g., Actions bar)
+// function openObsDrawer() { setOpenObs(true); }
+```
+
+---
+
+## 3) Make sure +Obs still exists in the Actions bar (RN/MD)
+
+In the expanded card’s **Actions bar**, keep **+Obs** for clinical authoring:
+
+```tsx
+// Actions bar snippet
+{(roleView === "RN" || roleView === "MD") && (
+  <button onClick={openObsDrawer} className="px-3 py-1.5 rounded bg-blue-600 text-white">
+    + Obs
+  </button>
+)}
+```
+
+(HCA remains read-only; no +Obs anywhere for HCA.)
+
+---
+
+## 4) Vitals timeline section (if shown elsewhere)
+
+Your separate **“Vitals timeline”** block with the 4h/8h/24h chips can stay as-is; no need for a “Timeline” button in the Vitals header anymore.
+
+---
+
+### Quick grep to find/remove other instances
+
+* Search: `Timeline` within `components/patient` and `components/obs`
+* Search: `+ Obs` or `+Obs` in the Vitals header component
+
+That’s it — UI stays calm and consistent: **Vitals = read**, **Actions bar/right drawer = write**.
