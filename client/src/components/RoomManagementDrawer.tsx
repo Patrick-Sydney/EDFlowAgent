@@ -123,6 +123,8 @@ export default function RoomManagementDrawer() {
         actor: { name: "Current User", role: "RN" }, // TODO: get from user store
       });
       
+      // The SSE broadcast will automatically update the encounter
+      
       // Close drawer on next tick to avoid nested updates
       queueMicrotask(() => closeRoom());
     } finally { 

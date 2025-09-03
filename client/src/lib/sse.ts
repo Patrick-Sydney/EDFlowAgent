@@ -29,7 +29,7 @@ export class SSEManager {
         useDashboardStore.getState().addEncounter(encounter);
       });
 
-      this.eventSource.addEventListener('encounter:update', (event) => {
+      this.eventSource.addEventListener('encounterUpdated', (event) => {
         const encounterRaw = JSON.parse(event.data);
         const encounter = { ...encounterRaw, lane: encounterRaw.lane ?? encounterRaw.state ?? "waiting" };
         useDashboardStore.getState().updateEncounter(encounter);
