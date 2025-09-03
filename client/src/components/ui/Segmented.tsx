@@ -7,7 +7,7 @@ type SimpleSegmentedProps = {
   onChange: (v: string) => void;
   className?: string;
 };
-export default function SegmentedDefault({ options, value, onChange, className }: SimpleSegmentedProps) {
+export default function Segmented({ options, value, onChange, className }: SimpleSegmentedProps) {
   return (
     <div className={clsx("inline-flex rounded-lg border bg-white p-0.5", className)}>
       {options.map(opt => (
@@ -38,7 +38,11 @@ interface SegmentedPropsOld {
   className?: string;
 }
 
-export function Segmented({ value, onChange, options, className = "" }: SegmentedPropsOld) {
+// Export the default as a named export for backward compatibility
+const SegmentedDefault = Segmented;
+export { SegmentedDefault as Segmented };
+
+export function SegmentedOld({ value, onChange, options, className = "" }: SegmentedPropsOld) {
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>
       {options.map(opt => {

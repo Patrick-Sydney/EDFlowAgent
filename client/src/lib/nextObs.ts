@@ -3,21 +3,19 @@
 import { journeyStore, JourneyEvent } from "@/stores/journeyStore";
 
 export function nextObsDueISO(patientId: string): string | null {
-  const evs = journeyStore.list(patientId);
+  const all = journeyStore.list(patientId);
 
-  const lastVitals = [...evs].reverse().find(e => e.kind === "vitals");
-  if (!lastVitals) return null;
+  const vitals = [...all].reverse().find(e => e.kind === "vitals");
+  if (!vitals) return null;
 
-  // try to find last EWS value
+  const ewsEv = [...all].reverse().find(e => e.kind === "ews_change");
   let ews = 0;
-  const lastEws = [...evs].reverse().find(e => e.kind === "ews_change");
-  if (lastEws && typeof lastEws.detail === "string") {
-    const m = lastEws.detail.match(/(\d+)/); // crude parse if detail="EWS=5"
-    if (m) ews = Number(m[1]);
+  if (ewsEv && typeof ewsEv.detail === "string") {
+    const m = ewsEv.detail.match(/(\d+)/);
+    if (m) ews = +m[1];
   }
-
-  const base = new Date(lastVitals.t);
   const mins = ews >= 5 ? 15 : ews >= 3 ? 30 : 60;
-  base.setMinutes(base.getMinutes() + mins);
-  return base.toISOString();
+  const d = new Date(vitals.t);
+  d.setMinutes(d.getMinutes() + mins);
+  return d.toISOString();
 }

@@ -12,9 +12,26 @@ import AlertsRibbon, { AlertFlags } from "./patient/AlertsRibbon";
 import ActionBar from "./patient/ActionBar";
 import ClinicalSnapshot from "./patient/ClinicalSnapshot";
 import ResultsCapsule from "./patient/ResultsCapsule";
+import PathwayClocks from "./patient/PathwayClocks";
 import TasksMini, { TaskItem } from "./patient/TasksMini";
 import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
+import Chip from "./ui/Chip";
+import SegmentedComponent from "./ui/Segmented";
+import { nextObsDueISO } from "@/lib/nextObs";
+import { useDashboardStore } from "@/stores/dashboardStore";
+
+// Simple Journey filter component
+function JourneyFilters() {
+  const [mode, setMode] = React.useState("Clinical");
+  const [win, setWin] = React.useState("8h");
+  return (
+    <div className="flex items-center gap-2">
+      <SegmentedComponent options={["Clinical","Moves","All"]} value={mode} onChange={setMode} />
+      <SegmentedComponent options={["4h","8h","24h","72h"]} value={win} onChange={setWin} />
+    </div>
+  );
+}
 import BoardExpandOverlay from "./board/BoardExpandOverlay";
 import AuthoringDrawer from "./shell/AuthoringDrawer";
 import ObsQuickForm from "./obs/ObsQuickForm";
@@ -223,12 +240,13 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   
 
   // Role awareness (RN-only actions)
-  const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
+  const roleView = useDashboardStore(s => s.roleView);
+  const userRole = roleView || "charge";
   useEffect(() => {
     const sync = (e: any) => {
       const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
       // Only update if the role actually changed to prevent infinite loops
-      setUserRole(current => current === next ? current : next);
+      // Role is now managed by dashboard store, just store locally
     };
     window.addEventListener("role:change", sync as EventListener);
     window.addEventListener("view:role", sync as EventListener);
@@ -316,134 +334,164 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         </div>
       </div>
 
-      {/* Desktop overlay expander: two-lane width panel */}
+      {/* Desktop overlay expander: AT-A-GLANCE CLINICAL LAYOUT */}
       <BoardExpandOverlay
         anchorEl={cardAnchorRef.current}
         open={desktopOpen}
         onOpenChange={setDesktopOpen}
         title={displayName}
       >
-        <div className="space-y-3">
-          {/* Alerts Ribbon (if any) */}
-          {alertFlags && <AlertsRibbon flags={alertFlags} />}
+        {/* ===== Identity + Risk + Actions Header ===== */}
+        <header className="sticky top-0 bg-white z-[1] p-4 border-b">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              {/* Identity bar */}
+              <div className="text-lg font-semibold">{displayName}</div>
+              <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                <Chip>Age {age ?? "—"}</Chip>
+                <Chip>NHI {maskTail(nhi, 3)}</Chip>
+                <Chip>Room {status ?? "—"}</Chip>
+              </div>
+              {/* Risk ribbon */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Chip tone={(ews ?? 0) >= 5 ? "critical" : (ews ?? 0) >= 3 ? "warning" : "info"}>
+                  EWS {ews ?? "—"}
+                </Chip>
+                <Chip>ATS {ats ?? "—"}</Chip>
+                {allergies && <Chip tone="warning">Allergy: {allergies}</Chip>}
+              </div>
+            </div>
 
-          {/* Action Bar (role-based) */}
-          {userRole !== "hca" && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* RN-specific primary actions */}
-              {userRole === "rn" && (
-                <>
-                  <button
-                    className="rounded-full border px-3 py-2 text-sm"
-                    onClick={() => setDrawerOpen("register")}
-                    data-testid="button-register-patient"
-                  >
-                    Register patient
-                  </button>
-                  <button
-                    className="rounded-full border px-3 py-2 text-sm"
-                    onClick={() => setDrawerOpen("triage")}
-                    data-testid="button-start-triage"
-                  >
-                    Start triage
-                  </button>
-                </>
-              )}
-              {/* Task creation for RN/Charge - DISABLED */}
-              {/* {(userRole === "rn" || userRole === "charge") && (
-                <button
-                  className="rounded-full border px-3 py-2 text-sm"
-                  onClick={() => setOpenTaskDrawer(true)}
-                  data-testid="button-new-task"
+            {/* Actions (role-aware) */}
+            {userRole !== "hca" && (
+              <div className="flex items-center gap-2">
+                <button 
+                  className="px-3 py-1.5 rounded border"
+                  onClick={() => setDrawerOpen("assign")}
+                  data-testid="button-assign-room"
                 >
-                  + Task
+                  Assign room
                 </button>
-              )} */}
-              {/* Always-available actions */}
-              <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
-              <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
+                {(userRole === "rn" || userRole === "md") && (
+                  <button 
+                    onClick={() => setDrawerOpen("obs")} 
+                    className="px-3 py-1.5 rounded bg-blue-600 text-white"
+                    data-testid="button-add-obs"
+                  >
+                    + Obs
+                  </button>
+                )}
+                {userRole === "md" && (
+                  <button className="px-3 py-1.5 rounded border">Order set</button>
+                )}
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* ===== Complaint + Pathway clocks ===== */}
+        <section className="px-4 pt-3">
+          <div className="text-sm font-medium text-slate-700">
+            {complaint ?? "—"}
+          </div>
+          <PathwayClocks patientId={String(patientId)} complaint={complaint} />
+        </section>
+
+        {/* ===== 2-column layout ===== */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4">
+          {/* LEFT: Vitals + timeline */}
+          <section className="rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Vitals</h3>
+              {/* Next obs chip */}
+              {(() => {
+                const iso = nextObsDueISO(String(patientId));
+                if (!iso) return null;
+                const due = new Date(iso);
+                const overdue = Date.now() > due.getTime();
+                return (
+                  <Chip tone={overdue ? "critical" : "default"}>
+                    Next obs: {due.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}
+                    {overdue && <span className="ml-1">Overdue</span>}
+                  </Chip>
+                );
+              })()}
             </div>
-          )}
-          {userRole === "hca" && (
-            <div className="text-sm text-slate-500 italic">Read-only view for HCA</div>
-          )}
 
-          {/* Clinical Snapshot */}
-          <ClinicalSnapshot 
-            patientId={patientId}
-            complaint={complaint}
-            ats={ats}
-            o2Label={o2Label}
-          />
+            {/* Vitals capsule */}
+            <VitalsCapsuleLive 
+              patientId={patientId} 
+              onOpenTimeline={() => setOpenTL(true)} 
+            />
 
-          {/* Two-column layout for desktop overlay */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-3">
-              {/* Vitals Capsule Live */}
-              <VitalsCapsuleLive 
-                patientId={patientId} 
-                onOpenTimeline={() => setOpenTL(true)} 
-              />
-
-              {/* Inline combined vitals timeline */}
-              <VitalsTimelineInline
-                patientId={patientId}
-                height={280}
-              />
-
-              {/* Tasks Mini (if any) */}
-              {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
+            <div className="mt-3">
+              <VitalsTimelineInline patientId={patientId} height={280} />
             </div>
-            <div className="space-y-3">
-              {/* Results Capsule - TOP OF RIGHT COLUMN */}
-              <ResultsCapsule patientId={String(patientId)} />
+          </section>
 
-              {/* Patient Journey */}
-              <PatientJourneyInline 
-                patientId={patientId}
-                height={320}
-              />
+          {/* RIGHT: Results → Journey → Notes → Tasks */}
+          <section className="space-y-3">
+            {/* 1) RESULTS (top) */}
+            <ResultsCapsule patientId={String(patientId)} />
 
-              {/* Notes Inline */}
+            {/* 2) JOURNEY (with simplified filters) */}
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">Patient journey</h3>
+                <JourneyFilters />
+              </div>
+              <PatientJourneyInline patientId={patientId} height={320} />
+            </div>
+
+            {/* 3) NOTES (with quick-phrases) */}
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">Notes</h3>
+                {userRole !== "hca" && (
+                  <button 
+                    onClick={() => setDrawerOpen("notes")} 
+                    className="px-3 py-1.5 rounded bg-blue-600 text-white"
+                    data-testid="button-write-note"
+                  >
+                    Write note
+                  </button>
+                )}
+              </div>
+              {/* Quick-phrases for notes */}
+              {userRole !== "hca" && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {["Patient settled","Analgesia effective","Family updated"].map(phrase => (
+                    <Chip 
+                      key={phrase} 
+                      onClick={() => setDrawerOpen("notes")}
+                      title={`Quick note: ${phrase}`}
+                    >
+                      {phrase}
+                    </Chip>
+                  ))}
+                </div>
+              )}
               <NotesInline 
                 patientId={patientId}
                 onWriteNote={() => setDrawerOpen("notes")}
               />
-
-              {/* Tasks Panel */}
-              <div className="rounded-xl border p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold">Tasks</h3>
-                  {(userRole === "rn" || userRole === "charge") && (
-                    <button
-                      onClick={() => console.log("Task drawer disabled due to infinite loops")}
-                      className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-500 cursor-not-allowed"
-                      data-testid="button-add-task"
-                      disabled
-                    >
-                      + Add (Disabled)
-                    </button>
-                  )}
-                </div>
-                <div className="text-sm text-red-500 italic">TaskList emergency disabled - infinite loops affecting all patients</div>
-                {/* <TaskList
-                  roleView={userRole === "hca" ? "HCA" : userRole === "rn" ? "RN" : userRole === "charge" ? "Charge" : "RN"}
-                  currentUserId={userRole === "hca" ? "hca-1" : undefined}
-                  filter={taskFilter}
-                  onSelectTaskId={setOpenTaskSheet}
-                /> */}
-              </div>
-
-              {/* Identity Slim (moved to end) */}
-              <IdentitySlim 
-                nhi={nhi ?? undefined} 
-                mrn={mrn ?? undefined} 
-                alerts={alerts} 
-                allergies={allergies} 
-                onAudit={(e)=>{/* wire to audit */}} 
-              />
             </div>
-          </div>
+
+            {/* 4) TASKS */}
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">Tasks</h3>
+                <button 
+                  onClick={() => console.log("View in Task Sheet - disabled")} 
+                  className="px-3 py-1.5 rounded border"
+                  data-testid="button-view-task-sheet"
+                >
+                  View in Task Sheet
+                </button>
+              </div>
+              <div className="text-sm text-red-500 italic">TaskList emergency disabled - infinite loops affecting all patients</div>
+            </div>
+          </section>
         </div>
       </BoardExpandOverlay>
 
