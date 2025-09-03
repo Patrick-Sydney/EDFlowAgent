@@ -2,6 +2,12 @@
 // EWS rule: >=5 → 15m, >=3 → 30m, else 60m
 import { journeyStore } from "@/stores/journeyStore";
 
+export function getArrivalISO(patientId: string): string | null {
+  const evs = journeyStore.list(patientId);
+  const arrival = evs.find(e => e.kind === "arrival");
+  return arrival?.t ?? null;
+}
+
 export function getLatestEws(patientId: string): { ews: number | null; trend: "↑"|"↓"|"="|null } {
   // For now, fall back to journey events since vitalsStore structure needs investigation
   const evs = journeyStore.list(patientId)

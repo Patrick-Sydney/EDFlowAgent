@@ -1,0 +1,483 @@
+heck yes — shipping time. Below is a **clean, compile-ready patch set** that delivers the clinical upgrades we agreed on:
+
+* Status ribbon (Monitoring + Next-Obs + Arrival time, O₂ & Pain when present)
+* Pathway **timers** (ACS/Sepsis)
+* Results capsule (abnormal-first + **Pending(n)**)
+* Care team chips (RN/HCA/MD)
+* Vitals: **sparklines by default** + “Expand timeline”
+* Per-patient Tasks summary
+* Journey card with one chrome only
+* Allergy copy rules (NKDA or hidden)
+
+All code is **read-only against stores**, no setState-in-render, and avoids loops.
+
+---
+
+# 🆕 Add these files
+
+## `lib/ewsAndNextObs.ts`
+
+```ts
+// lib/ewsAndNextObs.ts
+import { useJourneyStore } from "@/stores/journeyStore";
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+export function getArrivalISO(patientId: string): string | null {
+  const ev = useJourneyStore.getState().events.find(e => e.patientId === patientId && e.kind === "arrival");
+  return ev?.t ?? null;
+}
+
+export function getLatestEws(patientId: string): { ews: number | null; trend: "↑"|"↓"|"="|null } {
+  const vitals = (useVitalsStore.getState().byPatient?.(patientId) ?? []).filter(Boolean);
+  const last = vitals.at(-1);
+  const prev = vitals.length > 1 ? vitals.at(-2) : undefined;
+  if (last?.ews != null) {
+    const trend = prev?.ews != null ? (last.ews > prev.ews ? "↑" : last.ews < prev.ews ? "↓" : "=") : null;
+    return { ews: last.ews, trend };
+  }
+  const evs = useJourneyStore.getState().events
+    .filter(e => e.patientId === patientId && (e.kind === "ews_change" || e.kind === "vitals"))
+    .sort((a,b)=> new Date(a.t).getTime() - new Date(b.t).getTime());
+  const lastE = [...evs].reverse().find(e => e.kind === "ews_change");
+  const prevE = [...evs].reverse().find((e,i,arr)=> e.kind==="ews_change" && i>arr.findIndex(x=>x===lastE));
+  const parse = (d?: string) => d ? (d.match(/(\d+)/)?.[1] ? Number(RegExp.$1) : null) : null;
+  const lastVal = parse(lastE?.detail ?? "");
+  const prevVal = parse(prevE?.detail ?? "");
+  const trend = (lastVal!=null && prevVal!=null) ? (lastVal>prevVal?"↑":lastVal<prevVal?"↓":"=") : null;
+  return { ews: lastVal ?? null, trend };
+}
+
+export function nextObsDueISO(patientId: string): string | null {
+  const vitals = (useVitalsStore.getState().byPatient?.(patientId) ?? []).filter(Boolean);
+  const last = vitals.at(-1);
+  const ews = (last?.ews != null ? last.ews : getLatestEws(patientId).ews) ?? 0;
+  const lastISO = last?.t ?? [...useJourneyStore.getState().events].reverse()
+    .find(e => e.patientId === patientId && e.kind === "vitals")?.t;
+  if (!lastISO) return null;
+  const d = new Date(lastISO);
+  d.setMinutes(d.getMinutes() + (ews>=5?15: ews>=3?30:60));
+  return d.toISOString();
+}
+```
+
+## `lib/pathwayTimers.ts`
+
+```ts
+// lib/pathwayTimers.ts
+import { getArrivalISO } from "./ewsAndNextObs";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+export type TimerState = { label: string; state: "due"|"ordered"|"done"; dueAt?: string; tDone?: string };
+
+export function acsTimers(patientId: string): TimerState[] {
+  // ECG due at +10m from arrival unless done
+  const evs = useJourneyStore.getState().events.filter(e => e.patientId === patientId);
+  const got = (q: string) => evs.find(e => (e.label || "").toLowerCase().includes(q));
+  const arrISO = getArrivalISO(patientId);
+  const mkDue = (mins: number) => {
+    if (!arrISO) return undefined;
+    const d = new Date(arrISO); d.setMinutes(d.getMinutes() + mins);
+    return d.toISOString();
+  };
+  const ecgRes = got("ecg");
+  const tropRes = got("trop");
+  const asaAdmin = got("aspirin");
+  const ecg: TimerState = ecgRes ? { label: "ECG", state: "done", tDone: ecgRes.t }
+    : got("order ecg") ? { label: "ECG", state: "ordered", dueAt: mkDue(10) }
+    : { label: "ECG", state: "due", dueAt: mkDue(10) };
+  const trop: TimerState = tropRes ? { label: "Troponin", state: "done", tDone: tropRes.t }
+    : got("order trop") ? { label: "Troponin", state: "ordered" }
+    : { label: "Troponin", state: "due" };
+  const asa: TimerState = asaAdmin ? { label: "Aspirin", state: "done", tDone: asaAdmin.t }
+    : { label: "Aspirin", state: "due" };
+  return [ecg, trop, asa];
+}
+
+export function sepsisTimers(patientId: string): TimerState[] {
+  const evs = useJourneyStore.getState().events.filter(e => e.patientId === patientId);
+  const got = (q: string) => evs.find(e => (e.label || "").toLowerCase().includes(q));
+  const abx = got("antibiot");
+  const lact = got("lactate");
+  return [
+    abx ? { label: "Antibiotics", state: "done", tDone: abx.t } : { label: "Antibiotics", state: "due" },
+    lact ? { label: "Lactate", state: "done", tDone: lact.t } : { label: "Lactate", state: "due" },
+  ];
+}
+```
+
+## `components/patient/HeaderStatusRibbon.tsx`
+
+```tsx
+// components/patient/HeaderStatusRibbon.tsx
+import React from "react";
+import Chip from "@/components/ui/Chip";
+import { getArrivalISO, getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
+
+type Props = {
+  patient: {
+    id: string; name?: string; age?: number|string; nhiMasked?: string;
+    room?: string; ats?: number|string; allergy?: string|null;
+    isolation?: boolean; falls?: boolean; o2Delivery?: string; spo2Target?: string;
+    painScore?: number; painTs?: string;
+  };
+  rightActions?: React.ReactNode;
+};
+
+export default function HeaderStatusRibbon({ patient, rightActions }: Props) {
+  const { ews, trend } = getLatestEws(patient.id);
+  const arrISO = getArrivalISO(patient.id);
+  const nextISO = nextObsDueISO(patient.id);
+
+  const formatHM = (iso?: string | null) => iso ? new Date(iso).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "—";
+
+  return (
+    <header className="sticky top-0 bg-white z-[1] p-4 border-b">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-lg font-semibold truncate">{patient.name ?? "—"}</div>
+          <div className="mt-1 flex flex-wrap gap-2 text-xs">
+            <Chip>Age {patient.age ?? "—"}</Chip>
+            {patient.nhiMasked && <Chip>NHI {patient.nhiMasked}</Chip>}
+            {patient.room && <Chip>Location {patient.room}</Chip>}
+            {arrISO && <Chip>Arrived {formatHM(arrISO)}</Chip>}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Chip tone={ews!=null ? (ews>=5?"critical": ews>=3?"warning":"info") : "default"}>EWS {ews ?? "—"} {trend ?? ""}</Chip>
+            {patient.ats!=null && <Chip>ATS {patient.ats}</Chip>}
+            {patient.o2Delivery && <Chip title="Oxygen delivery">O₂: {patient.o2Delivery}</Chip>}
+            {patient.spo2Target && <Chip>SpO₂ target {patient.spo2Target}</Chip>}
+            {patient.painScore!=null && <Chip title="Pain score">Pain {patient.painScore}{patient.painTs ? ` @ ${formatHM(patient.painTs)}` : ""}</Chip>}
+            {nextISO && (
+              <Chip tone={Date.now() > new Date(nextISO).getTime() ? "critical" : "default"}>
+                Monitoring: next {formatHM(nextISO)}
+              </Chip>
+            )}
+            {patient.allergy && <Chip tone="warning">Allergy: {patient.allergy}</Chip>}
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">{rightActions}</div>
+      </div>
+    </header>
+  );
+}
+```
+
+## `components/patient/PathwayTimers.tsx`
+
+```tsx
+// components/patient/PathwayTimers.tsx
+import React, { useMemo } from "react";
+import Chip from "@/components/ui/Chip";
+import { acsTimers, sepsisTimers, TimerState } from "@/lib/pathwayTimers";
+
+export default function PathwayTimers({ patientId, complaint }:{patientId:string; complaint?:string}) {
+  const lower = (complaint||"").toLowerCase();
+  const isACS = /chest|sob|shortness of breath|acs|ami/.test(lower);
+  const isSepsis = /sepsis|rigor|fever|infection/.test(lower);
+
+  const timers = useMemo(() => {
+    const t: TimerState[] = [];
+    if (isACS) t.push(...acsTimers(patientId));
+    if (isSepsis) t.push(...sepsisTimers(patientId));
+    return t;
+  }, [patientId, isACS, isSepsis]);
+
+  if (!timers.length) return null;
+
+  const fmt = (iso?: string) => iso ? new Date(iso).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : "";
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+      {timers.map(t => (
+        <Chip key={t.label}
+          tone={t.state==="due" ? "warning" : "default"}
+          title={t.state==="done" ? `Done ${fmt(t.tDone)}` : t.dueAt ? `Due ${fmt(t.dueAt)}` : ""}
+        >
+          {t.label}: {t.state==="done" ? "done" : t.state==="ordered" ? "ordered" : "due"}
+        </Chip>
+      ))}
+    </div>
+  );
+}
+```
+
+## `components/patient/ResultsCapsule.tsx` (replace your existing)
+
+```tsx
+// components/patient/ResultsCapsule.tsx
+import React, { useMemo } from "react";
+import Chip from "@/components/ui/Chip";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+type Item = { key: string; label: string; value?: string; flag?: "↑"|"↓"; t?: string; severity: number };
+
+export default function ResultsCapsule({ patientId }: { patientId: string }) {
+  const evs = useJourneyStore(s => s.events).filter(e => e.patientId === patientId);
+
+  const { items, pending } = useMemo(() => {
+    const results = evs.filter(e => e.kind === "result");
+    const orders = evs.filter(e => e.kind === "order");
+    const latest = (q: RegExp) => [...results].reverse().find(e => q.test((e.label||"").toLowerCase()));
+
+    const pick = (key: string, label: string, rx: RegExp, abnormal?: (v:number)=>boolean, fmt?: (x:number)=>string): Item => {
+      const r = latest(rx);
+      if (!r) return { key, label, severity: 0 };
+      const m = (r.detail||"").match(/(-?\d+(\.\d+)?)/);
+      const v = m ? Number(m[1]) : undefined;
+      const abn = (v!=null && abnormal) ? abnormal(v) : false;
+      return {
+        key, label,
+        value: v!=null ? (fmt?fmt(v):String(v)) : undefined,
+        flag: abn ? "↑" : undefined,
+        t: r.t,
+        severity: abn ? 2 : 1
+      };
+    };
+
+    const items: Item[] = [
+      pick("ecg", "ECG", /ecg/),
+      pick("trop", "Troponin", /trop/, v => v>14, v => `${v}`),
+      pick("lact", "Lactate", /lact/, v => v>2, v => `${v}`),
+      pick("ct", "CT", /\bct\b/),
+      pick("cta", "CTA", /cta/),
+    ].sort((a,b)=> b.severity - a.severity);
+
+    const pendingCount = orders
+      .filter(o => !results.some(r => (r.label||"").toLowerCase().includes((o.label||"").toLowerCase())))
+      .length;
+
+    return { items, pending: pendingCount };
+  }, [evs]);
+
+  return (
+    <section className="rounded-lg border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold">Results</div>
+        {pending>0 && <Chip tone="info">Pending {pending}</Chip>}
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        {items.map(i => (
+          <Chip key={i.key} tone={i.flag ? "warning" : "default"} title={i.t ? new Date(i.t).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : ""}>
+            {i.label}: {i.value ?? "—"} {i.flag ?? ""}
+          </Chip>
+        ))}
+      </div>
+    </section>
+  );
+}
+```
+
+## `components/patient/PerVitalSparklines.tsx`
+
+```tsx
+// components/patient/PerVitalSparklines.tsx
+import React, { useMemo } from "react";
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+type V = { t: string; rr?:number; hr?:number; sbp?:number; spo2?:number; temp?:number };
+const Keys = [
+  { k:"rr" as const,  label:"RR",  min:0,  max:40 },
+  { k:"hr" as const,  label:"HR",  min:40, max:160 },
+  { k:"sbp" as const, label:"SBP", min:70, max:200 },
+  { k:"spo2" as const,label:"SpO₂",min:80, max:100 },
+  { k:"temp" as const,label:"Temp",min:34, max:41 },
+];
+
+function Spark({ pts, min, max }: { pts:number[]; min:number; max:number }) {
+  const w=110, h=24;
+  if (pts.length<2) return <svg width={w} height={h}/>;
+  const xs = pts.map((_,i)=> (i/(pts.length-1))*w);
+  const ys = pts.map(v => h - ((v-min)/(max-min))*h);
+  const d = xs.map((x,i)=> `${i?"L":"M"}${x.toFixed(1)},${(ys[i]||0).toFixed(1)}`).join(" ");
+  return (
+    <svg width={w} height={h} className="text-slate-500">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth={1.5}/>
+    </svg>
+  );
+}
+
+export default function PerVitalSparklines({ patientId, hours=8 }:{patientId:string; hours?:number}) {
+  const data = (useVitalsStore(s=> s.byPatient?.(patientId)) ?? []) as V[];
+  const since = Date.now() - hours*3600*1000;
+  const win = data.filter(v => new Date(v.t).getTime() >= since);
+
+  const rows = useMemo(()=> Keys.map(k => {
+    const vals = win.map(v => (v as any)[k.k]).filter((x:number)=> typeof x==="number");
+    return { ...k, vals };
+  }), [win]);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+      {rows.map(r => (
+        <div key={r.k} className="flex items-center justify-between rounded border px-2 py-1">
+          <div className="text-xs font-medium w-12">{r.label}</div>
+          <div className="flex-1"><Spark pts={r.vals as number[]} min={r.min} max={r.max}/></div>
+          <div className="text-xs w-10 text-right">{r.vals.at(-1) ?? "—"}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+## `components/patient/PatientTasksSummary.tsx`
+
+```tsx
+// components/patient/PatientTasksSummary.tsx
+import React, { useMemo } from "react";
+import { useTaskStore } from "@/stores/taskStore";
+import Chip from "@/components/ui/Chip";
+
+export default function PatientTasksSummary({ patientId, onOpenSheet }:{patientId:string; onOpenSheet?:()=>void}) {
+  const tasks = useTaskStore(s => s.tasks);
+  const { pending, overdue, nextDue } = useMemo(() => {
+    const list = Object.values(tasks).filter(t => t.patientId === patientId && t.status === "pending");
+    const now = Date.now();
+    const overdue = list.filter(t => t.dueAt && new Date(t.dueAt).getTime() < now).length;
+    const nextISO = list.map(t => t.dueAt).filter(Boolean).sort()[0];
+    return { pending: list.length, overdue, nextDue: nextISO || null };
+  }, [tasks, patientId]);
+
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold">Tasks</h3>
+        <button onClick={onOpenSheet} className="px-3 py-1.5 rounded border">View in Task Sheet</button>
+      </div>
+      <div className="flex items-center gap-2 text-xs">
+        <Chip tone="default">Pending {pending}</Chip>
+        <Chip tone={overdue>0?"critical":"default"}>Overdue {overdue}</Chip>
+        {nextDue && <Chip>Next due {new Date(nextDue).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</Chip>}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+# ✂️ Update your Patient Card
+
+## `components/patient/PatientCardExpandable.tsx`
+
+Replace the top section and layout wiring with this skeleton (keep your existing drawers/handlers; **no setters in render**):
+
+```tsx
+// imports (add if missing)
+import HeaderStatusRibbon from "@/components/patient/HeaderStatusRibbon";
+import PathwayTimers from "@/components/patient/PathwayTimers";
+import ResultsCapsule from "@/components/patient/ResultsCapsule";
+import PerVitalSparklines from "@/components/patient/PerVitalSparklines";
+import PatientTasksSummary from "@/components/patient/PatientTasksSummary";
+import { useRoleStore } from "@/stores/roleStore";
+
+const role = useRoleStore(s=>s.role);
+const isHCA = role === "HCA";
+
+// ===== Overlay shell (ensure offset & z order) =====
+<div className="fixed inset-0 z-[80] flex justify-center items-start pt-[6%]">
+  <div className="w-[80%] max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+
+    {/* Header ribbon with right-side actions */}
+    <HeaderStatusRibbon
+      patient={{
+        id: patient.id, name: patient.name, age: patient.age, nhiMasked: patient.nhiMasked,
+        room: patient.room, ats: patient.ats, allergy: patient.allergy,
+        isolation: patient.isolation, falls: patient.falls,
+        o2Delivery: patient.o2Delivery, spo2Target: patient.spo2Target,
+        painScore: patient.painScore, painTs: patient.painTs
+      }}
+      rightActions={!isHCA && (
+        <>
+          <button className="px-3 py-1.5 rounded border">Assign room</button>
+          {(role==="RN"||role==="MD") && <button onClick={openObsDrawer} className="px-3 py-1.5 rounded bg-blue-600 text-white">+ Obs</button>}
+          {role==="MD" && <button className="px-3 py-1.5 rounded border">Order set</button>}
+        </>
+      )}
+    />
+
+    {/* Complaint + Pathway timers */}
+    <section className="px-4 pt-3 pb-1">
+      <div className="text-sm font-medium text-slate-700">{patient.complaint ?? "—"}</div>
+      <PathwayTimers patientId={patient.id} complaint={patient.complaint}/>
+    </section>
+
+    {/* Two-column layout */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4">
+      {/* LEFT: Vitals */}
+      <section className="rounded-lg border p-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Vitals</h3>
+          {/* Next-Obs chip comes from Header; keep left header clean */}
+        </div>
+
+        {/* Capsules (your existing row) */}
+        { /* ... existing capsule row ... */ }
+
+        {/* Sparklines + Expand full timeline */}
+        <div className="mt-3">
+          <PerVitalSparklines patientId={patient.id} />
+          <div className="mt-2">
+            <button onClick={()=>setShowTimeline(true)} className="text-xs underline">Expand timeline</button>
+          </div>
+          {showTimeline && (
+            <div className="mt-2">
+              <button onClick={()=>setShowTimeline(false)} className="text-xs underline">Hide timeline</button>
+              <div className="mt-2">
+                <VitalsTimelineInline patientId={patient.id} />
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* RIGHT: Results → Journey → Notes → Tasks summary */}
+      <section className="space-y-3">
+        <ResultsCapsule patientId={patient.id} />
+
+        <div className="rounded-lg border p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">Patient journey</h3>
+            <JourneyFilters /> {/* your simplified control */}
+          </div>
+          <PatientJourneyInline patientId={patient.id} showHeader={false} showTypeChips={false} showWindowChips={false} chrome="flat"/>
+        </div>
+
+        <div className="rounded-lg border p-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">Notes</h3>
+            {!isHCA && <button onClick={()=>openNotesDrawer()} className="px-3 py-1.5 rounded bg-blue-600 text-white">Write note</button>}
+          </div>
+          {notes?.length ? (
+            <ul className="text-sm text-slate-700 space-y-1">{notes.slice(-2).map(n => <li key={n.id} className="truncate">{n.text}</li>)}</ul>
+          ) : <div className="text-sm text-slate-500">No notes yet.</div>}
+          {!isHCA && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {["Patient settled","Analgesia effective","Family updated"].map(q => <Chip key={q} onClick={()=>openNotesDrawer(q)}>{q}</Chip>)}
+            </div>
+          )}
+        </div>
+
+        <PatientTasksSummary patientId={patient.id} onOpenSheet={()=>openTaskSheetForPatient?.(patient.id)} />
+      </section>
+    </div>
+  </div>
+</div>
+```
+
+> Keep your existing `useState` for `showTimeline` **only** toggled by click handlers (no auto-opens in render).
+
+---
+
+# ✅ Behaviour notes
+
+* **Header ribbon** concentrates the “what matters now”: identity, arrival, **EWS + trend**, **Monitoring next**, O₂, Pain, ATS, Allergy.
+* **Pathway timers** flip between Due / Ordered / Done; ACS + Sepsis based on complaint text.
+* **Results** shows abnormal items first with values and **Pending(n)**.
+* **Vitals**: fast sparklines by default; expand full timeline when needed.
+* **Tasks**: per-patient summary is lightweight and won’t loop; the bottom-sheet Task view remains your action surface.
+* **Journey**: one border only (`chrome="flat"` inside), your simplified filters remain the only chips.
+
+---
+
+If any selector names differ slightly in your repo (e.g., `byPatient` in `vitalsStore`), keep the structure and swap the calls—they’re read-only and won’t affect app state.
