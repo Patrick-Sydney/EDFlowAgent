@@ -396,11 +396,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 } : undefined} 
               />
 
-              {/* Inline combined vitals timeline */}
-              <VitalsTimelineInline
+              {/* Inline combined vitals timeline - DEBUGGING */}
+              <div className="text-sm text-red-500 italic">VitalsTimelineInline disabled for debugging</div>
+              {/* <VitalsTimelineInline
                 patientId={patientId}
                 height={280}
-              />
+              /> */}
 
               {/* Tasks Mini (if any) */}
               {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
