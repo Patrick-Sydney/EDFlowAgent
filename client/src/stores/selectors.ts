@@ -1,8 +1,26 @@
 // stores/selectors.ts
-import { useJourneyStore } from "./journeyStore";
+import { useJourneyStore } from "@/stores/journeyStore";
 
-export const useCurrentRoom = (patientId: string) =>
-  useJourneyStore((s) => s.currentRoomById[patientId]);
+export const useCurrentRoom = (patientId: string) => {
+  return useJourneyStore((s) => {
+    const ev = [...s.events].reverse().find(e =>
+      e.patientId === patientId &&
+      (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location")
+    );
+    return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
+  });
+};
 
-export const usePhase = (patientId: string) =>
-  useJourneyStore((s) => s.phaseById[patientId] ?? "Waiting");
+export const usePhase = (patientId: string) => {
+  return useJourneyStore((s) => {
+    let phase = "Waiting";
+    for (const ev of s.events) {
+      if (ev.patientId !== patientId) continue;
+      if (ev.kind === "triage") phase = "In Triage";
+      if (ev.kind === "room_change") phase = "Roomed";
+      if (ev.kind === "order" && phase === "Roomed") phase = "Diagnostics";
+      if (ev.kind === "result" && phase === "Diagnostics") phase = "Review";
+    }
+    return phase;
+  });
+};

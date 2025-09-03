@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useJourney, JourneyEvent, useJourneyStore } from "../../stores/journeyStore";
+import { useJourneyStore, JourneyEvent } from "@/stores/journeyStore";
 import clsx from "clsx";
 
 type Props = { 

@@ -1,0 +1,204 @@
+You’re seeing three different states because the **room save never reaches the same Journey store** your Patient Card/Journey is reading. The collapsed card likely reads a roster store (so it changed), but the expanded header + Journey both read `useJourneyStore(...events)`, which is still `0` (your debug chip shows that).
+
+Let’s fix it so the **exact click** in your existing drawer writes a `room_change` to the **one** Journey store instance, and everything updates instantly.
+
+---
+
+# 1) Make the Journey store a true singleton (and immutable)
+
+**`/src/stores/journeyStore.ts`** — replace the export with this pattern so all imports share one instance and rerender on updates:
+
+```ts
+import { create, type StoreApi, type UseBoundStore } from "zustand";
+
+export type JourneyEvent = {
+  id: string;
+  patientId: string;
+  t: string;
+  kind: string;
+  label?: string;
+  detail?: any;
+  actor?: string;
+  severity?: "info"|"warn"|"crit";
+  ref?: string;
+};
+
+type JourneyState = {
+  events: JourneyEvent[];
+  append: (ev: JourneyEvent) => void;
+  hydrate: (evs: JourneyEvent[]) => void;
+};
+
+// ensure single instance even under HMR
+let store: UseBoundStore<StoreApi<JourneyState>> =
+  (globalThis as any).__EDFLOW_JOURNEY__;
+
+if (!store) {
+  store = create<JourneyState>((set) => ({
+    events: [],
+    append: (ev) => set((s) => ({ events: [...s.events, ev] })),   // immutable
+    hydrate: (evs) => set(() => ({ events: [...evs] })),           // immutable
+  }));
+  (globalThis as any).__EDFLOW_JOURNEY__ = store;
+  // dev visibility
+  if (import.meta?.env?.MODE !== "production") {
+    console.info("[journeyStore] singleton created");
+  }
+}
+
+export const useJourneyStore = store;
+```
+
+> **Important:** everywhere else, import **exactly** from `"@/stores/journeyStore"` (not relative paths). Do a quick project-wide find/replace for `from "../stores/journeyStore"` or similar.
+
+---
+
+# 2) Wire your existing drawer’s **Assign** button to append the event
+
+Keep your UI and room list. Just add this handler:
+
+```tsx
+// components/room/RoomAssignDrawer.tsx (your current drawer)
+import { useJourneyStore } from "@/stores/journeyStore";
+
+function handleAssign(patientId: string, selectedRoom: string, onClose: () => void) {
+  if (!patientId || !selectedRoom?.trim()) return;
+
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId,
+    t: new Date().toISOString(),
+    kind: "room_change",       // what the readers look for
+    label: selectedRoom.trim(),
+    actor: "Charge RN",
+    detail: "Assigned",
+  });
+
+  // optional: keep collapsed chip in sync if it reads roster
+  try {
+    // adjust to your roster store API if different
+    // usePatientsStore.getState().update(patientId, { room: selectedRoom.trim() });
+  } catch {}
+
+  // close after state update is queued
+  queueMicrotask(onClose);
+
+  // dev debug
+  console.debug("[AssignRoom] saved", { patientId, room: selectedRoom });
+}
+```
+
+Bind it to your existing button:
+
+```tsx
+<button
+  type="button"
+  onClick={() => handleAssign(patientId, selectedRoom, onClose)}
+  className="px-3 py-2 rounded bg-slate-900 text-white"
+>
+  Assign room
+</button>
+```
+
+If your click still doesn’t fire, raise the drawer container z-index (e.g., `z-[98]`) or render it via `createPortal(document.body)` so the Patient Card overlay can’t intercept the click.
+
+---
+
+# 3) Read the **live room** from Journey in the expanded header
+
+Replace any `patient.room` in the expanded view with this selector:
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+const liveRoom = useJourneyStore((s) => {
+  const ev = [...s.events].reverse().find(
+    e =>
+      e.patientId === patient.id &&
+      (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location")
+  );
+  return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
+});
+
+// ...
+<Chip>Location {liveRoom ?? "—"}</Chip>
+```
+
+Your debug chip will then reflect the same store; `evs` should increment when you click Assign.
+
+---
+
+# 4) Move the card to **Roomed** by deriving phase from Journey
+
+Where you build lane lists:
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+type Phase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Review";
+
+const phaseById = useJourneyStore((s) => {
+  const map: Record<string, Phase> = {};
+  roster.forEach(p => (map[p.id] = "Waiting"));
+  for (const ev of s.events) {
+    const pid = ev.patientId;
+    if (!(pid in map)) continue;
+    if (ev.kind === "triage") map[pid] = "In Triage";
+    if (ev.kind === "room_change" || ev.kind === "room_assigned" || ev.kind === "encounter.location")
+      map[pid] = "Roomed";
+    if (ev.kind === "order"  && map[pid]==="Roomed")       map[pid] = "Diagnostics";
+    if (ev.kind === "result" && map[pid]==="Diagnostics")  map[pid] = "Review";
+  }
+  return map;
+});
+
+// then filter roster by map[...] for each lane
+```
+
+> If you memoize the lane arrays, include `phaseById` in dependencies. A stale `useMemo(...,[roster])` will keep patients in the wrong lane.
+
+---
+
+# 5) Ensure Patient Journey **subscribes** and **includes Moves**
+
+`PatientJourneyInline` needs to read `useJourneyStore(s => s.events)` and your outer filter should default to **“All”** so `room_change` is visible immediately. If your component had an internal header/filters, you can keep them hidden and pass `mode="All"`/`windowHours=8` from the Patient Card.
+
+Minimal rendering snippet inside `PatientJourneyInline`:
+
+```tsx
+const events = useJourneyStore(s => s.events);
+const filtered = useMemo(() => {
+  const cutoff = Date.now() - windowHours*3600*1000;
+  const moveKinds = new Set(["arrival","triage","room_change","room_assigned","encounter.location","communication"]);
+  const clinicalKinds = new Set(["vitals","ews_change","order","result","med_admin","note","task","alert"]);
+  return events
+    .filter(e => e.patientId === patientId)
+    .filter(e => new Date(e.t).getTime() >= cutoff)
+    .filter(e =>
+      mode === "All" ? true :
+      mode === "Moves" ? moveKinds.has(e.kind) :
+      clinicalKinds.has(e.kind)
+    )
+    .sort((a,b) => new Date(b.t).getTime() - new Date(a.t).getTime());
+}, [events, patientId, mode, windowHours]);
+```
+
+---
+
+## 10-second verification
+
+1. In the drawer’s Assign button, you should see `console.debug("[AssignRoom] saved", …)` on click.
+2. Your header debug (`evs`) should increment (e.g., from 0 → 1).
+3. Expanded header chip: **Location Room 9** immediately.
+4. Journey (mode **All**): top row like `ROOM CHANGED  Room 9`.
+5. Card moves to **Roomed** lane.
+
+If (1) logs but (2) stays at `evs 0`, you still have **two different import paths** for the store. Do a project-wide search and ensure there’s only **one**:
+
+```ts
+import { useJourneyStore } from "@/stores/journeyStore";
+```
+
+(That’s exactly why we implemented the singleton guard, but unifying imports is still best.)
+
+This will get Sione Fakatou’s expanded chip, lane, and Journey updating off the same event—no more split state.

@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 import { Task } from "../tasks/types";
-import { journeyStore } from "./journeyStore";
+import { journeyStore } from "@/stores/journeyStore";
 
 type TaskFilter = {
   assignedTo?: string;

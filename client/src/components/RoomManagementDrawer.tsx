@@ -115,7 +115,7 @@ export default function RoomManagementDrawer() {
         t: new Date().toISOString(),
         kind: "room_change",
         label: selected.id,
-        actor: { name: "Charge RN", role: "RN" },
+        actor: "Charge RN",
         detail: isReassign ? "Reassigned" : "Assigned",
       });
 
