@@ -251,6 +251,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : s.slice(0,26) + '…';
   }, [name]);
 
+  // Memoize patient summary function to prevent infinite re-renders in TaskCardSheet
+  const getPatientSummary = useMemo(() => (pid: string) => ({
+    id: String(patientId),
+    displayName: displayName,
+    age: age,
+    sex: sex,
+    room: localLocationLabel ?? locationLabel ?? undefined,
+    ats: ats,
+    ews: typeof ews === 'number' ? ews : (ews as any)?.score,
+    arrivalTs: arrivalTs
+  }), [patientId, displayName, age, sex, localLocationLabel, locationLabel, ats, ews, arrivalTs]);
+
   const handlePrimary = () => {
     if (onPrimary) return onPrimary();
     const label = (primaryLabel || "").toLowerCase();
@@ -614,16 +626,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         <TaskCardSheet
           taskId={openTaskSheet}
           onClose={() => setOpenTaskSheet(null)}
-          getPatientSummary={(pid) => ({
-            id: String(patientId),
-            displayName: displayName,
-            age: age,
-            sex: sex,
-            room: localLocationLabel ?? locationLabel ?? undefined,
-            ats: ats,
-            ews: typeof ews === 'object' ? ews?.score : ews,
-            arrivalTs: arrivalTs
-          })}
+          getPatientSummary={getPatientSummary}
           currentUserId={userRole === "hca" ? "hca-1" : undefined}
           readOnly={userRole === "hca"}
         />
