@@ -31,9 +31,16 @@ if (!store) {
     hydrate: (evs) => set(() => ({ events: [...evs] })),           // immutable
   }));
   (globalThis as any).__EDFLOW_JOURNEY__ = store;
-  // dev visibility
+  // dev visibility  
   if (import.meta?.env?.MODE !== "production") {
-    console.info("[journeyStore] singleton created");
+    console.info("[journeyStore] singleton created v2");
+    store.subscribe((s) => {
+      console.debug("[journeyStore] events:", s.events.length, "last:", s.events.at(-1)?.kind);
+    });
+    (window as any).EDJourney = {
+      get: () => store.getState(),
+      append: (ev: JourneyEvent) => store.getState().append(ev),
+    };
   }
 }
 
