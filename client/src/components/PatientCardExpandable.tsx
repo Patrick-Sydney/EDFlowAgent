@@ -12,7 +12,7 @@ import AlertsRibbon, { AlertFlags } from "./patient/AlertsRibbon";
 import ActionBar from "./patient/ActionBar";
 import ClinicalSnapshot from "./patient/ClinicalSnapshot";
 import ResultsCapsule from "./patient/ResultsCapsule";
-import PathwayClocks from "./patient/PathwayClocks";
+// import PathwayClocks from "./patient/PathwayClocks";
 import TasksMini, { TaskItem } from "./patient/TasksMini";
 import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
@@ -430,7 +430,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           <div className="text-sm font-medium text-slate-700">
             {complaint ?? "—"}
           </div>
-          <PathwayClocks patientId={String(patientId)} complaint={complaint} />
+          {/* <PathwayClocks patientId={String(patientId)} complaint={complaint} /> */}
           {/* <PathwayTimers patientId={String(patientId)} complaint={complaint} /> */}
         </section>
 
