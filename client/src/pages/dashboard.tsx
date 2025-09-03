@@ -5,7 +5,7 @@ import { StatsBar } from "@/components/StatsBar";
 import { PatientLane } from "@/components/PatientLane";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { sseManager } from "@/lib/sse";
-import { useRoomsIndex } from "@/stores/roomsIndexStore";
+import { usePhaseMap } from "@/hooks/useRoomAndPhase";
 import { type Encounter, LANES } from "@shared/schema";
 import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
@@ -105,8 +105,8 @@ export default function Dashboard() {
   }, [data, config, setEncounters, setDemoMode, setRoleView]);
 
   const getEncountersByLane = useDashboardStore((state) => state.getEncountersByLane);
-  const phaseById = useRoomsIndex((s) => s.phaseById);
-  const version = useRoomsIndex((s) => s.version);
+  const ids = encounters.map(p => String(p.id));
+  const phaseById = usePhaseMap(ids);
   
   // Calculate time since arrival for each patient
   const calculateWaitingTime = (arrivalTime: Date) => {
@@ -509,7 +509,7 @@ export default function Dashboard() {
               {filteredLanes.map(lane => {
                 // Filter encounters by live phase map for instant reactivity
                 const phaseFilteredEncounters = encounters.filter(enc => {
-                  const phase = phaseById[enc.id] ?? "Waiting";
+                  const phase = phaseById[String(enc.id)] ?? "Waiting";
                   // Map phases to lane names
                   const phaseToLane: Record<string, string> = {
                     "Waiting": "waiting",

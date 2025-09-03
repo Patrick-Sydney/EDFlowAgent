@@ -73,16 +73,9 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
   events: [],
   currentRoomById: {},
   phaseById: {},
-  append: (ev) => {
-    const events = [...get().events, ev];
-    const idx = buildIndexes(events);
-    set({ events, ...idx }); // header & lanes react immediately
-    window.dispatchEvent(new CustomEvent("journey:updated", { detail: { patientId: ev.patientId }}));
-  },
-  hydrate: (evs) => {
-    const idx = buildIndexes(evs);
-    set({ events: evs, ...idx });
-  },
+  append: (ev) =>
+    set((s) => ({ events: [...s.events, ev] })),
+  hydrate: (evs) => set({ events: [...evs] }),
 }));
 
 export const journeyStore = {

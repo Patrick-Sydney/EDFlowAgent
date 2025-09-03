@@ -21,7 +21,7 @@ import SegmentedComponent from "./ui/Segmented";
 import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { useCurrentRoom } from "@/stores/selectors";
-import { useRoomsIndex } from "@/stores/roomsIndexStore";
+import { useRoomAndPhase } from "@/hooks/useRoomAndPhase";
 // import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
 // import PathwayTimers from "./patient/PathwayTimers";
 // import PerVitalSparklines from "./patient/PerVitalSparklines";
@@ -264,8 +264,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const currentRoom = useCurrentRoom(String(patientId));
-  const liveRoom = useRoomsIndex((s) => s.roomById[String(patientId)]);
-  const livePhase = useRoomsIndex((s) => s.phaseById[String(patientId)] ?? "Waiting");
+  const { room, phase } = useRoomAndPhase(String(patientId));
   
   // Sync location label only when props change, not on every render
   useEffect(() => {
@@ -360,8 +359,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <div className="mt-1 flex flex-wrap gap-2 text-xs">
                 <Chip>Age {age ?? "—"}</Chip>
                 <Chip>NHI {maskTail(nhi, 3)}</Chip>
-                <Chip>Location {liveRoom ?? currentRoom ?? status ?? "—"}</Chip>
-                <Chip tone="info" title="Debug">{livePhase}</Chip>
+                <Chip>Location {room ?? currentRoom ?? status ?? "—"}</Chip>
+                <Chip tone="info" title="Debug">Debug: {phase} / {room ?? "-"}</Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">

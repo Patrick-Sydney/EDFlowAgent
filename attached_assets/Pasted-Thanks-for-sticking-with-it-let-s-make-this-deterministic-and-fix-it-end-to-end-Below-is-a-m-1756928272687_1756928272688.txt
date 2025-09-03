@@ -1,0 +1,224 @@
+Thanks for sticking with it — let’s make this deterministic and fix it end-to-end.
+
+Below is a **minimal, bullet-proof wiring** that guarantees:
+
+* The **header “Location” chip updates instantly** after assigning a room.
+* The patient **moves to the “Roomed” lane immediately**.
+
+This does **three** things only:
+
+1. Makes `journeyStore.append` immutable (so React re-renders).
+2. Provides **single-file hooks** to derive the live **room & phase** from Journey events.
+3. Uses those hooks in the **header** and the **lanes**.
+
+---
+
+# 1) Make Journey updates immutable (critical)
+
+**`stores/journeyStore.ts` – replace `append` (and `hydrate` if needed)**
+
+```ts
+// BEFORE (likely mutating):
+// append: (ev) => set(s => { s.events.push(ev); return s; })
+
+// AFTER (immutable + event bus friendly):
+append: (ev) =>
+  set((s) => ({ events: [...s.events, ev] })),
+
+// (Optional, but recommended) make hydrate immutable too:
+hydrate: (evs) => set({ events: [...evs] }),
+```
+
+> If `append` **mutates** the existing array (e.g., `push`) React subscribers **won’t re-render**. The change above fixes that.
+
+---
+
+# 2) Drop-in hooks to **derive room & phase** (no extra stores)
+
+**`hooks/useRoomAndPhase.ts` (new)**
+
+```ts
+import { useMemo } from "react";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+/** Robustly extract a room label from a Journey event */
+function extractRoom(ev: any): string | undefined {
+  // Try several common places
+  if (typeof ev?.label === "string" && ev.label.trim()) return ev.label.trim();
+  if (typeof ev?.detail === "string" && ev.detail.trim()) return ev.detail.trim();
+  if (ev?.detail?.room) return String(ev.detail.room);
+  // Fallback: parse "Room 12" from free text
+  const txt = `${ev?.label ?? ""} ${ev?.detail ?? ""}`.toLowerCase();
+  const m = txt.match(/room\s*([a-z0-9\-]+)/i);
+  return m ? `Room ${m[1]}` : undefined;
+}
+
+export type LanePhase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Review";
+
+/** Live room+phase for a single patient */
+export function useRoomAndPhase(patientId: string): { room?: string; phase: LanePhase } {
+  const events = useJourneyStore(s => s.events); // re-renders when immutable array changes
+
+  return useMemo(() => {
+    let room: string | undefined = undefined;
+    let phase: LanePhase = "Waiting";
+    for (const ev of events) {
+      if (ev.patientId !== patientId) continue;
+      switch (ev.kind) {
+        case "triage":
+          phase = "In Triage";
+          break;
+        case "room_change":
+        case "room_assigned":
+        case "encounter.location":
+          room = extractRoom(ev) ?? room;
+          phase = "Roomed";
+          break;
+        case "order":
+          if (phase === "Roomed") phase = "Diagnostics";
+          break;
+        case "result":
+          if (phase === "Diagnostics") phase = "Review";
+          break;
+        default:
+          break;
+      }
+    }
+    return { room, phase };
+  }, [events, patientId]);
+}
+
+/** Live phase map for a roster (efficient for lanes) */
+export function usePhaseMap(patientIds: string[]): Record<string, LanePhase> {
+  const events = useJourneyStore(s => s.events);
+  return useMemo(() => {
+    const map: Record<string, LanePhase> = {};
+    for (const id of patientIds) map[id] = "Waiting";
+    for (const ev of events) {
+      const pid = ev.patientId;
+      if (!pid || !(pid in map)) continue;
+      switch (ev.kind) {
+        case "triage":
+          map[pid] = "In Triage"; break;
+        case "room_change":
+        case "room_assigned":
+        case "encounter.location":
+          map[pid] = "Roomed"; break;
+        case "order":
+          if (map[pid] === "Roomed") map[pid] = "Diagnostics"; break;
+        case "result":
+          if (map[pid] === "Diagnostics") map[pid] = "Review"; break;
+      }
+    }
+    return map;
+  }, [events, patientIds.join("|")]);
+}
+```
+
+---
+
+# 3) Use the hooks where it matters
+
+## A) **Header chip** → live room
+
+**`components/patient/PatientCardExpandable.tsx` (or `HeaderStatusRibbon.tsx`)**
+
+```tsx
+import { useRoomAndPhase } from "@/hooks/useRoomAndPhase";
+
+// inside component:
+const { room /*, phase */ } = useRoomAndPhase(patient.id);
+
+// Replace any static `patient.room` chip with this:
+<Chip>Location {room ?? "—"}</Chip>
+```
+
+That’s it. When you save the room in the drawer, the header updates instantly.
+
+---
+
+## B) **Assign Room drawer** → ensure we append the right event
+
+**`components/room/RoomAssignDrawer.tsx` (save handler)**
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+function onSave(roomLabel: string) {
+  const { patientId, onClose } = props;
+
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId,
+    t: new Date().toISOString(),
+    kind: "room_change",       // <- key that our hook listens for
+    label: roomLabel,          // <- room name goes here
+    actor: "Charge RN",
+    detail: "Assigned",
+  });
+
+  queueMicrotask(onClose);
+}
+```
+
+> If your event uses a different `kind`, it’s okay — the hook tolerates `room_assigned` and `encounter.location` too.
+
+---
+
+## C) **Lanes** → live phase map (auto-move to Roomed)
+
+**`components/lanes/Lanes.tsx` (or wherever lane arrays are built)**
+
+```tsx
+import { usePhaseMap } from "@/hooks/useRoomAndPhase";
+
+export default function Lanes() {
+  const roster = usePatientsRoster(); // [{id, ...}, ...]
+  const ids = roster.map(p => p.id);
+  const phaseById = usePhaseMap(ids);
+
+  const waiting = roster.filter(p => (phaseById[p.id] ?? "Waiting") === "Waiting");
+  const triage  = roster.filter(p => phaseById[p.id] === "In Triage");
+  const roomed  = roster.filter(p => phaseById[p.id] === "Roomed");
+  const diag    = roster.filter(p => phaseById[p.id] === "Diagnostics");
+  const review  = roster.filter(p => phaseById[p.id] === "Review");
+
+  // render columns...
+}
+```
+
+> ⚠️ If you memoize the lane lists, make sure `phaseById` is in your dependency list. A common bug is `useMemo(...,[roster])` which prevents movement.
+
+---
+
+# 4) Two ultra-fast diagnostics (remove after)
+
+### Header debug chip
+
+```tsx
+const { room, phase } = useRoomAndPhase(patient.id);
+<Chip tone="info">Debug: {phase} / {room ?? "-"}</Chip>
+```
+
+### Console check in drawer
+
+```ts
+console.debug("[assign-room] append", { patientId, roomLabel, when: new Date().toISOString() });
+```
+
+You should see the debug log, the **Debug chip** jump to `Roomed`, and the card **move lanes**.
+
+---
+
+## Why this fixes your case
+
+* **Immutable append** guarantees Zustand subscribers re-render.
+* **Selector-based derivation** (the hook) guarantees the header and lanes always reflect the latest events — no reliance on stale `patient` props.
+* **No extra stores, no cyclic effects, no background polling.** Just pure selectors over a new array each time.
+
+If you paste exactly these changes and it *still* doesn’t move, the only remaining culprits are:
+
+* The room drawer isn’t calling `onSave`, or
+* `journeyStore.append` still mutates in place.
+
+Both are caught by the debug steps above.
