@@ -19,17 +19,18 @@ type Props = {
 };
 
 export default function TaskList({ roleView, currentUserId, filter, onSelectPatient, onSelectTaskId }: Props) {
-  // Get the tasks directly instead of the list function to prevent infinite loops
-  const allTasks = useTaskStore(s => s.tasks);
+  // CRITICAL FIX: Only subscribe to tasks for THIS specific patient to prevent cascade re-renders
+  const patientTasks = useTaskStore(s => {
+    if (!filter?.patientId) return Object.values(s.tasks);
+    // Only get tasks for this patient - prevents all patient cards from re-rendering
+    return Object.values(s.tasks).filter(t => t.patientId === filter.patientId);
+  });
 
   const tasks = useMemo(() => {
-    // Convert tasks object to array and apply filters directly
-    let arr = Object.values(allTasks);
+    // Start with patient-specific tasks (already filtered by patientId)
+    let arr = [...patientTasks];
     
-    // Apply basic filters
-    if (filter?.patientId) {
-      arr = arr.filter(t => t.patientId === filter.patientId);
-    }
+    // Apply additional filters
     if (filter?.status) {
       if (filter.status === "overdue") {
         arr = arr.filter(t => {
@@ -60,7 +61,7 @@ export default function TaskList({ roleView, currentUserId, filter, onSelectPati
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     return arr;
-  }, [allTasks, roleView, filter, currentUserId]);
+  }, [patientTasks, roleView, filter, currentUserId]);
 
   return (
     <div className="flex flex-col gap-2">

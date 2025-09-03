@@ -220,6 +220,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     const pid = String(patientId);
     return { patientId: pid };
   }, [patientId]);
+  
 
   // Role awareness (RN-only actions)
   const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
@@ -396,12 +397,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 } : undefined} 
               />
 
-              {/* Inline combined vitals timeline - DEBUGGING */}
-              <div className="text-sm text-red-500 italic">VitalsTimelineInline disabled for debugging</div>
-              {/* <VitalsTimelineInline
+              {/* Inline combined vitals timeline */}
+              <VitalsTimelineInline
                 patientId={patientId}
                 height={280}
-              /> */}
+              />
 
               {/* Tasks Mini (if any) */}
               {tasks && tasks.length > 0 && <TasksMini tasks={tasks} onOpen={() => console.log("Open task board")} />}
