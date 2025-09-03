@@ -26,6 +26,7 @@ import PatientIdentitySheet, { PatientIdentity } from "@/components/PatientIdent
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { assignRoomEvent } from "@/lib/rooming";
+import { useJourneyStore } from "@/stores/journeyStore";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView, resetDemo, demoMode } = useDashboardStore();
