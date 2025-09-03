@@ -211,15 +211,15 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes" | "register">(false);
-  const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
-  const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
+  // DISABLED: Task-related state causing infinite loops
+  // const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
+  // const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
   
-  // Memoize task filter to prevent infinite re-renders
-  const taskFilter = useMemo(() => {
-    // Convert to string to ensure stable comparison
-    const pid = String(patientId);
-    return { patientId: pid };
-  }, [patientId]);
+  // DISABLED: Task filter causing infinite loops - remove for now
+  // const taskFilter = useMemo(() => {
+  //   const pid = String(patientId);
+  //   return { patientId: pid };
+  // }, [patientId]);
   
 
   // Role awareness (RN-only actions)
@@ -425,20 +425,22 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   <h3 className="text-sm font-semibold">Tasks</h3>
                   {(userRole === "rn" || userRole === "charge") && (
                     <button
-                      onClick={() => setOpenTaskDrawer(true)}
-                      className="text-xs px-2 py-1 rounded bg-blue-100 hover:bg-blue-200 text-blue-700"
+                      onClick={() => console.log("Task drawer disabled due to infinite loops")}
+                      className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-500 cursor-not-allowed"
                       data-testid="button-add-task"
+                      disabled
                     >
-                      + Add
+                      + Add (Disabled)
                     </button>
                   )}
                 </div>
-                <TaskList
+                <div className="text-sm text-red-500 italic">TaskList emergency disabled - infinite loops affecting all patients</div>
+                {/* <TaskList
                   roleView={userRole === "hca" ? "HCA" : userRole === "rn" ? "RN" : userRole === "charge" ? "Charge" : "RN"}
                   currentUserId={userRole === "hca" ? "hca-1" : undefined}
                   filter={taskFilter}
                   onSelectTaskId={setOpenTaskSheet}
-                />
+                /> */}
               </div>
 
               {/* Results Capsule (if pending) */}
@@ -618,16 +620,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         {drawerOpen === "register" && <RegistrationDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
       </AuthoringDrawer>
 
-      {/* Task Creation Drawer */}
-      <CreateTaskDrawer
+      {/* Task Creation Drawer - DISABLED */}
+      {/* <CreateTaskDrawer
         isOpen={openTaskDrawer}
         onClose={() => setOpenTaskDrawer(false)}
         defaultPatientId={String(patientId)}
         defaultOrigin={userRole === "charge" ? "Charge" : "RN"}
-      />
+      /> */}
 
-      {/* Task Card Sheet */}
-      {openTaskSheet && (
+      {/* Task Card Sheet - DISABLED */}
+      {/* {openTaskSheet && (
         <TaskCardSheet
           taskId={openTaskSheet}
           onClose={() => setOpenTaskSheet(null)}
@@ -635,7 +637,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           currentUserId={userRole === "hca" ? "hca-1" : undefined}
           readOnly={userRole === "hca"}
         />
-      )}
+      )} */}
     </div>
   );
 }
