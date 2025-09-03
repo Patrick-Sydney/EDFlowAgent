@@ -18,10 +18,6 @@ export type LanePhase = "Waiting" | "In Triage" | "Roomed" | "Diagnostics" | "Re
 /** Live room+phase for a single patient */
 export function useRoomAndPhase(patientId: string): { room?: string; phase: LanePhase } {
   const events = useJourneyStore(s => s.events); // re-renders when immutable array changes
-  
-  if (patientId === "ABC1001") {
-    console.log("[DEBUG] Hook for Alex (ABC1001) - events count:", events.length, "events:", events);
-  }
 
   return useMemo(() => {
     let room: string | undefined = undefined;

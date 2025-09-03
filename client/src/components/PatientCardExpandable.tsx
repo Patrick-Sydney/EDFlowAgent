@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare } from "lucide-react";
+import { Clock, User, Eye, EyeOff, Copy, QrCode, Info, ShieldAlert, ActivitySquare, Bed } from "lucide-react";
 import StatusStrip, { StatusFlags } from "./patient/StatusStrip";
 import CollapsedCardHeader from "./patient/CollapsedCardHeader";
 import VitalsTimelineDrawerLive from "./patient/VitalsTimelineDrawerLive";
@@ -265,8 +265,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   const currentRoom = useCurrentRoom(String(patientId));
   const { room, phase } = useRoomAndPhase(String(patientId));
-  console.log("[DEBUG] Patient", String(patientId), "hook result:", { room, phase });
-  console.log("[DEBUG] Patient", String(patientId), "currentRoom from useCurrentRoom:", currentRoom);
   
   // Sync location label only when props change, not on every render
   useEffect(() => {
@@ -361,7 +359,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <div className="mt-1 flex flex-wrap gap-2 text-xs">
                 <Chip>Age {age ?? "—"}</Chip>
                 <Chip>NHI {maskTail(nhi, 3)}</Chip>
-                <Chip>Location {room ?? currentRoom ?? status ?? "—"}</Chip>
+                <Chip>
+                  <span className="inline-flex items-center gap-1">
+                    <Bed className="h-3.5 w-3.5" />
+                    Location {room ?? currentRoom ?? status ?? "—"}
+                  </span>
+                </Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">

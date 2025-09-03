@@ -25,8 +25,6 @@ import AppHeaderMobile, { Role } from "@/components/app/AppHeaderMobile";
 import PatientIdentitySheet, { PatientIdentity } from "@/components/PatientIdentitySheet";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { assignRoomEvent } from "@/lib/rooming";
-import { useJourneyStore } from "@/stores/journeyStore";
 
 export default function Dashboard() {
   const { encounters, setEncounters, setDemoMode, roleView, setRoleView, resetDemo, demoMode } = useDashboardStore();
@@ -503,34 +501,6 @@ export default function Dashboard() {
         {/* Room Management Drawer */}
         <RoomManagementDrawer />
         
-        {/* Temporary test button */}
-        <div className="mb-4 px-4 py-2 bg-yellow-100 border-l-4 border-yellow-500">
-          <button 
-            className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
-            onClick={() => {
-              console.log("[DEBUG] Test room assignment button clicked");
-              const firstPatient = encounters[0];
-              if (firstPatient) {
-                console.log("[DEBUG] About to call assignRoomEvent - patient ID:", String(firstPatient.id), "name:", firstPatient.name);
-                assignRoomEvent(String(firstPatient.id), "Room1", "Charge RN");
-                console.log("[DEBUG] assignRoomEvent call completed");
-                
-                // Let's also check the store state after the call
-                setTimeout(() => {
-                  const storeState = useJourneyStore.getState();
-                  console.log("[DEBUG] Store state after assignment:", {
-                    eventsCount: storeState.events.length,
-                    currentRoomById: storeState.currentRoomById,
-                    phaseById: storeState.phaseById
-                  });
-                }, 100);
-              }
-            }}
-          >
-            TEST: Assign {encounters[0]?.name} to Room1
-          </button>
-        </div>
-
         {/* Patient Flow Lanes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
           {/* Mobile: Single column stack, Desktop: Horizontal scroll */}

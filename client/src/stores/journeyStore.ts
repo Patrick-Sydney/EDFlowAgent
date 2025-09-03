@@ -74,7 +74,6 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
   currentRoomById: {},
   phaseById: {},
   append: (ev) => {
-    console.log("[DEBUG] JourneyStore.append called with:", ev);
     set((s) => {
       const newEvents = [...s.events, ev];
       const indexes = buildIndexes(newEvents);
