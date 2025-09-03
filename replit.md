@@ -36,3 +36,14 @@ Uses Drizzle ORM with PostgreSQL schema definitions. The encounters table includ
 - **Validation**: Zod for runtime type validation and schema definition
 - **Date Handling**: date-fns for time calculations and formatting
 - **Development**: Vite with React plugin, TypeScript, and hot module replacement
+
+## Recent Changes
+
+### Latest Update - January 2025
+**Bulletproof Room Assignment & Reactive Lane Movement Implementation**
+- Implemented deterministic immutable Journey store updates for guaranteed React re-renders
+- Created live room/phase derivation hooks (`useRoomAndPhase`, `usePhaseMap`) with robust room extraction
+- Fixed patient card headers to use live selectors instead of stale props
+- Implemented reactive lane classification using live phase mapping
+- Room assignments now trigger instant header updates and automatic lane movement
+- Complete end-to-end reactivity: Journey event → Live hooks → UI updates instantly

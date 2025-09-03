@@ -122,8 +122,6 @@ export default function RoomManagementDrawer() {
         detail: isReassign ? "Reassigned" : "Assigned",
       });
 
-      // Console debug
-      console.debug("[assign-room] append", { patientId: String(enc.id), roomLabel: selected.id, when: new Date().toISOString() });
       
       // The SSE broadcast will automatically update the encounter
       

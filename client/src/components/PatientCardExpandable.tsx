@@ -360,7 +360,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 <Chip>Age {age ?? "—"}</Chip>
                 <Chip>NHI {maskTail(nhi, 3)}</Chip>
                 <Chip>Location {room ?? currentRoom ?? status ?? "—"}</Chip>
-                <Chip tone="info" title="Debug">Debug: {phase} / {room ?? "-"}</Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">
