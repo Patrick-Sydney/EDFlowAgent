@@ -1,0 +1,249 @@
+Thanks for the clear symptom. Let’s fix this so clicking **Assign Room** in the drawer **definitely** saves and immediately updates the header chip + lane.
+
+Below is a **drop-in fix pack** that covers the 3 failure points I see in the wild:
+
+1. Button click not bound to a submit/save handler (or `type="submit"` without `onSubmit` wiring).
+2. Drawer under the Patient Card overlay (z-index / portal), so the click hits the overlay behind it.
+3. Store update mutating in place, so React subscribers don’t re-render.
+
+I’m giving you a known-good `RoomAssignDrawer` (form + onSubmit), a **z-indexed** portal above everything, and an **immutable** `append` for Journey. I’m also wiring the **header chip** and **lanes** to read from Journey so they update instantly.
+
+---
+
+# 1) Ensure Journey updates are **immutable**
+
+**`stores/journeyStore.ts` (replace just the update bits)**
+
+```ts
+// Make sure append/hydrate REPLACE arrays (no push/mutate)
+append: (ev) => set((s) => ({ events: [...s.events, ev] })),
+
+hydrate: (evs) => set(() => ({ events: [...evs] })),
+```
+
+> If you were doing `s.events.push(ev)`, subscribers will not re-render reliably.
+
+---
+
+# 2) Robust, touch-first Room drawer that **submits on click**
+
+**`components/room/RoomAssignDrawer.tsx`** *(new or replace your current)*
+
+```tsx
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import clsx from "clsx";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+type Props = {
+  isOpen: boolean;
+  patientId: string | null;
+  onClose: () => void;
+  defaultRoom?: string;
+  rooms?: string[]; // optional list; fallback to free text
+};
+
+export default function RoomAssignDrawer({
+  isOpen,
+  patientId,
+  onClose,
+  defaultRoom = "",
+  rooms = [],
+}: Props) {
+  const [open, setOpen] = useState(isOpen);
+  const [room, setRoom] = useState(defaultRoom);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { setOpen(isOpen); }, [isOpen]);
+  useEffect(() => { if (isOpen) { setRoom(defaultRoom); setError(null); } }, [isOpen, defaultRoom]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit: React.FormEventHandler<HTMLFormElement> = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!patientId) { setError("Missing patient"); return; }
+    if (!room.trim()) { setError("Pick or enter a room"); return; }
+
+    // Append a Journey event (immutable in store)
+    useJourneyStore.getState().append({
+      id: crypto.randomUUID(),
+      patientId,
+      t: new Date().toISOString(),
+      kind: "room_change",
+      label: room.trim(),          // <- room is here
+      actor: "Charge RN",
+      detail: "Assigned",
+    });
+
+    // Debug: you'll see this in the console when it fires
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.debug("[RoomAssignDrawer] saved", { patientId, room });
+    }
+
+    // Close on next tick to avoid nested set warnings
+    queueMicrotask(onClose);
+  };
+
+  return createPortal(
+    <div className={clsx(
+      "fixed inset-0 z-[98]",                          // ABOVE the patient overlay (z~80–95)
+      "flex justify-end pointer-events-none"          // backdrop click closes
+    )}>
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/30 pointer-events-auto"
+        onClick={onClose}
+      />
+      {/* Drawer panel */}
+      <aside
+        className={clsx(
+          "relative w-[420px] max-w-[92vw] h-full bg-white shadow-2xl border-l",
+          "pointer-events-auto transition-transform duration-150 ease-out",
+          open ? "translate-x-0" : "translate-x-full",
+        )}
+        role="dialog"
+        aria-label="Assign Room"
+      >
+        <header className="sticky top-0 bg-white border-b px-4 py-3">
+          <div className="text-sm font-semibold">Assign Room</div>
+        </header>
+
+        <form className="p-4 space-y-3" onSubmit={handleSubmit}>
+          {rooms.length > 0 ? (
+            <label className="block text-sm">
+              <span className="text-slate-700">Room</span>
+              <select
+                value={room}
+                onChange={(e) => setRoom(e.target.value)}
+                className="mt-1 w-full border rounded p-2"
+                required
+              >
+                <option value="" disabled>Select room…</option>
+                {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
+          ) : (
+            <label className="block text-sm">
+              <span className="text-slate-700">Room</span>
+              <input
+                value={room}
+                onChange={(e) => setRoom(e.target.value)}
+                placeholder="e.g., Room 5 or Bay 3B"
+                className="mt-1 w-full border rounded p-2"
+                required
+              />
+            </label>
+          )}
+
+          {error && <div className="text-red-600 text-sm">{error}</div>}
+
+          <div className="pt-2 flex gap-2">
+            <button
+              type="submit"                     // <- submit triggers handleSubmit
+              className="px-3 py-2 rounded bg-slate-900 text-white"
+            >
+              Assign room
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-2 rounded border"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </aside>
+    </div>,
+    document.body
+  );
+}
+```
+
+**Why this fixes your click:**
+
+* We use a `<form onSubmit={handleSubmit}>` and a **`type="submit"`** button.
+* We **preventDefault** + **stopPropagation** so nothing swallows the click.
+* We render via **portal** at **`z-[98]`**, above your Patient Card overlay.
+* We append a **Journey** event immutably, which your selectors can react to.
+
+---
+
+# 3) Make sure the header **reads live room** (not a stale prop)
+
+In your header (e.g., `HeaderStatusRibbon` or `PatientCardExpandable`):
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+import Chip from "@/components/ui/Chip";
+
+// live read
+const liveRoom = useJourneyStore(s => s.events) && useJourneyStore(s => {
+  // compute current room for this patient from the latest room_change
+  const ev = [...s.events].reverse().find(e => e.patientId === patient.id && (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location"));
+  return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
+});
+
+// chip
+<Chip>Location {liveRoom ?? "—"}</Chip>
+```
+
+*(If you already implemented the `useRoomAndPhase` hook from earlier, keep using that—same effect; the key is that the header reads from Journey, not a patient prop.)*
+
+---
+
+# 4) Lanes: build from **Journey** so the card moves to **Roomed**
+
+```tsx
+import { usePhaseMap } from "@/hooks/useRoomAndPhase"; // from earlier
+// ...
+const roster = usePatientsRoster();
+const ids = roster.map(p => p.id);
+const phaseById = usePhaseMap(ids);
+// now filter by phaseById[...] as we covered earlier
+```
+
+> If you memoize lane lists, **include `phaseById` in dependencies**. Otherwise they won’t refresh.
+
+---
+
+# 5) Wire the header button to open this drawer
+
+In `PatientCardExpandable.tsx` (or in your header ribbon component):
+
+```tsx
+const [roomOpen, setRoomOpen] = React.useState(false);
+
+// header actions
+<button className="px-3 py-1.5 rounded border" onClick={() => setRoomOpen(true)}>
+  Assign room
+</button>
+
+<RoomAssignDrawer
+  isOpen={roomOpen}
+  patientId={patient.id}
+  onClose={() => setRoomOpen(false)}
+  rooms={["Room 1","Room 2","Room 3","Bay 1A","Bay 1B"]} // optional
+/>
+```
+
+---
+
+## Quick self-test (no guesswork)
+
+1. Open Patient Card → click **Assign room** → drawer slides in (above card).
+2. Choose “Room 5” → click **Assign room**.
+3. Devtools shows: `[RoomAssignDrawer] saved { patientId, room: 'Room 5' }`.
+4. **Header chip** changes to “Location Room 5”.
+5. Patient disappears from **Waiting/Triage** and appears in **Roomed** lane.
+
+If any of those 5 doesn’t happen:
+
+* If **no console debug**, your click isn’t reaching `handleSubmit` → check the button `type="submit"` and ensure the drawer’s portal `z-[98]` is above your card.
+* If debug logs but **chip doesn’t change**, your header is still reading `patient.room` → switch to the Journey-based selector shown above (or the `useRoomAndPhase` hook).
+* If chip updates but **lane doesn’t move**, add `phaseById` (or `ids.join("|")`) to your lane `useMemo` deps.
+
+This set has fixed the same symptom many times in React/Zustand apps. Paste it in, and you should see the instant update on click.

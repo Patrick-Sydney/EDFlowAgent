@@ -1,0 +1,135 @@
+Short answer: **no—you don’t need to replace your Room Drawer UI or the room list.**
+Keep your existing drawer exactly as-is; we’ll just wire the **save click** to the Journey store and make the header/lanes read from it.
+
+Here’s the **minimal, drop-in** set of changes:
+
+---
+
+# 0) Make Journey updates re-render (one-liner)
+
+**`stores/journeyStore.ts`**
+
+```ts
+// ensure append is IMMUTABLE so subscribers re-render
+append: (ev) => set((s) => ({ events: [...s.events, ev] })),
+```
+
+---
+
+# 1) Tiny helper to save the room (call this from your current button)
+
+**`lib/rooming.ts`**
+
+```ts
+import { useJourneyStore } from "@/stores/journeyStore";
+
+export function assignRoomEvent(patientId: string, roomLabel: string, actor="Charge RN") {
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId,
+    t: new Date().toISOString(),
+    kind: "room_change",   // tolerated by our readers; keep this
+    label: roomLabel,      // <- room name here
+    actor,
+    detail: "Assigned",
+  });
+}
+```
+
+---
+
+# 2) Wire your EXISTING drawer’s Assign button to save
+
+**In your current Room Drawer component** (keep all your UI & room list):
+
+```tsx
+import { assignRoomEvent } from "@/lib/rooming";
+
+// ...inside your component
+<button
+  type="button"                         // keep it a button; no form needed
+  onClick={() => {
+    if (!patientId || !selectedRoom?.trim()) return;
+    assignRoomEvent(patientId, selectedRoom.trim());
+    queueMicrotask(onClose);            // close after the store updates
+  }}
+  className="px-3 py-2 rounded bg-slate-900 text-white"
+>
+  Assign room
+</button>
+```
+
+> If your click still doesn’t fire (overlay swallowing events), bump your drawer container’s z-index: `className="fixed inset-0 z-[98]"`.
+
+---
+
+# 3) Header chip: read **live** room from Journey (not from `patient.room`)
+
+**Where you render “Location …” in the header:**
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+// compute current room from the latest room_change event
+const liveRoom = useJourneyStore((s) => {
+  const ev = [...s.events].reverse().find(
+    e => e.patientId === patient.id &&
+         (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location")
+  );
+  return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
+});
+
+<Chip>Location {liveRoom ?? "—"}</Chip>
+```
+
+---
+
+# 4) Lanes: flip to **Roomed** when a room is assigned (no UI change)
+
+Use Journey to classify; keep your lane UI.
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+const phaseById = useJourneyStore((s) => {
+  const map: Record<string, "Waiting"|"In Triage"|"Roomed"|"Diagnostics"|"Review"> = {};
+  for (const p of roster) map[p.id] = "Waiting";
+  for (const ev of s.events) {
+    const pid = ev.patientId;
+    if (!map[pid]) continue;
+    if (ev.kind === "triage") map[pid] = "In Triage";
+    if (ev.kind === "room_change" || ev.kind === "room_assigned" || ev.kind === "encounter.location")
+      map[pid] = "Roomed";
+    if (ev.kind === "order"  && map[pid]==="Roomed")       map[pid] = "Diagnostics";
+    if (ev.kind === "result" && map[pid]==="Diagnostics")  map[pid] = "Review";
+  }
+  return map;
+});
+
+// then build lanes from phaseById (no visual change)
+const waiting = roster.filter(p => (phaseById[p.id] ?? "Waiting") === "Waiting");
+const triage  = roster.filter(p => phaseById[p.id] === "In Triage");
+const roomed  = roster.filter(p => phaseById[p.id] === "Roomed");
+// ...
+```
+
+> If you memoize lane arrays, ensure `phaseById` is in the dependency list.
+
+---
+
+## Quick self-test (with your existing UI)
+
+1. Open your Room Drawer → select an existing room from your UI → click **Assign room**.
+2. The console doesn’t need to show anything; the **header chip** should switch to that room **immediately**.
+3. The card should jump from **Waiting/Triage** to **Roomed**.
+
+If the click still doesn’t save: your button’s onClick isn’t firing (z-index), or `selectedRoom` isn’t the value you expect. In that case, log it:
+
+```tsx
+onClick={() => {
+  console.debug("Assign click", { patientId, selectedRoom });
+  // then call assignRoomEvent...
+}}
+```
+
+This approach **keeps your Room Drawer UI and room list intact**—we’re only adding the save call and making the header/lanes listen to Journey so updates are instant.

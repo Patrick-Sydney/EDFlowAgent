@@ -77,8 +77,12 @@ export const useJourneyStore = create<JourneyState>((set, get) => ({
     console.log("[DEBUG] JourneyStore.append called with:", ev);
     set((s) => {
       const newEvents = [...s.events, ev];
-      console.log("[DEBUG] JourneyStore.append - new events array:", newEvents);
-      return { events: newEvents };
+      const indexes = buildIndexes(newEvents);
+      return { 
+        events: newEvents, 
+        currentRoomById: indexes.currentRoomById, 
+        phaseById: indexes.phaseById 
+      };
     });
   },
   hydrate: (evs) => set({ events: [...evs] }),
