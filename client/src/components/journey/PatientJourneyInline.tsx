@@ -49,10 +49,15 @@ export default function PatientJourneyInline({ patientId, className, height = 32
             <button key={h} className={`rounded-full border px-2.5 py-1 text-xs ${windowH===h ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(h as any)}>{h}h</button>
           ))}
           <button className={`rounded-full border px-2.5 py-1 text-xs ${windowH===0 ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(0)}>All</button>
-          <div className="mx-2 h-4 w-px bg-border" />
-          {["all","vitals","ews_change","order","result","med_admin","task","room_change","note","alert","communication","triage","arrival"].map(k => (
-            <button key={k} className={`rounded-full border px-2.5 py-1 text-xs ${(filter===k) ? "bg-background shadow" : "opacity-80"}`} onClick={() => setFilter(k as any)}>{k === "all" ? "All" : KIND_LABEL[k as JourneyEvent["kind"]]}</button>
-          ))}
+          {/* LEGACY FILTER BAR — hide it now that segmented filters are present */}
+          {false && (
+            <>
+              <div className="mx-2 h-4 w-px bg-border" />
+              {["all","vitals","ews_change","order","result","med_admin","task","room_change","note","alert","communication","triage","arrival"].map(k => (
+                <button key={k} className={`rounded-full border px-2.5 py-1 text-xs ${(filter===k) ? "bg-background shadow" : "opacity-80"}`} onClick={() => setFilter(k as any)}>{k === "all" ? "All" : KIND_LABEL[k as JourneyEvent["kind"]]}</button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 

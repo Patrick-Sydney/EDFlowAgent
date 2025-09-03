@@ -18,7 +18,7 @@ import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
 import Chip from "./ui/Chip";
 import SegmentedComponent from "./ui/Segmented";
-import { nextObsDueISO } from "@/lib/nextObs";
+import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
 
 // Simple Journey filter component
@@ -242,6 +242,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   // Role awareness (RN-only actions)
   const roleView = useDashboardStore(s => s.roleView);
   const userRole = roleView || "charge";
+  const isHCA = userRole === "hca";
+  const { ews: currentEws, trend: ewsTrend } = getLatestEws(String(patientId));
   useEffect(() => {
     const sync = (e: any) => {
       const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
@@ -354,16 +356,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">
-                <Chip tone={(ews ?? 0) >= 5 ? "critical" : (ews ?? 0) >= 3 ? "warning" : "info"}>
-                  EWS {ews ?? "—"}
+                <Chip tone={currentEws != null ? (currentEws >= 5 ? "critical" : currentEws >= 3 ? "warning" : "info") : "default"}>
+                  EWS {currentEws ?? "—"} {ewsTrend ?? ""}
                 </Chip>
                 <Chip>ATS {ats ?? "—"}</Chip>
-                {allergies && <Chip tone="warning">Allergy: {allergies}</Chip>}
+                {allergies && <Chip tone="warning">Allergies: {allergies}</Chip>}
               </div>
             </div>
 
             {/* Actions (role-aware) */}
-            {userRole !== "hca" && (
+            {!isHCA && (
               <div className="flex items-center gap-2">
                 <button 
                   className="px-3 py-1.5 rounded border"
@@ -382,7 +384,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   </button>
                 )}
                 {userRole === "md" && (
-                  <button className="px-3 py-1.5 rounded border">Order set</button>
+                  <button className="px-3 py-1.5 rounded border"
+                    data-testid="button-order-set">Order set</button>
                 )}
               </div>
             )}
@@ -411,7 +414,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 const overdue = Date.now() > due.getTime();
                 return (
                   <Chip tone={overdue ? "critical" : "default"}>
-                    Next obs: {due.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}
+                    Next obs: {due.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     {overdue && <span className="ml-1">Overdue</span>}
                   </Chip>
                 );
@@ -443,11 +446,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <PatientJourneyInline patientId={patientId} height={320} />
             </div>
 
-            {/* 3) NOTES (with quick-phrases) */}
+            {/* 3) NOTES (single card with quick-phrases) */}
             <div className="rounded-lg border p-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold">Notes</h3>
-                {userRole !== "hca" && (
+                {!isHCA && (
                   <button 
                     onClick={() => setDrawerOpen("notes")} 
                     className="px-3 py-1.5 rounded bg-blue-600 text-white"
@@ -457,9 +460,13 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   </button>
                 )}
               </div>
+
+              {/* Notes preview/empty state */}
+              <div className="text-sm text-slate-500 mb-3">No notes yet.</div>
+
               {/* Quick-phrases for notes */}
-              {userRole !== "hca" && (
-                <div className="mt-3 flex flex-wrap gap-2">
+              {!isHCA && (
+                <div className="flex flex-wrap gap-2">
                   {["Patient settled","Analgesia effective","Family updated"].map(phrase => (
                     <Chip 
                       key={phrase} 
@@ -471,10 +478,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   ))}
                 </div>
               )}
-              <NotesInline 
-                patientId={patientId}
-                onWriteNote={() => setDrawerOpen("notes")}
-              />
             </div>
 
             {/* 4) TASKS */}

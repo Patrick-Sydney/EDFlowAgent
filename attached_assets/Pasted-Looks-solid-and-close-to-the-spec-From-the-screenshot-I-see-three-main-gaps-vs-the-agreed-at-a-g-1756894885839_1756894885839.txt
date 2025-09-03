@@ -1,0 +1,212 @@
+Looks solid and close to the spec! From the screenshot, I see three main gaps vs. the agreed “at-a-glance” layout:
+
+1. **Identity/Risk chips** aren’t showing values/trend clearly.
+2. **Next obs chip** is missing in Vitals.
+3. **Journey filters** still show the old chip matrix (we wanted the simplified “Clinical | Moves | All” only).
+4. **Notes** is rendered twice (“Write note” appears in two cards).
+5. **Header actions:** RN should see **+Obs** next to **Assign room**.
+
+Below are tight patches to fix all five. They’re scoped and safe (no setters in render; no loops).
+
+---
+
+# 1) Robust EWS + Next-Obs helpers
+
+## `lib/ewsAndNextObs.ts`
+
+```ts
+// Reads from vitalsStore first; falls back to journey events.
+// EWS rule: >=5 → 15m, >=3 → 30m, else 60m
+import { useJourneyStore } from "@/stores/journeyStore";
+import { useVitalsStore } from "@/stores/vitalsStore"; // existing in your repo
+
+export function getLatestEws(patientId: string): { ews: number | null; trend: "↑"|"↓"|"="|null } {
+  // Try vitals store (fast, reliable)
+  const vitals = useVitalsStore.getState().byPatient?.(patientId) ?? [];
+  const last = vitals.at(-1);
+  const prev = vitals.length > 1 ? vitals.at(-2) : undefined;
+  if (last?.ews != null) {
+    let trend: "↑"|"↓"|"="|null = null;
+    if (prev?.ews != null) trend = last.ews > prev.ews ? "↑" : last.ews < prev.ews ? "↓" : "=";
+    return { ews: last.ews, trend };
+  }
+
+  // Fall back to journey (if you log ews_change)
+  const evs = useJourneyStore.getState().events
+    .filter(e => e.patientId === patientId && (e.kind === "ews_change" || e.kind === "vitals"))
+    .sort((a,b)=> new Date(a.t).getTime() - new Date(b.t).getTime());
+  const lastE = [...evs].reverse().find(e => e.kind === "ews_change");
+  const prevE = [...evs].reverse().find((e, i) => e.kind === "ews_change" && i > 0);
+  const parse = (d?: string) => {
+    if (!d) return null;
+    const m = d.match(/(\d+)/);
+    return m ? Number(m[1]) : null;
+  };
+  const lastVal = parse(lastE?.detail ?? "");
+  const prevVal = parse(prevE?.detail ?? "");
+  let trend: "↑"|"↓"|"="|null = null;
+  if (lastVal != null && prevVal != null) trend = lastVal > prevVal ? "↑" : lastVal < prevVal ? "↓" : "=";
+  return { ews: lastVal ?? null, trend };
+}
+
+export function nextObsDueISO(patientId: string): string | null {
+  // Prefer last obs timestamp from vitals store
+  const vitals = useVitalsStore.getState().byPatient?.(patientId) ?? [];
+  const last = vitals.at(-1);
+  let ews = typeof last?.ews === "number" ? last.ews : (getLatestEws(patientId).ews ?? 0);
+  let tISO = last?.t as string | undefined;
+  if (!tISO) {
+    const ev = [...useJourneyStore.getState().events]
+      .reverse().find(e => e.patientId === patientId && e.kind === "vitals");
+    if (!ev) return null;
+    tISO = ev.t;
+  }
+  const base = new Date(tISO);
+  const mins = ews >= 5 ? 15 : ews >= 3 ? 30 : 60;
+  base.setMinutes(base.getMinutes() + mins);
+  return base.toISOString();
+}
+```
+
+---
+
+# 2) Patient Card header chips (values + trend) and actions
+
+In `components/patient/PatientCardExpandable.tsx`, import and use the helpers:
+
+```tsx
+import Chip from "@/components/ui/Chip";
+import ResultsCapsule from "@/components/patient/ResultsCapsule";
+import PathwayClocks from "@/components/patient/PathwayClocks";
+import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
+import { useRoleStore } from "@/stores/roleStore";
+```
+
+Replace your header block with:
+
+```tsx
+const roleView = useRoleStore(s => s.role);
+const isHCA = roleView === "HCA";
+const { ews, trend } = getLatestEws(patient.id);
+
+<header className="sticky top-0 bg-white z-[1] p-4 border-b">
+  <div className="flex items-start justify-between gap-4">
+    <div>
+      <div className="text-lg font-semibold">{patient.name}</div>
+      <div className="mt-1 flex flex-wrap gap-2 text-xs">
+        <Chip>Age {patient.age ?? "—"}</Chip>
+        <Chip>NHI {patient.nhiMasked ?? "•••"}</Chip>
+        <Chip>Room {patient.room ?? "—"}</Chip>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Chip tone={ews != null ? (ews >= 5 ? "critical" : ews >= 3 ? "warning" : "info") : "default"}>
+          EWS {ews ?? "—"} {trend ?? ""}
+        </Chip>
+        <Chip>ATS {patient.ats ?? "—"}</Chip>
+        {patient.allergy && <Chip tone="warning">Allergies: {patient.allergy}</Chip>}
+        {patient.isolation && <Chip tone="warning">Isolation</Chip>}
+        {patient.falls && <Chip tone="warning">Falls risk</Chip>}
+      </div>
+    </div>
+
+    {!isHCA && (
+      <div className="flex items-center gap-2">
+        <button className="px-3 py-1.5 rounded border">Assign room</button>
+        {(roleView === "RN" || roleView === "MD") && (
+          <button onClick={openObsDrawer} className="px-3 py-1.5 rounded bg-blue-600 text-white">+ Obs</button>
+        )}
+        {roleView === "MD" && (
+          <button className="px-3 py-1.5 rounded border">Order set</button>
+        )}
+      </div>
+    )}
+  </div>
+</header>
+```
+
+---
+
+# 3) Vitals header → **Next obs** chip
+
+Still in `PatientCardExpandable.tsx`, inside your Vitals card header:
+
+```tsx
+<div className="flex items-center justify-between">
+  <h3 className="text-sm font-semibold">Vitals</h3>
+  {(() => {
+    const iso = nextObsDueISO(patient.id);
+    if (!iso) return null;
+    const due = new Date(iso);
+    const overdue = Date.now() > due.getTime();
+    return (
+      <Chip tone={overdue ? "critical" : "default"}>
+        Next obs: {due.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        {overdue && <span className="ml-1">Overdue</span>}
+      </Chip>
+    );
+  })()}
+</div>
+```
+
+---
+
+# 4) Journey filters → **hide the legacy chip matrix**
+
+You’ve added the new segmented control (Clinical | Moves | All) but the old chip matrix is still rendering. Locate that older filter row in the Journey card (the line of chips like `All Obs EWS Order ...`) and gate it off:
+
+```tsx
+{/* LEGACY FILTER BAR — hide it now that segmented filters are present */}
+{false && (
+  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+    {/* ... old chips ... */}
+  </div>
+)}
+```
+
+(Or delete it entirely if not used elsewhere.)
+
+---
+
+# 5) Notes → **single card** only
+
+Remove the duplicate Notes card. Keep one card with: title + “Write note” CTA + quick-phrases + preview/empty state. Example:
+
+```tsx
+<section className="rounded-lg border p-3">
+  <div className="flex items-center justify-between mb-2">
+    <h3 className="text-sm font-semibold">Notes</h3>
+    {!isHCA && (
+      <button onClick={() => openNotesDrawer()} className="px-3 py-1.5 rounded bg-blue-600 text-white">Write note</button>
+    )}
+  </div>
+
+  {Array.isArray(notes) && notes.length ? (
+    <ul className="text-sm text-slate-700 space-y-1">
+      {notes.slice(-2).map(n => <li key={n.id} className="truncate">{n.text}</li>)}
+    </ul>
+  ) : (
+    <div className="text-sm text-slate-500">No notes yet.</div>
+  )}
+
+  {!isHCA && (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {["Patient settled","Analgesia effective","Family updated"].map(q => (
+        <Chip key={q} onClick={() => openNotesDrawer(q)}>{q}</Chip>
+      ))}
+    </div>
+  )}
+</section>
+```
+
+---
+
+## Quick QA checklist
+
+* Identity bar shows **Age · NHI · Room** and **EWS X (trend)**, **ATS**, and any **Allergy/Isolation/Falls** chips.
+* Header actions: **Assign room** (all), **+Obs** (RN/MD), **Order set** (MD).
+* **Next obs** chip visible in Vitals (turns red when overdue).
+* **Results** sits at top of right column; **Journey** under it with only the segmented control + time window; **Notes** (single card) + **Tasks** last.
+* No duplicate “Write note” buttons.
+* No infinite render loops introduced (all helpers are pure reads).
+
+If anything still looks off after these patches (e.g., local store selectors have different names), keep the structure and swap the selectors—everything else is UI-only.
