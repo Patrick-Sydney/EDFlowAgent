@@ -215,14 +215,19 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
   
   // Memoize task filter to prevent infinite re-renders
-  const taskFilter = useMemo(() => ({ patientId: String(patientId) }), [patientId]);
+  const taskFilter = useMemo(() => {
+    // Convert to string to ensure stable comparison
+    const pid = String(patientId);
+    return { patientId: pid };
+  }, [patientId]);
 
   // Role awareness (RN-only actions)
   const [userRole, setUserRole] = useState<string>(() => localStorage.getItem("edflow.role") || "charge");
   useEffect(() => {
     const sync = (e: any) => {
       const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
-      setUserRole(next);
+      // Only update if the role actually changed to prevent infinite loops
+      setUserRole(current => current === next ? current : next);
     };
     window.addEventListener("role:change", sync as EventListener);
     window.addEventListener("view:role", sync as EventListener);
@@ -232,6 +237,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     };
   }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
+  
+  // Sync location label only when props change, not on every render
+  useEffect(() => {
+    setLocalLocationLabel(locationLabel ?? null);
+  }, [locationLabel]);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
   const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
   const displayName = useMemo(() => {
