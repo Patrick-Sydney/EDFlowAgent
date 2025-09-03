@@ -398,11 +398,11 @@ export default function RoomManagementDrawer() {
         <div className="p-3 border-t sticky bottom-0 bg-white flex gap-2">
           <TButton 
             className="bg-blue-600 text-white flex-1 min-h-[50px]"
-            onClick={once(() => { 
-              console.log("[DEBUG] Button clicked!");
+            onClick={() => { 
+              console.log("[DEBUG] Room Drawer button clicked!");
               confirm(); 
               haptic(); 
-            })}
+            }}
             disabled={!selected || pending || (isReassign && !reason.trim())}
             style={{opacity: (!selected || pending || (isReassign && !reason.trim())) ? 0.5 : 1}}
             data-testid="button-confirm-room"
