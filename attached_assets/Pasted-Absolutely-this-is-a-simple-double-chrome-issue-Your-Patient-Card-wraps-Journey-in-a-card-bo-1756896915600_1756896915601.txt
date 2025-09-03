@@ -1,0 +1,103 @@
+Absolutely—this is a simple “double-chrome” issue. Your **Patient Card** wraps Journey in a card (border + padding) **and** `PatientJourneyInline` renders its own bordered container. Let’s make Journey render **flat** inside the Patient Card.
+
+---
+
+# Patch A — make `PatientJourneyInline` support a borderless (“flat”) mode
+
+**`components/journey/PatientJourneyInline.tsx`**
+
+```tsx
+// add at top
+import clsx from "clsx";
+
+// extend props
+type Props = {
+  patientId: string;
+  showHeader?: boolean;
+  showTypeChips?: boolean;
+  showWindowChips?: boolean;
+  /** NEW: choose chrome style; "card" keeps its own border, "flat" removes it */
+  chrome?: "card" | "flat";
+  className?: string;
+};
+
+// defaults
+export default function PatientJourneyInline({
+  patientId,
+  showHeader = true,
+  showTypeChips = true,
+  showWindowChips = true,
+  chrome = "card",
+  className,
+  // ...rest
+}: Props) {
+  // ...
+
+  // if you previously had something like:
+  // <section className="rounded-lg border p-3"> ... </section>
+  // replace that shell with:
+  return (
+    <section
+      className={clsx(
+        chrome === "card" ? "rounded-lg border p-3" : "p-0",
+        className
+      )}
+    >
+      {/* header/title */}
+      {showHeader && <h3 className="text-sm font-semibold">Patient journey</h3>}
+
+      {/* time/type filters */}
+      {showWindowChips && /* ...chips... */}
+      {showTypeChips && /* ...chips... */}
+
+      {/* If you have an inner bordered area around the events, gate it too */}
+      <div
+        className={
+          chrome === "card"
+            ? "rounded-lg border p-3"
+            : "p-0 border-0 rounded-none"
+        }
+      >
+        {/* events list / empty state */}
+        {/* ... */}
+      </div>
+    </section>
+  );
+}
+```
+
+> If your component doesn’t have an inner bordered wrapper, just keep the outer `section` gating. If it **does**, the conditional `<div>` above removes that second border too.
+
+---
+
+# Patch B — call Journey in **flat** mode from the Patient Card
+
+**`components/patient/PatientCardExpandable.tsx`** (right column “Patient journey” card)
+
+```tsx
+<div className="rounded-lg border p-3">
+  <div className="flex items-center justify-between mb-2">
+    <h3 className="text-sm font-semibold">Patient journey</h3>
+    <JourneyFilters />  {/* your simplified Clinical | Moves | All + 4h/8h/... */}
+  </div>
+
+  {/* render stream only; no inner borders/chrome */}
+  <PatientJourneyInline
+    patientId={patient.id}
+    showHeader={false}
+    showTypeChips={false}
+    showWindowChips={false}
+    chrome="flat"          // ⬅️ removes the extra border
+  />
+</div>
+```
+
+---
+
+# Result
+
+* Only **one** card border around the entire Journey block (the one in the Patient Card).
+* No inner “frame” around the events list — cleaner, less cluttered.
+* Titles/filters remain **once** (your outer header).
+
+If you still see a faint outline, search inside `PatientJourneyInline` for any remaining `border`, `rounded`, or `shadow` classes around the events list and guard them with `chrome === "card"` the same way.

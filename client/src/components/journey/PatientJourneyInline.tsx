@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useJourney, JourneyEvent } from "../../stores/journeyStore";
+import clsx from "clsx";
 
 type Props = { 
   patientId: string|number; 
@@ -8,6 +9,8 @@ type Props = {
   showHeader?: boolean;
   showTypeChips?: boolean;
   showWindowChips?: boolean;
+  /** Choose chrome style; "card" keeps its own border, "flat" removes it */
+  chrome?: "card" | "flat";
 };
 
 const KIND_LABEL: Record<JourneyEvent["kind"], string> = {
@@ -29,7 +32,8 @@ export default function PatientJourneyInline({
   height = 320,
   showHeader = true,
   showTypeChips = true,
-  showWindowChips = true 
+  showWindowChips = true,
+  chrome = "card"
 }: Props) {
   const rows = useJourney(patientId);
   const [windowH, setWindowH] = useState<4|8|24|72|0>(8); // 0 = all
@@ -55,7 +59,10 @@ export default function PatientJourneyInline({
   }, [filtered]);
 
   return (
-    <div className={`rounded-2xl border p-3 ${className ?? ""}`}>
+    <section className={clsx(
+      chrome === "card" ? "rounded-2xl border p-3" : "p-0",
+      className
+    )}>
       {showHeader && (
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-medium">Patient journey</div>
@@ -83,7 +90,13 @@ export default function PatientJourneyInline({
         </div>
       )}
 
-      <div className="rounded-xl border h-[320px] md:h-[400px] overflow-auto p-3" style={{height}}>
+      <div 
+        className={chrome === "card" 
+          ? "rounded-xl border h-[320px] md:h-[400px] overflow-auto p-3" 
+          : "h-[320px] md:h-[400px] overflow-auto p-0 border-0 rounded-none"
+        } 
+        style={{height}}
+      >
         {grouped.length === 0 ? (
           <div className="h-full grid place-items-center text-sm text-muted-foreground">
             No events in the selected window.
@@ -121,6 +134,6 @@ export default function PatientJourneyInline({
           </ol>
         )}
       </div>
-    </div>
+    </section>
   );
 }

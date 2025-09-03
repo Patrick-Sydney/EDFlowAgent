@@ -450,6 +450,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 showHeader={false}
                 showTypeChips={false}
                 showWindowChips={false}
+                chrome="flat"
               />
             </div>
 
