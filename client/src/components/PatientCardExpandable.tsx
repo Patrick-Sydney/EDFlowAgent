@@ -27,9 +27,12 @@ import { useRoomAndPhase } from "@/hooks/useRoomAndPhase";
 // import PerVitalSparklines from "./patient/PerVitalSparklines";
 
 // Simple Journey filter component
-function JourneyFilters() {
-  const [mode, setMode] = React.useState("Clinical");
-  const [win, setWin] = React.useState("8h");
+function JourneyFilters({ mode, setMode, win, setWin }: {
+  mode: string;
+  setMode: (m: string) => void;
+  win: string;
+  setWin: (w: string) => void;
+}) {
   return (
     <div className="flex items-center gap-2">
       <SegmentedComponent options={["Clinical","Moves","All"]} value={mode} onChange={setMode} />
@@ -266,6 +269,10 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const currentRoom = useCurrentRoom(String(patientId));
   const { room, phase } = useRoomAndPhase(String(patientId));
   
+  // Journey filter state - default to "All" so room changes are visible immediately
+  const [journeyMode, setJourneyMode] = React.useState("All");
+  const [journeyWin, setJourneyWin] = React.useState("8h");
+  
   // Sync location label only when props change, not on every render
   useEffect(() => {
     // Only update if actually different to prevent infinite loops
@@ -455,7 +462,12 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             <div className="rounded-lg border p-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold">Patient journey</h3>
-                <JourneyFilters />
+                <JourneyFilters 
+                  mode={journeyMode} 
+                  setMode={setJourneyMode}
+                  win={journeyWin}
+                  setWin={setJourneyWin}
+                />
               </div>
               <PatientJourneyInline 
                 patientId={patientId} 
@@ -464,6 +476,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 showTypeChips={false}
                 showWindowChips={false}
                 chrome="flat"
+                mode={journeyMode as "All" | "Clinical" | "Moves"}
+                windowHours={journeyWin === "4h" ? 4 : journeyWin === "8h" ? 8 : journeyWin === "24h" ? 24 : 72}
               />
             </div>
 

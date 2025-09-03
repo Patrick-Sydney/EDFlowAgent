@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useJourney, JourneyEvent } from "../../stores/journeyStore";
+import { useJourney, JourneyEvent, useJourneyStore } from "../../stores/journeyStore";
 import clsx from "clsx";
 
 type Props = { 
@@ -11,6 +11,9 @@ type Props = {
   showWindowChips?: boolean;
   /** Choose chrome style; "card" keeps its own border, "flat" removes it */
   chrome?: "card" | "flat";
+  /** External filter mode for journey events */
+  mode?: "All" | "Clinical" | "Moves";
+  windowHours?: number;
 };
 
 const KIND_LABEL: Record<JourneyEvent["kind"], string> = {
@@ -33,18 +36,42 @@ export default function PatientJourneyInline({
   showHeader = true,
   showTypeChips = true,
   showWindowChips = true,
-  chrome = "card"
+  chrome = "card",
+  mode = "All",
+  windowHours = 8
 }: Props) {
-  const rows = useJourney(patientId);
-  const [windowH, setWindowH] = useState<4|8|24|72|0>(8); // 0 = all
+  const events = useJourneyStore(s => s.events); // Subscribe to live events
+  const [windowH, setWindowH] = useState<4|8|24|72|0>(windowHours as any); // Use external windowHours
   const [filter, setFilter] = useState<"all"|JourneyEvent["kind"]>("all");
   const now = Date.now();
   const minT = windowH ? now - windowH * 3600_000 : 0;
 
+  // Filter events for this patient
+  const rows = useMemo(() => {
+    return events.filter(e => e.patientId === String(patientId));
+  }, [events, patientId]);
+
   const filtered = useMemo(() => {
-    const list = rows.filter(r => Date.parse(r.t) >= minT);
+    const clinicalKinds = new Set([
+      "vitals","ews_change","order","result","med_admin","note","task","alert"
+    ]);
+    const moveKinds = new Set([
+      "arrival","triage","room_change","room_assigned","encounter.location","communication"
+    ]);
+
+    let list = rows.filter(r => Date.parse(r.t) >= minT);
+    
+    // Apply external mode filter
+    if (mode === "Clinical") {
+      list = list.filter(r => clinicalKinds.has(r.kind));
+    } else if (mode === "Moves") {
+      list = list.filter(r => moveKinds.has(r.kind));
+    }
+    // "All" mode shows everything
+    
+    // Apply internal filter
     return filter === "all" ? list : list.filter(r => r.kind === filter);
-  }, [rows, minT, filter]);
+  }, [rows, minT, filter, mode]);
 
   // group by hour bucket for simple visual grouping
   const grouped = useMemo(() => {

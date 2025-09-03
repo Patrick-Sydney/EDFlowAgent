@@ -1,0 +1,227 @@
+You’re right—after assigning a room you should immediately see a **“Room changed to …”** row in the **Patient Journey**. Two things typically block it:
+
+1. the Journey list isn’t actually subscribed to the `events` array (or is memoized without `events` in deps), and/or
+2. the Journey’s active filter is **“Clinical”** which excludes `room_change` events (they’re **Moves**), so the event is written but filtered out.
+
+Below is a tight patch set that fixes both without changing your visual UI:
+
+---
+
+# 1) Make `PatientJourneyInline` accept external filters and react to events
+
+**File:** `components/journey/PatientJourneyInline.tsx`
+
+Add props to control mode + time window and ensure we re-render when events change. Also classify `room_change` as a **Move**.
+
+```tsx
+// NEW/UPDATED PROPS
+type Props = {
+  patientId: string;
+  showHeader?: boolean;
+  showTypeChips?: boolean;
+  showWindowChips?: boolean;
+  chrome?: "card" | "flat";
+  /** NEW: external filters */
+  mode?: "All" | "Clinical" | "Moves";
+  windowHours?: number; // 4 | 8 | 24 | 72
+  className?: string;
+};
+
+export default function PatientJourneyInline({
+  patientId,
+  showHeader = true,
+  showTypeChips = true,
+  showWindowChips = true,
+  chrome = "card",
+  mode = "All",
+  windowHours = 8,
+  className,
+}: Props) {
+  const events = useJourneyStore(s => s.events); // <-- subscribe to live events
+
+  const filtered = React.useMemo(() => {
+    const clinicalKinds = new Set([
+      "vitals","ews_change","order","result","med_admin","note","task","alert"
+    ]);
+    const moveKinds = new Set([
+      "arrival","triage","room_change","room_assigned","encounter.location","communication"
+    ]);
+
+    const cutoff = Date.now() - windowHours * 3600 * 1000;
+
+    return events
+      .filter(e => e.patientId === patientId)
+      .filter(e => {
+        const t = new Date(e.t).getTime();
+        if (Number.isFinite(t) && t < cutoff) return false;
+        if (mode === "Clinical") return clinicalKinds.has(e.kind);
+        if (mode === "Moves") return moveKinds.has(e.kind);
+        return true; // All
+      })
+      .sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime()); // newest first
+  }, [events, patientId, mode, windowHours]);
+
+  return (
+    <section className={clsx(chrome === "card" ? "rounded-lg border p-3" : "p-0", className)}>
+      {/* (We’re likely suppressing header/filters from outside) */}
+      {/* Render your timeline/list here using `filtered` */}
+      <ul className="space-y-2">
+        {filtered.map(ev => (
+          <li key={ev.id} className="text-sm text-slate-700">
+            {/* Minimal example rendering. Keep your existing row UI if you have one. */}
+            <span className="text-xs text-slate-500">
+              {new Date(ev.t).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}
+            </span>{" "}
+            <strong className="uppercase text-[11px] tracking-wide">{ev.kind}</strong>{" "}
+            {ev.label || ev.detail || ""}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+```
+
+> Keys:
+>
+> * We **subscribe** to `events`.
+> * We **classify** `room_change` under **Moves**.
+> * We allow `mode` + `windowHours` from the parent so your outer controls actually drive what’s shown.
+
+---
+
+# 2) Pass the active filters from the Patient Card (default to **All** so you see the move)
+
+**File:** `components/patient/PatientCardExpandable.tsx`
+
+Wire your `JourneyFilters` to `PatientJourneyInline`. Default to **All** so the newly written `room_change` shows immediately.
+
+```tsx
+function JourneyFilters({
+  valueMode, onChangeMode,
+  valueWin, onChangeWin
+}: {
+  valueMode: "All"|"Clinical"|"Moves";
+  onChangeMode: (m:"All"|"Clinical"|"Moves") => void;
+  valueWin: "4h"|"8h"|"24h"|"72h";
+  onChangeWin: (w:"4h"|"8h"|"24h"|"72h") => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Segmented options={["All","Clinical","Moves"]} value={valueMode} onChange={v => onChangeMode(v as any)} />
+      <Segmented options={["4h","8h","24h","72h"]} value={valueWin} onChange={v => onChangeWin(v as any)} />
+    </div>
+  );
+}
+```
+
+Use it in the Journey card:
+
+```tsx
+// state held in Patient Card
+const [journeyMode, setJourneyMode] = React.useState<"All"|"Clinical"|"Moves">("All"); // <-- default All
+const [journeyWin, setJourneyWin] = React.useState<"4h"|"8h"|"24h"|"72h">("8h");
+const winMap = { "4h":4, "8h":8, "24h":24, "72h":72 } as const;
+
+<div className="rounded-lg border p-3">
+  <div className="flex items-center justify-between mb-2">
+    <h3 className="text-sm font-semibold">Patient journey</h3>
+    <JourneyFilters
+      valueMode={journeyMode}
+      onChangeMode={setJourneyMode}
+      valueWin={journeyWin}
+      onChangeWin={setJourneyWin}
+    />
+  </div>
+
+  <PatientJourneyInline
+    patientId={patient.id}
+    showHeader={false}
+    showTypeChips={false}
+    showWindowChips={false}
+    chrome="flat"
+    mode={journeyMode}
+    windowHours={winMap[journeyWin]}
+  />
+</div>
+```
+
+> Now the **outer** segmented control fully governs the feed, and **“All”** shows room assignments immediately.
+
+---
+
+# 3) Ensure the drawer really writes the **room\_change** event
+
+(Keep your existing UI and room list; this is just the click wire.)
+
+**File:** `components/room/RoomAssignDrawer.tsx` (your current drawer)
+
+```tsx
+import { useJourneyStore } from "@/stores/journeyStore";
+
+<button
+  type="button"
+  onClick={() => {
+    if (!patientId || !selectedRoom?.trim()) return;
+    useJourneyStore.getState().append({
+      id: crypto.randomUUID(),
+      patientId,
+      t: new Date().toISOString(),
+      kind: "room_change",
+      label: selectedRoom.trim(),
+      actor: "Charge RN",
+      detail: "Assigned",
+    });
+    queueMicrotask(onClose); // close after state append
+  }}
+  className="px-3 py-2 rounded bg-slate-900 text-white"
+>
+  Assign room
+</button>
+```
+
+> Also verify `append` is **immutable** (`set(s => ({ events: [...s.events, ev] }))`), otherwise subscribers won’t re-render.
+
+---
+
+# 4) (Optional but helpful) Friendly inline rendering for `room_change`
+
+If your Journey row renderer switches on `ev.kind`, add a readable label for moves:
+
+```tsx
+function kindLabel(ev: JourneyEvent) {
+  switch (ev.kind) {
+    case "room_change": return "Room changed";
+    case "triage": return "Triage";
+    case "vitals": return "Obs";
+    // ... other kinds
+    default: return ev.kind;
+  }
+}
+
+// in list row
+<strong className="uppercase text-[11px] tracking-wide">
+  {kindLabel(ev)}
+</strong>{" "}
+{ev.label /* e.g., "Room 5" */}
+```
+
+---
+
+## Quick QA (what you should see)
+
+1. Open Patient Card → **Assign room** → click “Assign room”.
+2. Header chip: **Location Room X** updates immediately (we already wired this earlier).
+3. Lanes: patient moves to **Roomed** (we wired earlier via phase map).
+4. **Patient Journey**: a new top row appears, e.g.,
+   `10:42  ROOM CHANGED  Room 5`
+   (If your filter shows **Clinical**, switch to **All** or **Moves**—or just keep default **All**.)
+
+---
+
+If you still don’t see the Journey row after the click, two quick checks:
+
+* Put a one-liner log in the drawer click: `console.debug("room_change appended")`.
+* In `PatientJourneyInline`, temporarily render `events.length` to confirm it re-renders on append.
+
+But with the patches above—**external filters, `events` subscription, proper classification**—the room assignment will appear instantly in the Journey feed.
