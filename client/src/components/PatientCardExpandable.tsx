@@ -20,9 +20,9 @@ import Chip from "./ui/Chip";
 import SegmentedComponent from "./ui/Segmented";
 import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
-import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
-import PathwayTimers from "./patient/PathwayTimers";
-import PerVitalSparklines from "./patient/PerVitalSparklines";
+// import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
+// import PathwayTimers from "./patient/PathwayTimers";
+// import PerVitalSparklines from "./patient/PerVitalSparklines";
 
 // Simple Journey filter component
 function JourneyFilters() {
@@ -346,20 +346,30 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         onOpenChange={setDesktopOpen}
         title={displayName}
       >
-        {/* ===== Enhanced Status Header ===== */}
-        <HeaderStatusRibbon 
-          patient={{
-            id: String(patientId),
-            name: displayName,
-            age,
-            nhiMasked: maskTail(nhi, 3),
-            room: status ?? undefined,
-            ats,
-            allergy: allergies,
-          }}
-          rightActions={
-            !isHCA ? (
-              <>
+        {/* ===== Identity + Risk + Actions Header ===== */}
+        <header className="sticky top-0 bg-white z-[1] p-4 border-b">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              {/* Identity bar */}
+              <div className="text-lg font-semibold">{displayName}</div>
+              <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                <Chip>Age {age ?? "—"}</Chip>
+                <Chip>NHI {maskTail(nhi, 3)}</Chip>
+                <Chip>Room {status ?? "—"}</Chip>
+              </div>
+              {/* Risk ribbon */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Chip tone={currentEws != null ? (currentEws >= 5 ? "critical" : currentEws >= 3 ? "warning" : "info") : "default"}>
+                  EWS {currentEws ?? "—"} {ewsTrend ?? ""}
+                </Chip>
+                <Chip>ATS {ats ?? "—"}</Chip>
+                {allergies && <Chip tone="warning">Allergies: {allergies}</Chip>}
+              </div>
+            </div>
+
+            {/* Actions (role-aware) */}
+            {!isHCA && (
+              <div className="flex items-center gap-2">
                 <button 
                   className="px-3 py-1.5 rounded border"
                   onClick={() => setDrawerOpen("assign")}
@@ -380,10 +390,10 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   <button className="px-3 py-1.5 rounded border"
                     data-testid="button-order-set">Order set</button>
                 )}
-              </>
-            ) : undefined
-          }
-        />
+              </div>
+            )}
+          </div>
+        </header>
 
         {/* ===== Complaint + Pathway clocks ===== */}
         <section className="px-4 pt-3">
@@ -391,7 +401,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             {complaint ?? "—"}
           </div>
           <PathwayClocks patientId={String(patientId)} complaint={complaint} />
-          <PathwayTimers patientId={String(patientId)} complaint={complaint} />
+          {/* <PathwayTimers patientId={String(patientId)} complaint={complaint} /> */}
         </section>
 
         {/* ===== 2-column layout ===== */}
