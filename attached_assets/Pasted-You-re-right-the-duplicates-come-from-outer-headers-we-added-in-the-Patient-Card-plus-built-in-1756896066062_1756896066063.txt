@@ -1,0 +1,159 @@
+You’re right—the duplicates come from **outer headers** we added in the Patient Card plus **built-in headers/filters** inside your existing inline components. Let’s make the Patient Card the **single source of truth** for headings and filters, and silence the inner ones.
+
+Below are safe, surgical patches:
+
+---
+
+# 1) Silence extra “Patient journey” title & chip bars
+
+### `components/journey/PatientJourneyInline.tsx`
+
+*Add optional props to hide its own header + filter chips.*
+
+```tsx
+// ⬇ add to props
+type Props = {
+  patientId: string;
+  /* new, default true so existing screens keep working */
+  showHeader?: boolean;
+  showTypeChips?: boolean;   // All/Obs/EWS/Order/Result/...
+  showWindowChips?: boolean; // 4h/8h/24h/72h
+  // ...whatever you already have
+};
+
+// ⬇ default them
+export default function PatientJourneyInline({
+  patientId,
+  showHeader = true,
+  showTypeChips = true,
+  showWindowChips = true,
+  ...rest
+}: Props) {
+  // ...
+  return (
+    <section className="...">
+      {/* before: <h3>Patient journey</h3> */}
+      {showHeader && <h3 className="text-sm font-semibold">Patient journey</h3>}
+
+      {/* before: window chips */}
+      {showWindowChips && (
+        <div className="...">{/* 4h / 8h / 24h / 72h chips */}</div>
+      )}
+
+      {/* before: type chips */}
+      {showTypeChips && (
+        <div className="...">{/* All / Obs / EWS / Order / ... */}</div>
+      )}
+
+      {/* body stays the same */}
+      <div className="...">{/* events list / empty state */}</div>
+    </section>
+  );
+}
+```
+
+### `components/patient/PatientCardExpandable.tsx`
+
+*Call Journey with those silencing props and keep your new segmented control up top.*
+
+```tsx
+// In the right column "Patient journey" card:
+<div className="rounded-lg border p-3">
+  <div className="flex items-center justify-between mb-2">
+    <h3 className="text-sm font-semibold">Patient journey</h3>
+    <JourneyFilters /> {/* your new segmented control + time window */}
+  </div>
+
+  {/* render ONLY the stream; hide inner header + chips */}
+  <PatientJourneyInline
+    patientId={patient.id}
+    showHeader={false}
+    showTypeChips={false}
+    showWindowChips={false}
+  />
+</div>
+```
+
+Result: one title (“Patient journey”) and one set of chips (your simplified **Clinical | Moves | All** + time window). ✅
+
+---
+
+# 2) Fix duplicate “Vitals” title
+
+You currently have a **card-level “Vitals” title** and the **capsule row** (or a nested block) also renders “Vitals”. Keep the card-level header (so we can show “Next obs”), and silence the inner label.
+
+### Option A (best): add a `showHeader` prop to your vitals-capsule component
+
+(If you use a component for the capsule row.)
+
+```tsx
+// components/obs/VitalsCapsules.tsx (or equivalent)
+export default function VitalsCapsules({ patientId, showHeader = true }: { patientId:string; showHeader?:boolean }) {
+  return (
+    <div>
+      {showHeader && <h4 className="text-sm font-semibold">Vitals</h4>}
+      {/* capsules grid */}
+    </div>
+  );
+}
+```
+
+Then in **PatientCardExpandable**:
+
+```tsx
+<section className="rounded-lg border p-3">
+  <div className="flex items-center justify-between">
+    <h3 className="text-sm font-semibold">Vitals</h3>
+    {/* Next-obs chip stays here */}
+    {nextObsChip}
+  </div>
+
+  {/* hide inner header so we don’t get “Vitals” twice */}
+  <VitalsCapsules patientId={patient.id} showHeader={false} />
+
+  <div className="mt-3">
+    <VitalsTimelineInline patientId={patient.id} />
+  </div>
+</section>
+```
+
+### Option B (quick inline)
+
+If the second “Vitals” is just a `<h4>Vitals</h4>` inside the card, delete that line in `PatientCardExpandable.tsx`.
+
+Either way you’ll end up with a **single “Vitals”** title at the top of the card, plus the **Next obs** chip. ✅
+
+---
+
+# 3) (If needed) keep “Vitals timeline” header only once
+
+If your `VitalsTimelineInline` also renders its own header + chips and you already show them outside, add the same pattern:
+
+```tsx
+// components/obs/VitalsTimelineInline.tsx
+type Props = { patientId: string; showHeader?: boolean; showSeriesChips?: boolean; showWindowChips?: boolean; };
+export default function VitalsTimelineInline({ patientId, showHeader = true, showSeriesChips = true, showWindowChips = true }: Props) {
+  return (
+    <section>
+      {showHeader && <div className="...">Vitals timeline</div>}
+      {showWindowChips && <div className="...">/* 4h/8h/24h/72h */</div>}
+      {showSeriesChips && <div className="...">/* RR/HR/SBP/... */</div>}
+      {/* chart */}
+    </section>
+  );
+}
+```
+
+Then call it as you prefer. (If you like its built-in chips, keep them; they’re not duplicated elsewhere.)
+
+---
+
+## Quick test checklist
+
+* [ ] Left column shows **one** “Vitals” title.
+* [ ] “Next obs” chip visible in that same header.
+* [ ] Right column shows **one** “Patient journey” title (your card header).
+* [ ] Only **one** set of journey chips (your simplified segmented control).
+* [ ] No legacy type chips (“All/Obs/EWS/…”) visible anymore.
+
+If you paste these patches in, your screenshot should match the agreed layout exactly, without duplicated titles/filters.

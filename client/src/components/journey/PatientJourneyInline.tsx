@@ -1,7 +1,14 @@
 import React, { useMemo, useState } from "react";
 import { useJourney, JourneyEvent } from "../../stores/journeyStore";
 
-type Props = { patientId: string|number; className?: string; height?: number; };
+type Props = { 
+  patientId: string|number; 
+  className?: string; 
+  height?: number;
+  showHeader?: boolean;
+  showTypeChips?: boolean;
+  showWindowChips?: boolean;
+};
 
 const KIND_LABEL: Record<JourneyEvent["kind"], string> = {
   arrival: "Arrival", triage: "Triage", room_change: "Moved",
@@ -16,7 +23,14 @@ const KIND_ICON: Record<JourneyEvent["kind"], string> = {
   med_admin: "💉", task: "⏱", note: "🗒", communication: "📣", alert: "⚠️",
 };
 
-export default function PatientJourneyInline({ patientId, className, height = 320 }: Props) {
+export default function PatientJourneyInline({ 
+  patientId, 
+  className, 
+  height = 320,
+  showHeader = true,
+  showTypeChips = true,
+  showWindowChips = true 
+}: Props) {
   const rows = useJourney(patientId);
   const [windowH, setWindowH] = useState<4|8|24|72|0>(8); // 0 = all
   const [filter, setFilter] = useState<"all"|JourneyEvent["kind"]>("all");
@@ -42,24 +56,32 @@ export default function PatientJourneyInline({ patientId, className, height = 32
 
   return (
     <div className={`rounded-2xl border p-3 ${className ?? ""}`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium">Patient journey</div>
-        <div className="flex items-center gap-1 flex-wrap">
-          {[4,8,24,72].map(h => (
-            <button key={h} className={`rounded-full border px-2.5 py-1 text-xs ${windowH===h ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(h as any)}>{h}h</button>
-          ))}
-          <button className={`rounded-full border px-2.5 py-1 text-xs ${windowH===0 ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(0)}>All</button>
-          {/* LEGACY FILTER BAR — hide it now that segmented filters are present */}
-          {false && (
+      {showHeader && (
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-medium">Patient journey</div>
+          {(showWindowChips || showTypeChips) && (
+            <div className="flex items-center gap-1 flex-wrap">
+              {showWindowChips && (
+                <>
+                  {[4,8,24,72].map(h => (
+                    <button key={h} className={`rounded-full border px-2.5 py-1 text-xs ${windowH===h ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(h as any)}>{h}h</button>
+                  ))}
+                  <button className={`rounded-full border px-2.5 py-1 text-xs ${windowH===0 ? "bg-background shadow" : "opacity-80"}`} onClick={() => setWindowH(0)}>All</button>
+                </>
+              )}
+              {/* LEGACY FILTER BAR — hide it now that segmented filters are present */}
+              {showTypeChips && false && (
             <>
               <div className="mx-2 h-4 w-px bg-border" />
               {["all","vitals","ews_change","order","result","med_admin","task","room_change","note","alert","communication","triage","arrival"].map(k => (
                 <button key={k} className={`rounded-full border px-2.5 py-1 text-xs ${(filter===k) ? "bg-background shadow" : "opacity-80"}`} onClick={() => setFilter(k as any)}>{k === "all" ? "All" : KIND_LABEL[k as JourneyEvent["kind"]]}</button>
               ))}
             </>
+              )}
+            </div>
           )}
         </div>
-      </div>
+      )}
 
       <div className="rounded-xl border h-[320px] md:h-[400px] overflow-auto p-3" style={{height}}>
         {grouped.length === 0 ? (

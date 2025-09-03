@@ -424,7 +424,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             {/* Vitals capsule */}
             <VitalsCapsuleLive 
               patientId={patientId} 
-              onOpenTimeline={() => setOpenTL(true)} 
+              onOpenTimeline={() => setOpenTL(true)}
+              showHeader={false}
             />
 
             <div className="mt-3">
@@ -443,7 +444,13 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 <h3 className="text-sm font-semibold">Patient journey</h3>
                 <JourneyFilters />
               </div>
-              <PatientJourneyInline patientId={patientId} height={320} />
+              <PatientJourneyInline 
+                patientId={patientId} 
+                height={320}
+                showHeader={false}
+                showTypeChips={false}
+                showWindowChips={false}
+              />
             </div>
 
             {/* 3) NOTES (single card with quick-phrases) */}
@@ -556,7 +563,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           {/* Vitals Capsule Live */}
           <VitalsCapsuleLive 
             patientId={patientId} 
-            onOpenTimeline={() => setOpenTL(true)} 
+            onOpenTimeline={() => setOpenTL(true)}
+            showHeader={false}
           />
 
           {/* Tasks Mini (if any) */}

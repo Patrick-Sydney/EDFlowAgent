@@ -4,9 +4,11 @@ import { useVitalsLast } from "../../stores/vitalsStore";
 export default function VitalsCapsuleLive({
   patientId,
   onOpenTimeline,
+  showHeader = true,
 }: {
   patientId: string | number;
   onOpenTimeline?: () => void;
+  showHeader?: boolean;
 }) {
   const last = useVitalsLast(patientId);
 
@@ -21,9 +23,11 @@ export default function VitalsCapsuleLive({
 
   return (
     <div className="rounded-xl border p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">Vitals</div>
-      </div>
+      {showHeader && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">Vitals</div>
+        </div>
+      )}
       <div className="mt-2 grid grid-cols-5 gap-2">
         <Item label="RR"   val={last?.rr}   unit="/m"   />
         <Item label="SpO₂" val={last?.spo2} unit="%"    />
