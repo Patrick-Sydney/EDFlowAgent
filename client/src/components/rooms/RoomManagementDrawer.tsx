@@ -15,6 +15,7 @@ export default function RoomManagementDrawer() {
   const spaces = useDashboardStore((s) => s.spaces || []);
   const encounters = useDashboardStore((s) => s.encounters || []);
   const open = useDashboardStore((s) => s.roomOpen);
+  const selectedEncounter = useDashboardStore((s) => s.roomEncounter);
   const closeRoom = useDashboardStore((s) => s.closeRoom);
 
   const list = useMemo(() => {
@@ -38,7 +39,14 @@ export default function RoomManagementDrawer() {
       <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Header */}
         <header className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-          <div className="font-semibold">Room Management</div>
+          <div>
+            <div className="font-semibold">Room Management</div>
+            {selectedEncounter && (
+              <div className="text-sm text-gray-600 mt-1">
+                Assigning: {selectedEncounter.name}, {selectedEncounter.age}{selectedEncounter.sex}
+              </div>
+            )}
+          </div>
           <button
             onClick={closeRoom}
             className="p-1 rounded hover:bg-gray-100"
@@ -95,12 +103,29 @@ export default function RoomManagementDrawer() {
                   </div>
                   <div className="flex gap-2">
                     {space.status === "available" && (
-                      <AssignButton 
-                        space={space} 
-                        onDone={closeRoom} 
-                        patients={availablePatients}
-                        onSave={(patientId) => assignRoom(patientId, space.id)}
-                      />
+                      selectedEncounter ? (
+                        <button 
+                          className="text-xs rounded bg-blue-600 text-white px-3 py-2 hover:bg-blue-700 font-medium" 
+                          onClick={async () => { 
+                            try {
+                              await assignRoom(selectedEncounter.id, space.id); 
+                              closeRoom(); 
+                            } catch (e) {
+                              console.error("Failed to assign room:", e);
+                            }
+                          }}
+                          data-testid="button-assign-direct"
+                        >
+                          Assign {selectedEncounter.name}
+                        </button>
+                      ) : (
+                        <AssignButton 
+                          space={space} 
+                          onDone={closeRoom} 
+                          patients={availablePatients}
+                          onSave={(patientId) => assignRoom(patientId, space.id)}
+                        />
+                      )
                     )}
                     {space.status === "occupied" && assignedPatient && (
                       <>
