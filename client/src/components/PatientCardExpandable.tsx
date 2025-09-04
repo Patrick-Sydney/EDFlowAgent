@@ -44,7 +44,6 @@ function JourneyFilters({ mode, setMode, win, setWin }: {
 import BoardExpandOverlay from "./board/BoardExpandOverlay";
 import AuthoringDrawer from "./shell/AuthoringDrawer";
 import ObsQuickForm from "./obs/ObsQuickForm";
-import AssignRoomPanel from "./rooms/AssignRoomPanel";
 import VitalsTimelineInline from "./obs/VitalsTimelineInline";
 import PatientJourneyInline from "./journey/PatientJourneyInline";
 import NotesInline from "./notes/NotesInline";
@@ -236,7 +235,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const [open, setOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
   const [openTL, setOpenTL] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "assign" | "notes" | "register">(false);
+  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "notes" | "register">(false);
   // DISABLED: Task-related state causing infinite loops
   // const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
   // const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
@@ -402,7 +401,14 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               <div className="flex items-center gap-2">
                 <button 
                   className="px-3 py-1.5 rounded border"
-                  onClick={() => setDrawerOpen("assign")}
+                  onClick={() => {
+                    // Use the proper room management system instead of dummy AssignRoomPanel
+                    const dashboardStore = useDashboardStore.getState();
+                    const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
+                    if (encounter) {
+                      dashboardStore.openRoom(encounter);
+                    }
+                  }}
                   data-testid="button-assign-room"
                 >
                   Assign room
@@ -586,7 +592,14 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 </button>
               )} */}
               {/* Always-available actions */}
-              <button className="rounded-full border px-3 py-2 text-sm" onClick={() => setDrawerOpen("assign")} data-testid="button-assign-room">Assign room</button>
+              <button className="rounded-full border px-3 py-2 text-sm" onClick={() => {
+                // Use the proper room management system instead of dummy AssignRoomPanel
+                const dashboardStore = useDashboardStore.getState();
+                const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
+                if (encounter) {
+                  dashboardStore.openRoom(encounter);
+                }
+              }} data-testid="button-assign-room">Assign room</button>
               <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
             </div>
           )}
@@ -657,7 +670,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
       {/* Authoring Drawer — sits ABOVE the overlay (z-[1100]) */}
       <AuthoringDrawer
         title={drawerOpen === "obs" ? `Add observations — ${displayName}`
-              : drawerOpen === "assign" ? `Assign room — ${displayName}`
               : drawerOpen === "triage" ? `Triage — ${displayName}`
               : drawerOpen === "register" ? `Register patient — ${displayName}`
               : drawerOpen === "notes" ? `Write note — ${displayName}` : `${displayName}`}
@@ -667,24 +679,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
       >
         {drawerOpen === "obs" && (
           <ObsQuickForm patientId={patientId} onSaved={()=> setDrawerOpen(false)} />
-        )}
-        {drawerOpen === "assign" && (
-          <AssignRoomPanel
-            patient={{
-              id: patientId,
-              name: displayName,
-              ats: ats ?? null,
-              isolationRequired: !!alertFlags?.isolation,
-              currentLocationLabel: localLocationLabel ?? locationLabel ?? null,
-            }}
-            onAssigned={(space) => {
-              // Update local view immediately for clinical clarity
-              setLocalLocationLabel(space.label);
-              setDrawerOpen(false);
-              // TODO: call your real store/API here to persist:
-              // roomsStore.assign(patientId, space.id)
-            }}
-          />
         )}
         {drawerOpen === "notes" && (
           <NotesDrawer 
