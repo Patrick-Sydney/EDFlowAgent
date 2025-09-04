@@ -75,7 +75,7 @@ export default function RoomManagementDrawer() {
                     <div className="text-xs text-slate-500 mt-1">
                       Status: {space.status || "available"}
                       {assignedPatient && (
-                        <span className="ml-2">· {assignedPatient.name}</span>
+                        <span className="ml-2">· {assignedPatient.name}, {assignedPatient.age}{assignedPatient.sex}</span>
                       )}
                     </div>
                     {space.notes && (
