@@ -350,8 +350,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             chiefComplaint={complaint}
             timerLabel={timer}
           />
-          {/* Right: desktop status strip only - mobile CTA buttons removed */}
-          <div className="ml-2 hidden md:flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+          {/* Right: status strip for both mobile and desktop */}
+          <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
             <StatusStrip flags={statusFlags} />
           </div>
         </div>
