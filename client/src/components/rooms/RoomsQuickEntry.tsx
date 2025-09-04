@@ -21,16 +21,25 @@ export default function RoomsQuickEntry() {
     }).filter(item => item.total > 0);
   }, [spaces]);
 
-  // Group rooms by zone and calculate availability
-  const roomsByZone = React.useMemo(() => {
-    const zones = [...new Set(spaces.map(space => space.zone).filter(Boolean))];
-    return zones.map(zone => {
-      const zoneRooms = spaces.filter(space => space.zone === zone);
-      const available = zoneRooms.filter(space => !space.status || space.status === "available").length;
-      const total = zoneRooms.length;
-      return { zone, available, total, status: available === 0 ? "full" : available < total * 0.3 ? "low" : "ok" };
-    });
-  }, [spaces]);
+  // Group rooms by status for the status ribbon
+  const roomsByStatus = React.useMemo(() => {
+    const statuses = [
+      { key: "available", label: "Available" },
+      { key: "occupied", label: "Occupied" },
+      { key: "cleaning", label: "Cleaning" },
+      { key: "blocked", label: "Blocked" },
+      { key: "oos", label: "Oos" }
+    ];
+    
+    return statuses.map(({ key, label }) => ({
+      status: label,
+      count: key === "available" ? counts.available : 
+             key === "occupied" ? counts.occupied :
+             key === "cleaning" ? counts.cleaning :
+             key === "blocked" ? counts.blocked :
+             counts.oos
+    }));
+  }, [counts]);
 
   // Always show the enhanced ribbon view now
   // if (mode === "button") {
@@ -68,19 +77,21 @@ export default function RoomsQuickEntry() {
     );
   };
 
-  const ZoneChip = ({ zone, available, total, status }: { zone: string; available: number; total: number; status: string }) => {
-    const bgColor = status === "full" ? "bg-red-50 border-red-200 text-red-600" : 
-                   status === "low" ? "bg-amber-50 border-amber-200 text-amber-600" : 
-                   "bg-blue-50 border-blue-200 text-blue-600";
+  const StatusChip = ({ status, count }: { status: string; count: number }) => {
+    const bgColor = status === "Available" ? "bg-green-50 border-green-200 text-green-600" :
+                   status === "Occupied" ? "bg-blue-50 border-blue-200 text-blue-600" :
+                   status === "Cleaning" ? "bg-yellow-50 border-yellow-200 text-yellow-600" :
+                   status === "Blocked" ? "bg-red-50 border-red-200 text-red-600" :
+                   "bg-gray-50 border-gray-200 text-gray-600";
     
     return (
       <button
         onClick={() => openRoom({} as any)}
         className={`text-xs rounded border px-2 py-1 mr-2 ${bgColor}`}
-        title={`${zone}: ${available}/${total} available`}
-        data-testid={`chip-zone-${zone?.toLowerCase()}`}
+        title={`${status}: ${count} rooms`}
+        data-testid={`chip-status-${status.toLowerCase()}`}
       >
-        {zone} {available}/{total}
+        {status} {count}
       </button>
     );
   };
@@ -102,15 +113,13 @@ export default function RoomsQuickEntry() {
         </button>
       </div>
       
-      {/* Zones Row (if zones exist) */}
-      {roomsByZone.length > 0 && (
-        <div className="flex items-center flex-wrap gap-1">
-          <span className="text-xs font-medium text-slate-600 mr-2">Zones:</span>
-          {roomsByZone.map(({ zone, available, total, status }) => (
-            <ZoneChip key={zone} zone={zone!} available={available} total={total} status={status} />
-          ))}
-        </div>
-      )}
+      {/* Status Row */}
+      <div className="flex items-center flex-wrap gap-1">
+        <span className="text-xs font-medium text-slate-600 mr-2">Status:</span>
+        {roomsByStatus.map(({ status, count }) => (
+          <StatusChip key={status} status={status} count={count} />
+        ))}
+      </div>
     </div>
   );
 }
