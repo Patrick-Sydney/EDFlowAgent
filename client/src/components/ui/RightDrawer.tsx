@@ -57,18 +57,20 @@ export default function RightDrawer({
   return createPortal(
     <div
       className={clsx(
-        "fixed inset-0 z-[98] flex justify-end pointer-events-none",
+        "fixed inset-0 z-[1200] flex justify-end",
         // backdrop fade (motion-safe to respect prefers-reduced-motion)
-        open ? "motion-safe:bg-black/40 bg-black/20" : "bg-transparent",
+        open ? "motion-safe:bg-black/40 bg-black/20 pointer-events-auto" : "bg-transparent pointer-events-none",
         "transition-colors duration-200"
       )}
       aria-hidden={!open}
     >
       {/* backdrop */}
-      <div
-        className={clsx("absolute inset-0 pointer-events-auto", open ? "cursor-pointer" : "pointer-events-none")}
-        onClick={() => closeOnBackdrop && onClose()}
-      />
+      {open && (
+        <div
+          className="absolute inset-0 cursor-pointer"
+          onClick={() => closeOnBackdrop && onClose()}
+        />
+      )}
       {/* panel */}
       <aside
         role="dialog"
