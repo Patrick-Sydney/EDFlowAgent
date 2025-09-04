@@ -36,6 +36,7 @@ interface DashboardState {
   spaces: TreatmentSpace[];
   roomOpen: boolean;
   roomEncounter: Encounter | null;
+  roomFilter?: string;
   
   // Shared preset for RoomManagementDrawer filters
   spaceFilterPreset: any;
@@ -69,7 +70,7 @@ interface DashboardState {
   releaseSpace: (encounterId: string, makeCleaning?: boolean) => Promise<any>;
   markSpaceClean: (spaceId: string) => Promise<any>;
   markSpaceReady: (spaceId: string) => Promise<any>;
-  openRoom: (encounter: Encounter) => void;
+  openRoom: (encounter: Encounter, filter?: string) => void;
   closeRoom: () => void;
   
   // Selectors
@@ -508,12 +509,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => {
     }
   },
 
-  openRoom: (encounter: Encounter) => {
-    set({ roomOpen: true, roomEncounter: encounter });
+  openRoom: (encounter: Encounter, filter?: string) => {
+    set({ roomOpen: true, roomEncounter: encounter, roomFilter: filter });
     get().loadSpaces();
   },
 
-  closeRoom: () => set({ roomOpen: false, roomEncounter: null }),
+  closeRoom: () => set({ roomOpen: false, roomEncounter: null, roomFilter: undefined }),
   
   // Space filter preset actions
   setSpaceFilterPreset: (preset) => set({ spaceFilterPreset: preset }),

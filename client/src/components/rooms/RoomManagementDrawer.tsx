@@ -10,12 +10,20 @@ import {
 type Filter = "all" | "available" | "occupied" | "cleaning" | "blocked" | "oos";
 
 export default function RoomManagementDrawer() {
-  const [filter, setFilter] = useState<Filter>("available");
+  const roomFilter = useDashboardStore((s) => s.roomFilter);
+  const [filter, setFilter] = useState<Filter>(roomFilter as Filter || "available");
   const spaces = useDashboardStore((s) => s.spaces || []);
   const encounters = useDashboardStore((s) => s.encounters || []);
   const open = useDashboardStore((s) => s.roomOpen);
   const selectedEncounter = useDashboardStore((s) => s.roomEncounter);
   const closeRoom = useDashboardStore((s) => s.closeRoom);
+
+  // Update filter when roomFilter changes
+  React.useEffect(() => {
+    if (roomFilter) {
+      setFilter(roomFilter as Filter);
+    }
+  }, [roomFilter]);
 
   const list = useMemo(() => {
     return spaces.filter(space => {

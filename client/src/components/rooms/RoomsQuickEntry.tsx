@@ -78,9 +78,23 @@ export default function RoomsQuickEntry() {
   };
 
   const StatusChip = ({ status, count }: { status: string; count: number }) => {
+    const handleClick = () => {
+      // Map status labels to filter values
+      const filterMap: Record<string, string> = {
+        "Available": "available",
+        "Occupied": "occupied", 
+        "Cleaning": "cleaning",
+        "Blocked": "blocked",
+        "Oos": "oos"
+      };
+      
+      const filter = filterMap[status];
+      openRoom({} as any, filter);
+    };
+
     return (
       <button
-        onClick={() => openRoom({} as any)}
+        onClick={handleClick}
         className="text-xs rounded border border-gray-200 bg-gray-50 text-gray-700 px-2 py-1 mr-2 hover:bg-gray-100"
         title={`${status}: ${count} rooms`}
         data-testid={`chip-status-${status.toLowerCase()}`}
