@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/dashboardStore";
 import { assignRoom } from "../../domain/assignRoom";
 import { X } from "lucide-react";
+import EWSChipLive from "../patient/EWSChipLive";
 
 type Filter = "all" | "available" | "occupied" | "cleaning" | "blocked" | "oos";
 
@@ -78,6 +79,11 @@ export default function RoomManagementDrawer() {
                         <span className="ml-2">· {assignedPatient.name}, {assignedPatient.age}{assignedPatient.sex}</span>
                       )}
                     </div>
+                    {assignedPatient && (
+                      <div className="mt-2">
+                        <EWSChipLive patientId={assignedPatient.id} fallback={assignedPatient.ats} />
+                      </div>
+                    )}
                     {space.notes && (
                       <div className="text-xs text-blue-600 mt-1">{space.notes}</div>
                     )}
