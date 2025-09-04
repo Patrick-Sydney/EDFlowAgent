@@ -38,7 +38,11 @@ export default function RoomManagementDrawer() {
       <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={closeRoom}/>
       <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+        <header 
+          className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
+          onClick={closeRoom}
+          data-testid="header-close-drawer"
+        >
           <div>
             <div className="font-semibold">Room Management</div>
             {selectedEncounter && (
@@ -48,7 +52,7 @@ export default function RoomManagementDrawer() {
             )}
           </div>
           <button
-            onClick={closeRoom}
+            onClick={(e) => { e.stopPropagation(); closeRoom(); }}
             className="p-1 rounded hover:bg-gray-100"
             data-testid="button-close-drawer"
           >

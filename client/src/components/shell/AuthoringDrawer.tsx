@@ -34,11 +34,15 @@ export default function AuthoringDrawer({
         className="absolute right-0 top-0 h-full bg-background border-l shadow-2xl flex flex-col"
         style={{ width: Math.min(widthPx, window.innerWidth) }}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div 
+          className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => { if (!dirty || confirm("Discard changes?")) onClose(); }}
+          data-testid="header-close-drawer"
+        >
           <div className="font-semibold">{title}</div>
           <button
             className="rounded-full p-2 hover:bg-muted"
-            onClick={() => { if (!dirty || confirm("Discard changes?")) onClose(); }}
+            onClick={(e) => { e.stopPropagation(); if (!dirty || confirm("Discard changes?")) onClose(); }}
             aria-label="Close"
           >
             <X className="h-5 w-5" />

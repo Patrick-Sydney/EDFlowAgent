@@ -104,12 +104,16 @@ export default function RegisterDrawer() {
       {/* RIGHT sheet — match Triage/Room widths */}
       <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
         {/* Header */}
-        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+        <div 
+          className="px-4 py-3 border-b sticky top-0 bg-white z-10 cursor-pointer hover:bg-gray-50 transition-colors"
+          onClick={closeRegister}
+          data-testid="header-close-drawer"
+        >
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base sm:text-lg">Register patient</h3>
             <TButton 
               className="border bg-white min-h-[44px] min-w-[44px]" 
-              onClick={closeRegister}
+              onClick={(e) => { e.stopPropagation(); closeRegister(); }}
               data-testid="button-close-register"
             >
               Close

@@ -63,10 +63,14 @@ export default function CreateTaskDrawer({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="px-4 py-3 flex items-center justify-between border-b">
+        <div 
+          className="px-4 py-3 flex items-center justify-between border-b cursor-pointer hover:bg-gray-50 transition-colors"
+          onClick={onClose}
+          data-testid="header-close-drawer"
+        >
           <h2 className="text-lg font-semibold">New Task</h2>
           <button
-            onClick={onClose}
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
             className="px-3 py-2 rounded hover:bg-slate-100"
           >
             Close

@@ -187,12 +187,20 @@ export default function TriageDrawer() {
       {/* Wider, responsive drawer */}
       <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
         {/* Header */}
-        <div className="px-4 py-3 border-b sticky top-0 bg-white z-10">
+        <div 
+          className="px-4 py-3 border-b sticky top-0 bg-white z-10 cursor-pointer hover:bg-gray-50 transition-colors"
+          onClick={closeTriage}
+          data-testid="header-close-drawer"
+        >
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base sm:text-lg">
               Triage — {enc.name}
             </h3>
-            <TButton className="border bg-white min-w-[44px]" onClick={closeTriage} data-testid="button-close-triage">
+            <TButton 
+              className="border bg-white min-w-[44px]" 
+              onClick={(e) => { e.stopPropagation(); closeTriage(); }}
+              data-testid="button-close-triage"
+            >
               <X className="w-4 h-4" />
             </TButton>
           </div>
