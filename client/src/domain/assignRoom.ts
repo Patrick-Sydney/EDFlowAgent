@@ -1,5 +1,6 @@
 import { useJourneyStore } from "@/stores/journeyStore";
 import { usePatientIndex } from "@/stores/patientIndexStore";
+import { useDashboardStore } from "@/stores/dashboardStore";
 
 export function assignRoom(patientId: string, roomLabel: string, actor="Charge RN") {
   if (!patientId || !roomLabel.trim()) return;
@@ -14,6 +15,19 @@ export function assignRoom(patientId: string, roomLabel: string, actor="Charge R
     actor,
   });
 
-  // 2) recompute the derived index immediately (header + lanes react)
+  // 2) Update the encounter lane so patient moves to "Roomed" column immediately
+  const dashboardState = useDashboardStore.getState();
+  const encounter = dashboardState.encounters.find(e => String(e.id) === patientId);
+  if (encounter) {
+    // Update the encounter in place to move to "roomed" lane
+    encounter.lane = "roomed";
+    encounter.room = roomLabel.trim();
+    encounter.lastUpdated = new Date();
+    
+    // Trigger dashboard store update
+    dashboardState.loadEncounters();
+  }
+
+  // 3) recompute the derived index immediately (header updates)
   usePatientIndex.getState().recompute();
 }

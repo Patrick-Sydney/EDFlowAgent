@@ -2,6 +2,7 @@ import React from "react";
 import { Clock, Bed } from "lucide-react";
 import EWSChipLive from "./EWSChipLive";
 import { useVitalsLast } from "../../stores/vitalsStore";
+import { useRoomFor } from "../../stores/patientIndexStore";
 
 /**
  * Desktop-first collapsed header (no CTAs).
@@ -33,6 +34,10 @@ export default function CollapsedCardHeader({
   const lastStr = last?.t
     ? new Date(last.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : undefined;
+  
+  // Use live room selector as fallback to ensure real-time updates
+  const liveRoom = useRoomFor(String(patientId));
+  const displayLocation = locationLabel ?? liveRoom;
 
   return (
     <div className="min-w-0">
@@ -46,10 +51,10 @@ export default function CollapsedCardHeader({
 
       {/* Row B: Location + live chips + timers */}
       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-        {locationLabel && (
+        {displayLocation && (
           <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-background text-foreground">
             <Bed className="h-3.5 w-3.5" />
-            {locationLabel}
+            {displayLocation}
           </span>
         )}
         <EWSChipLive patientId={patientId} />
