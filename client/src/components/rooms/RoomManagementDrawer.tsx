@@ -1,9 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/dashboardStore";
-import { assignRoom } from "../../domain/assignRoom";
 import { X } from "lucide-react";
 import EWSChipLive from "../patient/EWSChipLive";
+import {
+  assignRoom, reassignRoom, releaseRoom,
+  markSpaceReady, markSpaceForCleaning
+} from "../../domain/roomActions";
 
 type Filter = "all" | "available" | "occupied" | "cleaning" | "blocked" | "oos";
 
@@ -92,21 +95,77 @@ export default function RoomManagementDrawer() {
                   </div>
                   <div className="flex gap-2">
                     {space.status === "available" && (
-                      <AssignButton space={space} onDone={closeRoom} patients={availablePatients}/>
+                      <AssignButton 
+                        space={space} 
+                        onDone={closeRoom} 
+                        patients={availablePatients}
+                        onSave={(patientId) => assignRoom(patientId, space.id)}
+                      />
                     )}
                     {space.status === "occupied" && assignedPatient && (
                       <>
-                        <ReassignButton space={space} patient={assignedPatient} onDone={closeRoom} availableSpaces={spaces.filter(s => s.status === "available")}/>
-                        <ReleaseButton space={space} patient={assignedPatient} onDone={closeRoom} />
+                        <ReassignButton 
+                          space={space} 
+                          patient={assignedPatient} 
+                          onDone={closeRoom} 
+                          availableSpaces={spaces.filter(s => s.status === "available")}
+                          onSave={(patientId, newSpaceId) => reassignRoom(patientId, newSpaceId)}
+                        />
+                        <button 
+                          className="text-xs rounded border px-2 py-1 hover:bg-gray-50" 
+                          onClick={async () => { 
+                            try {
+                              await releaseRoom(assignedPatient.id); 
+                              closeRoom(); 
+                            } catch (e) {
+                              console.error("Failed to release room:", e);
+                            }
+                          }}
+                          data-testid="button-release"
+                        >
+                          Release
+                        </button>
+                        <button 
+                          className="text-xs rounded border px-2 py-1 hover:bg-gray-50" 
+                          onClick={async () => { 
+                            try {
+                              await markSpaceForCleaning(space.id); 
+                              closeRoom(); 
+                            } catch (e) {
+                              console.error("Failed to start cleaning:", e);
+                            }
+                          }}
+                          data-testid="button-start-cleaning"
+                        >
+                          Start Cleaning
+                        </button>
                       </>
                     )}
                     {space.status === "cleaning" && (
-                      <button className="text-xs rounded border px-2 py-1 hover:bg-gray-50" data-testid="button-mark-ready">
+                      <button 
+                        className="text-xs rounded border px-2 py-1 hover:bg-gray-50" 
+                        onClick={async () => { 
+                          try {
+                            await markSpaceReady(space.id); 
+                            closeRoom(); 
+                          } catch (e) {
+                            console.error("Failed to mark ready:", e);
+                          }
+                        }}
+                        data-testid="button-mark-ready"
+                      >
                         Mark Ready
                       </button>
                     )}
                     {space.status === "blocked" && (
-                      <button className="text-xs rounded border px-2 py-1 hover:bg-gray-50" data-testid="button-unblock">
+                      <button 
+                        className="text-xs rounded border px-2 py-1 hover:bg-gray-50" 
+                        onClick={() => { 
+                          console.warn("Unblock functionality not yet implemented"); 
+                          closeRoom(); 
+                        }}
+                        data-testid="button-unblock"
+                      >
                         Unblock
                       </button>
                     )}
@@ -128,18 +187,23 @@ export default function RoomManagementDrawer() {
 }
 
 // Helper components for room actions
-function AssignButton({ space, onDone, patients }: {
+function AssignButton({ space, onDone, patients, onSave }: {
   space: any; 
   onDone: () => void; 
   patients: any[];
+  onSave: (patientId: string) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const [patientId, setPatientId] = useState<string>("");
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (patientId) {
-      assignRoom(patientId, space.id);
-      onDone();
+      try {
+        await onSave(patientId);
+        onDone();
+      } catch (e) {
+        console.error("Failed to assign:", e);
+      }
     }
   };
 
@@ -179,19 +243,24 @@ function AssignButton({ space, onDone, patients }: {
   );
 }
 
-function ReassignButton({ space, patient, onDone, availableSpaces }: {
+function ReassignButton({ space, patient, onDone, availableSpaces, onSave }: {
   space: any; 
   patient: any; 
   onDone: () => void; 
   availableSpaces: any[];
+  onSave: (patientId: string, newSpaceId: string) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const [newSpaceId, setNewSpaceId] = useState<string>("");
 
-  const handleReassign = () => {
+  const handleReassign = async () => {
     if (newSpaceId) {
-      assignRoom(patient.id, newSpaceId);
-      onDone();
+      try {
+        await onSave(patient.id, newSpaceId);
+        onDone();
+      } catch (e) {
+        console.error("Failed to reassign:", e);
+      }
     }
   };
 
@@ -231,24 +300,4 @@ function ReassignButton({ space, patient, onDone, availableSpaces }: {
   );
 }
 
-function ReleaseButton({ space, patient, onDone }: {
-  space: any; 
-  patient: any; 
-  onDone: () => void;
-}) {
-  const handleRelease = () => {
-    // Release the room and set patient back to appropriate lane
-    assignRoom(patient.id, ""); // Empty room assignment
-    onDone();
-  };
-
-  return (
-    <button 
-      className="text-xs rounded border px-2 py-1 hover:bg-gray-50" 
-      onClick={handleRelease}
-      data-testid="button-release"
-    >
-      Release
-    </button>
-  );
-}
+// ReleaseButton is now integrated directly into the main component above

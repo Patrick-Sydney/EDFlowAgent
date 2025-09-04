@@ -1,0 +1,242 @@
+awesome — let’s lock this in and wire the **Room Management Drawer** actions end-to-end (no UI changes needed beyond the buttons). I’ll assume a simple rooms store; if your field names differ, tweak the tiny adapter comments.
+
+---
+
+# 1) Drop-in domain actions (all room ops in one place)
+
+**`src/domain/roomActions.ts`**
+
+```ts
+// Centralised commands so UI stays dumb.
+// Adjust adapters marked "ADAPT:" if your store names differ.
+
+import { useJourneyStore } from "@/stores/journeyStore";        // singleton, immutable
+import { usePatientIndex } from "@/stores/patientIndexStore";    // derived room/phase index
+import { useRoomsStore } from "@/stores/roomsStore";             // ADAPT: your rooms store
+import { useTaskStore } from "@/stores/taskStore";               // ADAPT: HCA tasks
+// Optional audit:
+type RoomEvent = { id: string; roomId: string; t: string; kind: string; patientId?: string; note?: string; actor?: string };
+const emitRoomEvent = (e: RoomEvent) => { try { (window as any).__roomEvents?.push?.(e); } catch {} };
+
+const nowISO = () => new Date().toISOString();
+
+// --- helpers (ADAPT these 2 lines if your store API is different) ---
+const setRoomStatus = (roomId: string, patch: Partial<{status:string; patientId?:string}>) =>
+  useRoomsStore.getState().update?.(roomId, patch);
+const findRoomByName = (name: string) =>
+  (useRoomsStore.getState().rooms || []).find((r:any) => r.name === name);
+
+// HCA task helper (idempotent-ish)
+const createHcaTask = (task: {patientId?:string; roomId?:string; label:string; dueAt?:string}) => {
+  try {
+    useTaskStore.getState().create?.({
+      id: crypto.randomUUID(),
+      kind: "clean_room",
+      origin: "manual",
+      status: "pending",
+      assigneeRole: "HCA",
+      ...task
+    });
+  } catch {}
+};
+
+export function assignRoom(patientId: string, roomLabel: string, actor="Charge RN") {
+  const room = findRoomByName(roomLabel);
+  if (!patientId || !room) return;
+
+  // 1) Source of truth: Journey event
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId, t: nowISO(),
+    kind: "room_change", label: roomLabel, actor, detail: "Assigned"
+  });
+
+  // 2) Rooms catalog
+  setRoomStatus(room.id, { status: "occupied", patientId });
+
+  // 3) Derived index (header chip + lanes)
+  usePatientIndex.getState().recompute();
+
+  emitRoomEvent({ id: crypto.randomUUID(), roomId: room.id, t: nowISO(), kind: "assigned", patientId, actor });
+}
+
+export function reassignRoom(patientId: string, toRoomLabel: string, actor="Charge RN") {
+  assignRoom(patientId, toRoomLabel, actor);
+}
+
+export function releaseRoom(roomId: string, actor="Charge RN") {
+  // 1) rooms catalog
+  setRoomStatus(roomId, { status: "cleaning", patientId: undefined });
+
+  // 2) HCA task to clean
+  createHcaTask({ roomId, label: "Clean room" });
+
+  // 3) audit + journey (room status change as comms)
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(),
+    patientId: "", t: nowISO(),
+    kind: "communication", label: "Room released", detail: { roomId }
+  });
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "released", actor });
+}
+
+export function startCleaning(roomId: string, actor="Charge RN") {
+  setRoomStatus(roomId, { status: "cleaning" });
+  createHcaTask({ roomId, label: "Clean room" });
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "clean_start", actor });
+}
+
+export function markReady(roomId: string, actor="HCA") {
+  setRoomStatus(roomId, { status: "available", patientId: undefined });
+  // Optionally resolve HCA task here
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "clean_done", actor });
+}
+
+export function blockRoom(roomId: string, note?: string, actor="Charge RN") {
+  setRoomStatus(roomId, { status: "blocked", patientId: undefined });
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "blocked", note, actor });
+}
+
+export function unblockRoom(roomId: string, actor="Charge RN") {
+  setRoomStatus(roomId, { status: "available" });
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "unblocked", actor });
+}
+
+export function setOutOfService(roomId: string, actor="Charge RN") {
+  setRoomStatus(roomId, { status: "oos", patientId: undefined });
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "oos", actor });
+}
+
+export function setInService(roomId: string, actor="Charge RN") {
+  setRoomStatus(roomId, { status: "available" });
+  emitRoomEvent({ id: crypto.randomUUID(), roomId, t: nowISO(), kind: "in_service", actor });
+}
+```
+
+---
+
+# 2) Wire these into the Room Management Drawer
+
+In your **`RoomManagementDrawer.tsx`**, replace the placeholder button handlers:
+
+```tsx
+import {
+  assignRoom, reassignRoom, releaseRoom,
+  startCleaning, markReady, blockRoom, unblockRoom,
+  setOutOfService, setInService
+} from "@/domain/roomActions";
+
+// ...inside the list render (per room 'r'):
+
+{r.status==="available" && (
+  <AssignButton room={r.name} onDone={onClose} patients={patients}
+    onSave={(pid)=>assignRoom(pid, r.name)} />
+)}
+
+{r.status==="occupied" && (
+  <>
+    <ReassignButton room={r.name} onDone={onClose} patients={patients}
+      onSave={(pid)=>reassignRoom(pid, r.name)} />
+    <button className="text-xs rounded border px-2 py-1"
+      onClick={() => { releaseRoom(r.id); onClose(); }}>
+      Release
+    </button>
+    <button className="text-xs rounded border px-2 py-1"
+      onClick={() => { startCleaning(r.id); onClose(); }}>
+      Start cleaning
+    </button>
+  </>
+)}
+
+{r.status==="cleaning" && (
+  <button className="text-xs rounded border px-2 py-1"
+    onClick={() => { markReady(r.id); onClose(); }}>
+    Mark ready
+  </button>
+)}
+
+{r.status==="blocked" && (
+  <button className="text-xs rounded border px-2 py-1"
+    onClick={() => { unblockRoom(r.id); onClose(); }}>
+    Unblock
+  </button>
+)}
+
+{r.status==="oos" && (
+  <button className="text-xs rounded border px-2 py-1"
+    onClick={() => { setInService(r.id); onClose(); }}>
+    Mark in service
+  </button>
+)}
+
+// overflow menu could include:
+<button className="text-xs rounded border px-2 py-1"
+  onClick={() => { blockRoom(r.id); onClose(); }}>
+  Block
+</button>
+<button className="text-xs rounded border px-2 py-1"
+  onClick={() => { setOutOfService(r.id); onClose(); }}>
+  Out of service
+</button>
+```
+
+…and slightly tweak the tiny helpers so `AssignButton`/`ReassignButton` call `onSave`:
+
+```tsx
+function AssignButton({ room, onDone, patients, onSave }:{
+  room:string; onDone:()=>void; patients:any[]; onSave:(pid:string)=>void
+}) {
+  const [open, setOpen] = useState(false);
+  const [pid, setPid] = useState("");
+  return (
+    <>
+      <button className="text-xs rounded border px-2 py-1" onClick={()=>setOpen(o=>!o)}>Assign</button>
+      {open && (
+        <div className="mt-2 flex items-center gap-2">
+          <select className="text-xs border rounded px-2 py-1" value={pid} onChange={e=>setPid(e.target.value)}>
+            <option value="">Select patient…</option>
+            {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button className="text-xs rounded bg-slate-900 text-white px-2 py-1"
+            onClick={() => { if(pid) onSave(pid); onDone(); }}>
+            Save
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ReassignButton(props:any){ return <AssignButton {...props}/>; }
+```
+
+---
+
+# 3) Calm visual language (quick polish)
+
+* Keep the **Rooms** quick entry as the single button with badge by default; switchable to neutral chip cluster via `uiPrefsStore`.
+* Context banner surfaces only when `available === 0`, `blocked > 0`, or `cleaning > 2` (you can tune in `selectors/rooms.ts`).
+* Drawer uses white background, neutral borders, no saturated fills; only focused actions gain emphasis.
+
+---
+
+# 4) What should happen (acceptance)
+
+* **Assign** in drawer:
+
+  * writes `room_change` Journey event,
+  * sets room → `occupied` + `patientId`,
+  * recomputes index → **expanded header location updates**, **card moves to Roomed**, **Journey shows move**.
+* **Release**:
+
+  * room → `cleaning`, HCA task created (`clean_room`), Journey communication logged.
+* **Mark ready**:
+
+  * room → `available`, HCA task can be auto-resolved later.
+* **Block/Unblock / OOS / In service**:
+
+  * status flips accordingly; capacity counts & contextual banner react.
+
+---
+
+If you tell me your exact rooms store shape (e.g., `{ id, name, zone, status, patientId }` and which update method you expose), I can replace the two “ADAPT” lines with your concrete code so it’s copy-paste perfect.
