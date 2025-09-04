@@ -78,16 +78,10 @@ export default function RoomsQuickEntry() {
   };
 
   const StatusChip = ({ status, count }: { status: string; count: number }) => {
-    const bgColor = status === "Available" ? "bg-green-50 border-green-200 text-green-600" :
-                   status === "Occupied" ? "bg-blue-50 border-blue-200 text-blue-600" :
-                   status === "Cleaning" ? "bg-yellow-50 border-yellow-200 text-yellow-600" :
-                   status === "Blocked" ? "bg-red-50 border-red-200 text-red-600" :
-                   "bg-gray-50 border-gray-200 text-gray-600";
-    
     return (
       <button
         onClick={() => openRoom({} as any)}
-        className={`text-xs rounded border px-2 py-1 mr-2 ${bgColor}`}
+        className="text-xs rounded border border-gray-200 bg-gray-50 text-gray-700 px-2 py-1 mr-2 hover:bg-gray-100"
         title={`${status}: ${count} rooms`}
         data-testid={`chip-status-${status.toLowerCase()}`}
       >
@@ -97,25 +91,10 @@ export default function RoomsQuickEntry() {
   };
 
   return (
-    <div className="space-y-2">
-      {/* Room Types Row */}
+    <div>
+      {/* Rooms Status Row */}
       <div className="flex items-center flex-wrap gap-1">
-        <span className="text-xs font-medium text-slate-600 mr-2">Types:</span>
-        {roomsByType.map(({ type, available, total, status }) => (
-          <TypeChip key={type} type={type} available={available} total={total} status={status} />
-        ))}
-        <button 
-          onClick={() => openRoom({} as any)} 
-          className="ml-2 text-xs underline text-blue-600"
-          data-testid="link-manage-rooms"
-        >
-          Manage
-        </button>
-      </div>
-      
-      {/* Status Row */}
-      <div className="flex items-center flex-wrap gap-1">
-        <span className="text-xs font-medium text-slate-600 mr-2">Status:</span>
+        <span className="text-xs font-medium text-slate-600 mr-2">Rooms:</span>
         {roomsByStatus.map(({ status, count }) => (
           <StatusChip key={status} status={status} count={count} />
         ))}
