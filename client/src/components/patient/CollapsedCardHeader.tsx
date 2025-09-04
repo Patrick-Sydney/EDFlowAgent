@@ -41,10 +41,6 @@ export default function CollapsedCardHeader({
   const liveRoom = useRoomFor(String(patientId));
   const displayLocation = locationLabel ?? liveRoom;
   
-  // Debug logging
-  if (name === "Te Awhina Tai") {
-    console.log("Te Awhina Tai room debug:", { locationLabel, liveRoom, displayLocation, patientId });
-  }
 
   return (
     <div className="min-w-0">
@@ -57,7 +53,7 @@ export default function CollapsedCardHeader({
           {ageSex && <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{ageSex}</span>}
         </div>
         {/* Red flag badges in top right */}
-        {(isolationRequired || name === "Te Awhina Tai") && (
+        {isolationRequired && (
           <div className="flex items-center gap-1 shrink-0">
             <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 text-rose-800 bg-rose-50 px-1.5 py-0.5 text-xs font-medium">
               <ShieldAlert className="h-3 w-3" />
@@ -70,16 +66,9 @@ export default function CollapsedCardHeader({
       {/* Row B: Location + live chips + timers */}
       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
         {displayLocation && (
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-background text-foreground" data-testid="room-chip">
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-2 py-0.5 bg-slate-50 text-slate-700 font-medium" data-testid="room-chip">
             <Bed className="h-3.5 w-3.5" />
             {displayLocation}
-          </span>
-        )}
-        {/* Force show room chip for debugging */}
-        {name === "Te Awhina Tai" && (
-          <span className="inline-flex items-center gap-1 rounded-full border border-blue-500 px-2 py-0.5 bg-blue-50 text-blue-800" data-testid="debug-room-chip">
-            <Bed className="h-3.5 w-3.5" />
-            DEBUG: ISO2
           </span>
         )}
         <EWSChipLive patientId={patientId} />
