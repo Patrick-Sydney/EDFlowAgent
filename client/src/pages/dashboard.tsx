@@ -32,7 +32,6 @@ export default function Dashboard() {
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
   const [identityOpen, setIdentityOpen] = useState(false);
   const [selectedIdentity, setSelectedIdentity] = useState<PatientIdentity | null>(null);
-  const [roomDrawerOpen, setRoomDrawerOpen] = useState(false);
   const { toast } = useToast();
   
   // Start monitoring scheduler for automatic task status updates
@@ -390,7 +389,7 @@ export default function Dashboard() {
         {/* Drawers */}
         <RegisterDrawer />
         <TriageDrawer />
-        <RoomManagementDrawer open={false} onClose={() => {}} />
+        <RoomManagementDrawer />
       </div>
     );
   }
@@ -445,7 +444,7 @@ export default function Dashboard() {
         {/* Drawers */}
         <RegisterDrawer />
         <TriageDrawer />
-        <RoomManagementDrawer open={false} onClose={() => {}} />
+        <RoomManagementDrawer />
         
         <ObservationSetModalTouch
           open={obsModalOpen}
@@ -486,9 +485,9 @@ export default function Dashboard() {
         {(roleView === "charge" || roleView === "developer") && (
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <RoomsQuickEntry onOpen={() => setRoomDrawerOpen(true)} />
+              <RoomsQuickEntry />
             </div>
-            <RoomsContextBanner onOpen={() => setRoomDrawerOpen(true)} />
+            <RoomsContextBanner />
           </div>
         )}
         
@@ -506,7 +505,7 @@ export default function Dashboard() {
         <TriageDrawer />
         
         {/* Room Management Drawer */}
-        <RoomManagementDrawer open={roomDrawerOpen} onClose={() => setRoomDrawerOpen(false)} />
+        <RoomManagementDrawer />
         
         {/* Patient Flow Lanes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">

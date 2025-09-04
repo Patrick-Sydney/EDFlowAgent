@@ -1,7 +1,9 @@
 import React from "react";
 import { useRoomCounts, useRoomThresholds } from "../../selectors/rooms";
+import { useDashboardStore } from "../../stores/dashboardStore";
 
-export default function RoomsContextBanner({ onOpen }: { onOpen: () => void }) {
+export default function RoomsContextBanner() {
+  const openRoom = useDashboardStore((s) => s.openRoom);
   const c = useRoomCounts();
   const t = useRoomThresholds();
   const show = t.warn || t.crit;
@@ -16,7 +18,7 @@ export default function RoomsContextBanner({ onOpen }: { onOpen: () => void }) {
     <div className={`flex items-center justify-between border ${tone} rounded px-3 py-2`}>
       <div className="text-sm">{msg}</div>
       <button 
-        onClick={onOpen} 
+        onClick={() => openRoom({} as any)} 
         className="text-sm underline"
         data-testid="link-open-room-management"
       >

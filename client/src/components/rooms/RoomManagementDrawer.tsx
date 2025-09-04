@@ -6,16 +6,12 @@ import { X } from "lucide-react";
 
 type Filter = "all" | "available" | "occupied" | "cleaning" | "blocked" | "oos";
 
-export default function RoomManagementDrawer({ 
-  open, 
-  onClose 
-}: {
-  open: boolean; 
-  onClose: () => void;
-}) {
+export default function RoomManagementDrawer() {
   const [filter, setFilter] = useState<Filter>("available");
   const spaces = useDashboardStore((s) => s.spaces || []);
   const encounters = useDashboardStore((s) => s.encounters || []);
+  const open = useDashboardStore((s) => s.roomOpen);
+  const closeRoom = useDashboardStore((s) => s.closeRoom);
 
   const list = useMemo(() => {
     return spaces.filter(space => {
@@ -34,13 +30,13 @@ export default function RoomManagementDrawer({
 
   return createPortal(
     <div className="fixed inset-0 z-[98] flex justify-end pointer-events-none">
-      <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={onClose}/>
+      <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={closeRoom}/>
       <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto">
         {/* Header */}
         <header className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
           <div className="font-semibold">Room Management</div>
           <button
-            onClick={onClose}
+            onClick={closeRoom}
             className="p-1 rounded hover:bg-gray-100"
             data-testid="button-close-drawer"
           >
@@ -88,12 +84,12 @@ export default function RoomManagementDrawer({
                   </div>
                   <div className="flex gap-2">
                     {space.status === "available" && (
-                      <AssignButton space={space} onDone={onClose} patients={availablePatients}/>
+                      <AssignButton space={space} onDone={closeRoom} patients={availablePatients}/>
                     )}
                     {space.status === "occupied" && assignedPatient && (
                       <>
-                        <ReassignButton space={space} patient={assignedPatient} onDone={onClose} availableSpaces={spaces.filter(s => s.status === "available")}/>
-                        <ReleaseButton space={space} patient={assignedPatient} onDone={onClose} />
+                        <ReassignButton space={space} patient={assignedPatient} onDone={closeRoom} availableSpaces={spaces.filter(s => s.status === "available")}/>
+                        <ReleaseButton space={space} patient={assignedPatient} onDone={closeRoom} />
                       </>
                     )}
                     {space.status === "cleaning" && (

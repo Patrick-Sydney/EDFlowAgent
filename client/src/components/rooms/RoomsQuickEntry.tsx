@@ -1,8 +1,10 @@
 import React from "react";
 import { useUiPrefsStore } from "../../stores/uiPrefsStore";
 import { useRoomCounts, useRoomThresholds } from "../../selectors/rooms";
+import { useDashboardStore } from "../../stores/dashboardStore";
 
-export default function RoomsQuickEntry({ onOpen }: { onOpen: () => void }) {
+export default function RoomsQuickEntry() {
+  const openRoom = useDashboardStore((s) => s.openRoom);
   const mode = useUiPrefsStore((s) => s.roomsQuickEntry);
   const counts = useRoomCounts();
   const t = useRoomThresholds();
@@ -11,7 +13,7 @@ export default function RoomsQuickEntry({ onOpen }: { onOpen: () => void }) {
     const badgeTone = t.crit ? "bg-red-600" : t.warn ? "bg-amber-500" : "bg-slate-300";
     return (
       <button
-        onClick={onOpen}
+        onClick={() => openRoom({} as any)}
         className="inline-flex items-center gap-2 rounded border px-3 py-1.5"
         title="Open Room Management"
         data-testid="button-rooms"
@@ -27,7 +29,7 @@ export default function RoomsQuickEntry({ onOpen }: { onOpen: () => void }) {
   // neutral chip cluster
   const Chip = ({ label, value, emphasize=false }:{label:string; value:number; emphasize?:boolean}) => (
     <button
-      onClick={onOpen}
+      onClick={() => openRoom({} as any)}
       className={`text-xs rounded-full border px-2 py-1 mr-2 ${emphasize ? "font-semibold" : ""}`}
       title="Open Room Management"
       data-testid={`chip-${label.toLowerCase()}`}
