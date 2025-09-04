@@ -29,7 +29,7 @@ export default function RoomManagementDrawer() {
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[98] flex justify-end pointer-events-none">
+    <div className="fixed inset-0 z-[1200] flex justify-end pointer-events-none">
       <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={closeRoom}/>
       <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto">
         {/* Header */}
