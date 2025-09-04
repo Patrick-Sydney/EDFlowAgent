@@ -8,8 +8,9 @@ import { sseManager } from "@/lib/sse";
 import { type Encounter, LANES } from "@shared/schema";
 import RegisterDrawer from "@/components/RegisterDrawer";
 import TriageDrawer from "@/components/TriageDrawer";
-import RoomManagementDrawer from "@/components/RoomManagementDrawer";
-import SpaceSummaryBar from "@/components/SpaceSummaryBar";
+import RoomsQuickEntry from "@/components/rooms/RoomsQuickEntry";
+import RoomsContextBanner from "@/components/rooms/RoomsContextBanner";
+import RoomManagementDrawer from "@/components/rooms/RoomManagementDrawer";
 import ReceptionView from "@/components/ReceptionView";
 import { ObservationDemo } from "@/components/ObservationDemo";
 import { useMonitoringScheduler } from "@/hooks/useMonitoringScheduler";
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
   const [identityOpen, setIdentityOpen] = useState(false);
   const [selectedIdentity, setSelectedIdentity] = useState<PatientIdentity | null>(null);
+  const [roomDrawerOpen, setRoomDrawerOpen] = useState(false);
   const { toast } = useToast();
   
   // Start monitoring scheduler for automatic task status updates
@@ -132,7 +134,7 @@ export default function Dashboard() {
         displayName: e.name,
         chiefComplaint: e.complaint,
         waitingFor: calculateWaitingTime(new Date(e.arrivalTime)),
-        ews: e.ats, // Using ATS as EWS for now
+        ews: e.ats ?? undefined, // Using ATS as EWS for now
         roomName: e.room,
         age: e.age,
         sex: e.sex
@@ -159,11 +161,11 @@ export default function Dashboard() {
       displayName: e.name,
       chiefComplaint: e.complaint,
       waitingFor: `${calculateWaitingTime(new Date(e.arrivalTime))} waiting`,
-      ews: e.ats,
+      ews: e.ats ?? undefined,
       roomName: e.room,
       age: e.age,
       sex: e.sex,
-      arrivalAt: e.arrivalTime
+      arrivalAt: typeof e.arrivalTime === 'string' ? e.arrivalTime : e.arrivalTime.toISOString()
     });
 
     return [
@@ -186,7 +188,7 @@ export default function Dashboard() {
       displayName: e.name,
       chiefComplaint: e.complaint,
       mdWaiting: `${calculateWaitingTime(new Date(e.arrivalTime))} waiting for MD`,
-      ews: e.ats,
+      ews: e.ats ?? undefined,
       roomName: e.room,
       age: e.age,
       sex: e.sex,
@@ -388,7 +390,7 @@ export default function Dashboard() {
         {/* Drawers */}
         <RegisterDrawer />
         <TriageDrawer />
-        <RoomManagementDrawer />
+        <RoomManagementDrawer open={false} onClose={() => {}} />
       </div>
     );
   }
@@ -413,6 +415,7 @@ export default function Dashboard() {
             onOpenObs={handleOpenObs}
             onOpenCard={handleOpenCard}
             onOpenIdentity={handleOpenIdentity}
+            onOpenVitals={handleOpenObs}
           />
         )}
         
@@ -442,7 +445,7 @@ export default function Dashboard() {
         {/* Drawers */}
         <RegisterDrawer />
         <TriageDrawer />
-        <RoomManagementDrawer />
+        <RoomManagementDrawer open={false} onClose={() => {}} />
         
         <ObservationSetModalTouch
           open={obsModalOpen}
@@ -479,8 +482,15 @@ export default function Dashboard() {
           <StatsBar />
         </div>
         
-        {/* Treatment Spaces Summary - for Charge Nurse and Developer views */}
-        {(roleView === "charge" || roleView === "developer") && <SpaceSummaryBar />}
+        {/* Room Management - for Charge Nurse and Developer views */}
+        {(roleView === "charge" || roleView === "developer") && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <RoomsQuickEntry onOpen={() => setRoomDrawerOpen(true)} />
+            </div>
+            <RoomsContextBanner onOpen={() => setRoomDrawerOpen(true)} />
+          </div>
+        )}
         
         {/* Temporary monitoring demo - Developer only */}
         {roleView === "developer" && (
@@ -496,7 +506,7 @@ export default function Dashboard() {
         <TriageDrawer />
         
         {/* Room Management Drawer */}
-        <RoomManagementDrawer />
+        <RoomManagementDrawer open={roomDrawerOpen} onClose={() => setRoomDrawerOpen(false)} />
         
         {/* Patient Flow Lanes */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">

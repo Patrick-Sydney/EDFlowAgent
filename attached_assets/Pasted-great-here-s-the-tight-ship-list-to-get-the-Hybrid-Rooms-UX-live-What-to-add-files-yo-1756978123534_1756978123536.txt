@@ -1,0 +1,64 @@
+great — here’s the tight “ship list” to get the **Hybrid Rooms** UX live.
+
+# What to add (files you already have from me)
+
+* `stores/uiPrefsStore.ts` – toggle for **button** vs **chips**
+* `selectors/rooms.ts` – counts + thresholds
+* `components/rooms/RoomsQuickEntry.tsx` – button/chips entry
+* `components/rooms/RoomsContextBanner.tsx` – appears only on pressure
+* `components/rooms/RoomManagementDrawer.tsx` – all actions/details
+* (Reuse your `assignRoom()` command so header/lanes/Journey update)
+
+# Wire-up checklist (5 mins)
+
+1. **Place Quick Entry + Banner in Charge header**
+
+   ```tsx
+   // ChargeHeaderArea (or wherever your stats strip was)
+   const [open, setOpen] = useState(false);
+
+   <div className="flex items-center justify-between mb-2">
+     <RoomsQuickEntry onOpen={() => setOpen(true)} />
+   </div>
+
+   <div className="mb-2">
+     <RoomsContextBanner onOpen={() => setOpen(true)} />
+   </div>
+
+   <RoomManagementDrawer open={open} onClose={() => setOpen(false)} />
+   ```
+2. **Remove the colorful strip** (or comment it) and keep only the components above.
+3. **Ensure `assignRoom()`** (used inside the drawer) appends a `room_change` Journey event and recomputes your index (so header chip, lanes, and Journey react instantly).
+4. **Default calm mode**
+
+   ```ts
+   // uiPrefsStore default
+   roomsQuickEntry: "button" // switch to "chips" if you prefer the cluster
+   ```
+5. **Thresholds (tweak in `selectors/rooms.ts`)**
+
+   ```ts
+   warn when: available === 0 || cleaning > 2
+   crit when: blocked > 0
+   ```
+
+   (Only the **badge** and **context banner** go amber/red. Everything else stays neutral.)
+
+# Quick QA script
+
+* Open Charge view → see **Rooms button** with badge `A/T`.
+* Set `available=0` or `blocked>0` in your rooms store → **Context banner** appears.
+* Click **Rooms** → Drawer opens; filter defaults to **Available**.
+* Choose a room → **Assign** patient:
+
+  * Expanded Patient Card header shows **Location Room X** immediately.
+  * Patient moves to **Roomed** lane.
+  * **Patient Journey** shows a new `room_change` row (mode **All**).
+* Switch setting to `"chips"` → verify neutral chip cluster + **Manage** link opens the same drawer.
+
+# Visual notes
+
+* Keep chips neutral (white bg, subtle border); only the badge/banners change color on thresholds.
+* Drawer width 520px; z-index above Patient Card (e.g., `z-[98]`).
+
+If you want me to tailor the drawer actions to your exact room store (block/unblock, cleaning start/done), say the current field names (`status`, `zone`, etc.) and I’ll drop in the action handlers.
