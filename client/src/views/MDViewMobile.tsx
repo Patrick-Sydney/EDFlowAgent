@@ -81,6 +81,7 @@ export default function MDViewMobile({
                     status={status}
                     timer={p.mdWaiting}
                     complaint={p.chiefComplaint}
+                    locationLabel={p.roomName}
                     ews={p.ews}
                     ats={p.ats}
                     patientId={p.id}

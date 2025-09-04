@@ -75,6 +75,7 @@ export default function ChargeViewMobile({
                     status={status}
                     timer={p.waitingFor}
                     complaint={p.chiefComplaint}
+                    locationLabel={p.roomName}
                     ews={p.ews}
                     ats={p.ats}
                     patientId={p.id}
