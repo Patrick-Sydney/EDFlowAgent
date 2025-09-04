@@ -64,7 +64,7 @@ function FingerSlider({
   };
 
   const delta = last!=null && value!=null ? value-last : undefined;
-  const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta)}`:`Δ −${Math.abs(delta)}`) : undefined;
+  const deltaStr = delta ? (delta>0?`Δ +${Math.abs(delta).toFixed(1)}`:`Δ −${Math.abs(delta).toFixed(1)}`) : undefined;
 
   return (
     <div
