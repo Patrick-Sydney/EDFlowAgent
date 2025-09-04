@@ -173,20 +173,39 @@ export default function ObsQuickForm({ patientId, onSaved }:{
               // Journey events: vitals set, and EWS change if applicable
               try {
                 const last = useVitalsLast(String(patientId));
-                const lastEws = last?.ews ?? 0;
+                const prevEws = last?.ews ?? null;
+                
+                // Check if we have all core vitals
+                const hasAllCoreVitals = !!(rr && hr && sbp && spo2 && temp);
+                
+                // Event 1: Always create vitals record
                 journeyStore.add(String(patientId), {
                   kind: "vitals",
-                  label: `Obs recorded: RR ${rr ?? "—"}, HR ${hr ?? "—"}, SBP ${sbp ?? "—"}, SpO₂ ${spo2 ?? "—"}%, Temp ${temp ?? "—"}°C`,
-                  detail: `EWS: ${ews}`,
-                  actor: { role: "RN" }
+                  label: "Obs",
+                  detail: {
+                    rr: rr || null,
+                    hr: hr || null, 
+                    sbp: sbp || null,
+                    spo2: spo2 || null,
+                    temp: temp || null,
+                    ews,
+                    complete: hasAllCoreVitals,
+                    source: "obs",
+                    actor: "RN"
+                  }
                 });
-                if (ews !== lastEws && ews >= 5) {
+                
+                // Event 2: Only if EWS changed
+                if (prevEws !== null && ews !== prevEws) {
                   journeyStore.add(String(patientId), {
                     kind: "ews_change",
-                    severity: "attention",
-                    label: `EWS increased to ${ews}`,
-                    detail: `Previous: ${lastEws}`,
-                    actor: { role: "RN" }
+                    label: `EWS ${prevEws} → ${ews}`,
+                    severity: ews >= 5 ? "warn" : undefined,
+                    detail: { 
+                      prev: prevEws, 
+                      next: ews, 
+                      delta: ews - prevEws 
+                    }
                   });
                 }
               } catch {}
