@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDashboardStore } from "@/stores/dashboardStore";
-import { useJourneyStore } from "@/stores/journeyStore";
+import { assignRoom } from "@/domain/assignRoom";
 import { X, Bed, Monitor, Droplets, Shield, Clock, AlertTriangle, CheckCircle } from "lucide-react";
 import TButton from "./ui/TButton";
 import { Segmented, Chips } from "./ui/Segmented";
@@ -107,17 +107,9 @@ export default function RoomManagementDrawer() {
     setPending(true);
     
     try {
-      // 1) Write Journey event FIRST (single source of truth)
-      console.debug("[AssignRoom] click", { patientId: String(enc.id), selectedRoom: selected.id, t: new Date().toISOString() });
-      useJourneyStore.getState().append({
-        id: crypto.randomUUID(),
-        patientId: String(enc.id),
-        t: new Date().toISOString(),
-        kind: "room_change",
-        label: selected.id,
-        actor: "Charge RN",
-        detail: isReassign ? "Reassigned" : "Assigned",
-      });
+      // Use the new clean architecture command
+      console.debug("[AssignRoom] click", { patientId: String(enc.id), selectedRoom: selected.id });
+      assignRoom(String(enc.id), selected.id, "Charge RN");
 
       // 2) Try API call for backend persistence (non-blocking for UX)
       try {

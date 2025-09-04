@@ -20,8 +20,8 @@ import Chip from "./ui/Chip";
 import SegmentedComponent from "./ui/Segmented";
 import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
-import { useCurrentRoom } from "@/stores/selectors";
-import { useRoomAndPhase } from "@/hooks/useRoomAndPhase";
+import { useRoomFor, usePhaseFor } from "@/stores/patientIndexStore";
+// import { useRoomAndPhase } from "@/hooks/useRoomAndPhase"; // replaced by useRoomFor, usePhaseFor
 import { useJourneyStore } from "@/stores/journeyStore";
 // import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
 // import PathwayTimers from "./patient/PathwayTimers";
@@ -267,8 +267,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     };
   }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
-  const currentRoom = useCurrentRoom(String(patientId));
-  const { room, phase } = useRoomAndPhase(String(patientId));
+  const currentRoom = useRoomFor(String(patientId));
+  const phase = usePhaseFor(String(patientId));
 
   // Read live room from Journey store for expanded header
   const liveRoom = useJourneyStore((s) => {
@@ -309,11 +309,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     displayName: displayName,
     age: age,
     sex: sex,
-    room: localLocationLabel ?? locationLabel ?? undefined,
+    room: currentRoom ?? localLocationLabel ?? locationLabel ?? undefined,
     ats: ats,
     ews: typeof ews === 'number' ? ews : (ews as any)?.score,
     arrivalTs: arrivalTs
-  }), [patientId, displayName, age, sex, localLocationLabel, locationLabel, ats, ews, arrivalTs]);
+  }), [patientId, displayName, age, sex, currentRoom, localLocationLabel, locationLabel, ats, ews, arrivalTs]);
 
   const handlePrimary = () => {
     if (onPrimary) return onPrimary();
@@ -347,7 +347,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             name={displayName}
             ageSex={ageSex}
             ats={ats}
-            locationLabel={room ?? localLocationLabel ?? locationLabel ?? undefined}
+            locationLabel={currentRoom ?? localLocationLabel ?? locationLabel ?? undefined}
             chiefComplaint={complaint}
             timerLabel={timer}
           />
@@ -382,7 +382,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 <Chip>
                   <span className="inline-flex items-center gap-1">
                     <Bed className="h-3.5 w-3.5" />
-                    Location {liveRoom ?? room ?? currentRoom ?? status ?? "—"}
+                    Location {liveRoom ?? currentRoom ?? status ?? "—"}
                   </span>
                 </Chip>
                 <Chip tone="info">debug: evs {eventsCount}</Chip>
