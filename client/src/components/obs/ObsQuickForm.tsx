@@ -172,13 +172,14 @@ export default function ObsQuickForm({ patientId, onSaved }:{
               vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
               // Journey events: vitals set, and EWS change if applicable
               try {
-                const last = useVitalsLast(String(patientId));
+                const last = vitalsStore.last(String(patientId));
                 const prevEws = last?.ews ?? null;
                 
                 // Check if we have all core vitals
                 const hasAllCoreVitals = !!(rr && hr && sbp && spo2 && temp);
                 
                 // Event 1: Always create vitals record
+                console.log("Adding vitals journey event for patient:", patientId, "EWS:", ews, "hasAllCore:", hasAllCoreVitals);
                 journeyStore.add(String(patientId), {
                   kind: "vitals",
                   label: "Obs",
@@ -197,6 +198,7 @@ export default function ObsQuickForm({ patientId, onSaved }:{
                 
                 // Event 2: Only if EWS changed
                 if (prevEws !== null && ews !== prevEws) {
+                  console.log("Adding EWS change journey event:", prevEws, "→", ews);
                   journeyStore.add(String(patientId), {
                     kind: "ews_change",
                     label: `EWS ${prevEws} → ${ews}`,
@@ -207,6 +209,8 @@ export default function ObsQuickForm({ patientId, onSaved }:{
                       delta: ews - prevEws 
                     }
                   });
+                } else {
+                  console.log("No EWS change event needed. prevEws:", prevEws, "currentEws:", ews);
                 }
               } catch {}
               onSaved?.();
