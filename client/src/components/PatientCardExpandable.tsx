@@ -23,6 +23,7 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { useRoomFor, usePhaseFor } from "@/stores/patientIndexStore";
 // import { useRoomAndPhase } from "@/hooks/useRoomAndPhase"; // replaced by useRoomFor, usePhaseFor
 import { useJourneyStore } from "@/stores/journeyStore";
+import { useMobileCardStore } from "@/stores/mobileCardStore";
 // import HeaderStatusRibbon from "./patient/HeaderStatusRibbon";
 // import PathwayTimers from "./patient/PathwayTimers";
 // import PerVitalSparklines from "./patient/PerVitalSparklines";
@@ -233,8 +234,22 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     onOpenResults, onQuickOrders, onEditNotes, age, sex, arrivalTs, isolationRequired
   } = props;
 
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
   const [desktopOpen, setDesktopOpen] = useState(false);
+  
+  // Mobile card expansion: use global store to ensure only one card expanded at a time
+  const { isExpanded: isMobileExpanded, toggleCard: toggleMobileCard } = useMobileCardStore();
+  const isDesktopView = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+  
+  // Use mobile store for mobile devices, local state for desktop
+  const open = isDesktopView ? localOpen : isMobileExpanded(String(patientId));
+  const handleToggleOpen = () => {
+    if (isDesktopView) {
+      setLocalOpen(o => !o);
+    } else {
+      toggleMobileCard(String(patientId));
+    }
+  };
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "notes" | "register">(false);
   // DISABLED: Task-related state causing infinite loops
@@ -295,7 +310,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     });
   }, [locationLabel]);
   const cardAnchorRef = useRef<HTMLDivElement | null>(null);
-  const isDesktop = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
   const displayName = useMemo(() => {
     const s = (name || "").trim();
     if (s.length <= 28) return s;
@@ -338,7 +352,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
       {/* Header row - new collapsed header component */}
       <div className="w-full text-left cursor-pointer" onClick={()=> {
-        if (isDesktop) { setDesktopOpen(true); } else { setOpen(o=>!o); }
+        if (isDesktopView) { setDesktopOpen(true); } else { handleToggleOpen(); }
       }} aria-expanded={open} aria-controls={`exp-${name}`}> 
         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
           {/* Left: collapsed header content (no CTAs) */}
