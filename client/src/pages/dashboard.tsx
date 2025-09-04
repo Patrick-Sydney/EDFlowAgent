@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function Dashboard() {
-  const { encounters, setEncounters, setDemoMode, roleView, setRoleView, resetDemo, demoMode } = useDashboardStore();
+  const { encounters, setEncounters, setDemoMode, roleView, setRoleView, resetDemo, demoMode, loadSpaces } = useDashboardStore();
   const [obsModalOpen, setObsModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientLite | null>(null);
   const [identityOpen, setIdentityOpen] = useState(false);
@@ -58,6 +58,9 @@ export default function Dashboard() {
     if (config) {
       setDemoMode(config.demoMode);
     }
+    
+    // Load spaces data for room status chips
+    loadSpaces();
     
     // Seed demo vitals data for timeline testing
     if (typeof window !== 'undefined') {
@@ -102,7 +105,7 @@ export default function Dashboard() {
       sseManager.disconnect();
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [data, config, setEncounters, setDemoMode, setRoleView]);
+  }, [data, config, setEncounters, setDemoMode, setRoleView, loadSpaces]);
 
   // Note: getEncountersByLane from store no longer needed - using direct lane filtering
   
