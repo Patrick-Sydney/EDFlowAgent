@@ -183,17 +183,7 @@ export default function ObsQuickForm({ patientId, onSaved }:{
                 journeyStore.add(String(patientId), {
                   kind: "vitals",
                   label: "Obs",
-                  detail: {
-                    rr: rr || null,
-                    hr: hr || null, 
-                    sbp: sbp || null,
-                    spo2: spo2 || null,
-                    temp: temp || null,
-                    ews,
-                    complete: hasAllCoreVitals,
-                    source: "obs",
-                    actor: "RN"
-                  }
+                  detail: `RR ${rr ?? "—"}, HR ${hr ?? "—"}, SBP ${sbp ?? "—"}, SpO₂ ${spo2 ?? "—"}%, Temp ${temp ?? "—"}°C (EWS ${ews})`
                 });
                 
                 // Event 2: Only if EWS changed
@@ -203,11 +193,7 @@ export default function ObsQuickForm({ patientId, onSaved }:{
                     kind: "ews_change",
                     label: `EWS ${prevEws} → ${ews}`,
                     severity: ews >= 5 ? "warn" : undefined,
-                    detail: { 
-                      prev: prevEws, 
-                      next: ews, 
-                      delta: ews - prevEws 
-                    }
+                    detail: `Previous: ${prevEws}, Delta: ${ews >= prevEws ? '+' : ''}${ews - prevEws}`
                   });
                 } else {
                   console.log("No EWS change event needed. prevEws:", prevEws, "currentEws:", ews);
