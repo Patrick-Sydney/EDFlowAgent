@@ -49,6 +49,7 @@ import VitalsTimelineInline from "./obs/VitalsTimelineInline";
 import PatientJourneyInline from "./journey/PatientJourneyInline";
 import NotesInline from "./notes/NotesInline";
 import NotesDrawer from "./notes/NotesDrawer";
+import ReadyForReviewDrawer from "./review/ReadyForReviewDrawer";
 import RegistrationDrawer from "./registration/RegistrationDrawer";
 import TriageDrawer from "./triage/TriageDrawer";
 import TaskList from "./tasks/TaskList";
@@ -263,7 +264,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     }
   };
   const [openTL, setOpenTL] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "notes" | "register">(false);
+  const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "notes" | "register" | "readyForReview">(false);
   // DISABLED: Task-related state causing infinite loops
   // const [openTaskDrawer, setOpenTaskDrawer] = useState(false);
   // const [openTaskSheet, setOpenTaskSheet] = useState<string | null>(null);
@@ -616,6 +617,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   </button>
                 </>
               )}
+              {/* MD specific action - Ready for Review for Roomed lane */}
+              {userRole === "md" && (status === "In Room" || status === "Roomed") && (
+                <button
+                  className="rounded-full px-3 py-2 text-sm text-white bg-green-600"
+                  onClick={() => setDrawerOpen("readyForReview")}
+                  data-testid="button-ready-for-review"
+                >
+                  Ready for Review
+                </button>
+              )}
               {/* Task creation for RN/Charge - DISABLED */}
               {/* {(userRole === "rn" || userRole === "charge") && (
                 <button
@@ -709,6 +720,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         title={drawerOpen === "obs" ? `Add observations — ${displayName}`
               : drawerOpen === "triage" ? `Triage — ${displayName}`
               : drawerOpen === "register" ? `Register patient — ${displayName}`
+              : drawerOpen === "readyForReview" ? `Ready for Review — ${displayName}`
               : drawerOpen === "notes" ? `Write note — ${displayName}` : `${displayName}`}
         open={!!drawerOpen}
         onClose={()=> setDrawerOpen(false)}
@@ -725,6 +737,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         )}
         {drawerOpen === "triage" && <TriageDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
         {drawerOpen === "register" && <RegistrationDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
+        {drawerOpen === "readyForReview" && <ReadyForReviewDrawer patientId={patientId} onSaved={()=> setDrawerOpen(false)} />}
       </AuthoringDrawer>
 
       {/* Task Creation Drawer - DISABLED */}
