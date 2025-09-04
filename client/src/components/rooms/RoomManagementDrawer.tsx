@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/dashboardStore";
-import { X } from "lucide-react";
 import EWSChipLive from "../patient/EWSChipLive";
+import RightDrawer from "../ui/RightDrawer";
 import {
   assignRoom, reassignRoom, releaseRoom,
   markSpaceReady, markSpaceForCleaning
@@ -31,34 +30,17 @@ export default function RoomManagementDrawer() {
     ["waiting", "triage"].includes(e.lane) && !e.room
   );
 
-  if (!open) return null;
+  const drawerTitle = selectedEncounter 
+    ? `Room Management - ${selectedEncounter.name}, ${selectedEncounter.age}${selectedEncounter.sex}`
+    : "Room Management";
 
-  return createPortal(
-    <div className="fixed inset-0 z-[1200] flex justify-end pointer-events-none">
-      <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={closeRoom}/>
-      <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
-        {/* Header */}
-        <header 
-          className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
-          onClick={closeRoom}
-          data-testid="header-close-drawer"
-        >
-          <div>
-            <div className="font-semibold">Room Management</div>
-            {selectedEncounter && (
-              <div className="text-sm text-gray-600 mt-1">
-                Assigning: {selectedEncounter.name}, {selectedEncounter.age}{selectedEncounter.sex}
-              </div>
-            )}
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); closeRoom(); }}
-            className="p-1 rounded hover:bg-gray-100"
-            data-testid="button-close-drawer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </header>
+  return (
+    <RightDrawer 
+      open={open} 
+      onClose={closeRoom} 
+      title={drawerTitle}
+      width={520}
+    >
 
         {/* Filter tabs */}
         <div className="px-4 py-2 border-b bg-gray-50">
@@ -209,9 +191,7 @@ export default function RoomManagementDrawer() {
             </div>
           )}
         </div>
-      </aside>
-    </div>,
-    document.body
+    </RightDrawer>
   );
 }
 
