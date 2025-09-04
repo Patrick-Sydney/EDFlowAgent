@@ -40,6 +40,7 @@ export function RNPatientRow({
       status={status}
       timer={p.waitingFor}
       complaint={p.chiefComplaint}
+      locationLabel={p.roomName}
       ews={p.ews}
       ats={p.ats}
       minVitals={minVitals}
