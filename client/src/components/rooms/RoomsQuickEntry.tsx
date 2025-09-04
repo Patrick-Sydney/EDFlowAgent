@@ -89,7 +89,7 @@ export default function RoomsQuickEntry() {
       };
       
       const filter = filterMap[status];
-      openRoom({} as any, filter);
+      openRoom(null as any, filter);
     };
 
     return (

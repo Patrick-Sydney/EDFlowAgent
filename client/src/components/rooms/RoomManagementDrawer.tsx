@@ -38,7 +38,7 @@ export default function RoomManagementDrawer() {
     ["waiting", "triage"].includes(e.lane) && !e.room
   );
 
-  const drawerTitle = selectedEncounter 
+  const drawerTitle = selectedEncounter && selectedEncounter.name
     ? `Room Management - ${selectedEncounter.name}, ${selectedEncounter.age}${selectedEncounter.sex}`
     : "Room Management";
 
