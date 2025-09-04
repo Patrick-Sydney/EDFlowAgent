@@ -247,7 +247,19 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     if (isDesktopView) {
       setLocalOpen(o => !o);
     } else {
+      const wasExpanded = isMobileExpanded(String(patientId));
       toggleMobileCard(String(patientId));
+      
+      // If card is being expanded (wasn't expanded before), scroll it into view
+      if (!wasExpanded && cardAnchorRef.current) {
+        setTimeout(() => {
+          cardAnchorRef.current?.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start',
+            inline: 'nearest' 
+          });
+        }, 50); // Small delay to ensure expansion animation starts first
+      }
     }
   };
   const [openTL, setOpenTL] = useState(false);
