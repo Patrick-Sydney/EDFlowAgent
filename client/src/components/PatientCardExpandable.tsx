@@ -571,8 +571,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
           {/* Action Bar (role-based) */}
           {userRole !== "hca" && (
             <div className="flex items-center gap-2 flex-wrap">
-              {/* RN-specific primary actions */}
-              {userRole === "rn" && (
+              {/* RN and Charge specific primary actions - only for Waiting lane */}
+              {(userRole === "rn" || userRole === "charge") && status === "Waiting" && (
                 <>
                   <button
                     className="rounded-full border px-3 py-2 text-sm"
