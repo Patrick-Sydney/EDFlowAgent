@@ -432,8 +432,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                     Triage
                   </button>
                 )}
-                {/* Room assignment restricted to Charge RN and above */}
-                {(userRole === "charge" || userRole === "md") && (
+                {/* Room assignment restricted to Charge RN only (not MD) */}
+                {userRole === "charge" && (
                   <button 
                     className="px-3 py-1.5 rounded border"
                     onClick={() => {
@@ -618,7 +618,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 </>
               )}
               {/* MD specific action - Ready for Review for Roomed lane */}
-              {userRole === "md" && (status === "In Room" || status === "Roomed") && (
+              {userRole === "md" && (phase === "Roomed" || lane === "roomed" || status?.includes("Room")) && (
                 <button
                   className="rounded-full px-3 py-2 text-sm text-white bg-green-600"
                   onClick={() => setDrawerOpen("readyForReview")}
@@ -637,15 +637,17 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                   + Task
                 </button>
               )} */}
-              {/* Always-available actions */}
-              <button className="rounded-full border px-3 py-2 text-sm" onClick={() => {
-                // Use the proper room management system instead of dummy AssignRoomPanel
-                const dashboardStore = useDashboardStore.getState();
-                const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
-                if (encounter) {
-                  dashboardStore.openRoom(encounter);
-                }
-              }} data-testid="button-assign-room">Assign room</button>
+              {/* Room assignment - not available for MD role */}
+              {userRole !== "md" && (
+                <button className="rounded-full border px-3 py-2 text-sm" onClick={() => {
+                  // Use the proper room management system instead of dummy AssignRoomPanel
+                  const dashboardStore = useDashboardStore.getState();
+                  const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
+                  if (encounter) {
+                    dashboardStore.openRoom(encounter);
+                  }
+                }} data-testid="button-assign-room">Assign room</button>
+              )}
               <button className="rounded-full px-3 py-2 text-sm text-white bg-blue-600" onClick={() => setDrawerOpen("obs")} data-testid="button-add-obs">+ Obs</button>
             </div>
           )}
