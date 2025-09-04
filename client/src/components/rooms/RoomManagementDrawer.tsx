@@ -78,12 +78,14 @@ export default function RoomManagementDrawer() {
                       {assignedPatient && (
                         <span className="ml-2">· {assignedPatient.name}, {assignedPatient.age}{assignedPatient.sex}</span>
                       )}
+                      {assignedPatient && (
+                        <span className="ml-2">
+                          <span className="inline-block scale-75 origin-left">
+                            <EWSChipLive patientId={assignedPatient.id} fallback={assignedPatient.ats} />
+                          </span>
+                        </span>
+                      )}
                     </div>
-                    {assignedPatient && (
-                      <div className="mt-2">
-                        <EWSChipLive patientId={assignedPatient.id} fallback={assignedPatient.ats} />
-                      </div>
-                    )}
                     {space.notes && (
                       <div className="text-xs text-blue-600 mt-1">{space.notes}</div>
                     )}
