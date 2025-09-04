@@ -29,6 +29,7 @@ export function RNPatientRow({
   
   const status = laneLabel === "Room" ? (p.roomName ?? "Rooming") : laneLabel;
   const primaryLabel = laneLabel === "Waiting" ? "Start Triage" : laneLabel === "Triage" ? "+ Obs" : undefined;
+  
 
   return (
     <PatientCardExpandable
@@ -43,6 +44,7 @@ export function RNPatientRow({
       ats={p.ats}
       minVitals={minVitals}
       isolationRequired={p.isolationRequired}
+      data-testid={`patient-card-${p.id}`}
       primaryLabel={primaryLabel}
       onPrimary={
         primaryLabel === "Start Triage" ? () => onStartTriage(p) :

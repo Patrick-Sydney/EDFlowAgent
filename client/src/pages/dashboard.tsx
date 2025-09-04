@@ -129,7 +129,7 @@ export default function Dashboard() {
     const roomed = encounters.filter(e => ["roomed", "diagnostics", "review", "ready"].includes(e.lane));
     
     const transformPatient = (e: Encounter): PatientLite => {
-      return {
+      const result = {
         id: e.id,
         givenName: e.name.split(' ')[0] || '',
         familyName: e.name.split(' ').slice(1).join(' ') || '',
@@ -143,6 +143,7 @@ export default function Dashboard() {
         sex: e.sex,
         isolationRequired: e.isolationRequired === "true"
       };
+      return result;
     };
 
     return [
