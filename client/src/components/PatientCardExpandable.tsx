@@ -384,7 +384,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                     Location {liveRoom ?? currentRoom ?? status ?? "—"}
                   </span>
                 </Chip>
-                <Chip tone="info">debug: evs {eventsCount}</Chip>
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">
