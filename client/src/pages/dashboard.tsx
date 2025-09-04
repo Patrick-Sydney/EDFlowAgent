@@ -484,10 +484,7 @@ export default function Dashboard() {
         {/* Room Management - for Charge Nurse and Developer views */}
         {(roleView === "charge" || roleView === "developer") && (
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <RoomsQuickEntry />
-            </div>
-            <RoomsContextBanner />
+            <RoomsQuickEntry />
           </div>
         )}
         
