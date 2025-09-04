@@ -40,6 +40,11 @@ export default function CollapsedCardHeader({
   // Use live room selector as fallback to ensure real-time updates
   const liveRoom = useRoomFor(String(patientId));
   const displayLocation = locationLabel ?? liveRoom;
+  
+  // Debug logging
+  if (name === "Te Awhina Tai") {
+    console.log("Te Awhina Tai room debug:", { locationLabel, liveRoom, displayLocation, patientId });
+  }
 
   return (
     <div className="min-w-0">
@@ -65,9 +70,16 @@ export default function CollapsedCardHeader({
       {/* Row B: Location + live chips + timers */}
       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
         {displayLocation && (
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-background text-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-background text-foreground" data-testid="room-chip">
             <Bed className="h-3.5 w-3.5" />
             {displayLocation}
+          </span>
+        )}
+        {/* Force show room chip for debugging */}
+        {name === "Te Awhina Tai" && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-500 px-2 py-0.5 bg-blue-50 text-blue-800" data-testid="debug-room-chip">
+            <Bed className="h-3.5 w-3.5" />
+            DEBUG: ISO2
           </span>
         )}
         <EWSChipLive patientId={patientId} />
