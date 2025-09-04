@@ -58,8 +58,8 @@ export default function CollapsedCardHeader({
           </span>
         )}
         <EWSChipLive patientId={patientId} />
-        {typeof ats === "number" && (
-          <span className="rounded-full border px-2 py-0.5">ATS {ats}</span>
+        {ats && (
+          <span className="rounded-full border px-2 py-0.5 bg-background text-foreground">ATS {ats}</span>
         )}
         {timerLabel && (
           <span className="inline-flex items-center gap-1">
