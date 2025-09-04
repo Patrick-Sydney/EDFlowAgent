@@ -137,6 +137,7 @@ export default function Dashboard() {
         chiefComplaint: e.complaint,
         waitingFor: calculateWaitingTime(new Date(e.arrivalTime)),
         ews: e.ats ?? undefined, // Using ATS as EWS for now
+        ats: (e.ats as 1|2|3|4|5) ?? undefined,
         roomName: e.room,
         age: e.age,
         sex: e.sex
@@ -164,6 +165,7 @@ export default function Dashboard() {
       chiefComplaint: e.complaint,
       waitingFor: `${calculateWaitingTime(new Date(e.arrivalTime))} waiting`,
       ews: e.ats ?? undefined,
+      ats: (e.ats as 1|2|3|4|5) ?? undefined,
       roomName: e.room,
       age: e.age,
       sex: e.sex,
@@ -191,6 +193,7 @@ export default function Dashboard() {
       chiefComplaint: e.complaint,
       mdWaiting: `${calculateWaitingTime(new Date(e.arrivalTime))} waiting for MD`,
       ews: e.ats ?? undefined,
+      ats: (e.ats as 1|2|3|4|5) ?? undefined,
       roomName: e.room,
       age: e.age,
       sex: e.sex,
