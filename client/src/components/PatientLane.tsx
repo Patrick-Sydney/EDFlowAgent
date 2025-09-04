@@ -99,7 +99,8 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
               })();
               
               const currentLane = config.title;
-              const status = currentLane === "Room" ? encounter.room ?? "Rooming" : currentLane;
+              // Always use encounter.room if available, regardless of lane
+              const status = encounter.room ?? (currentLane === "Room" ? "Rooming" : currentLane);
               const locationLabel = encounter.room ? encounter.room : undefined;
               const primaryLabel = currentLane === "Waiting" ? "Start Triage" : "+ Obs";
               const onPrimary = currentLane === "Waiting" 
