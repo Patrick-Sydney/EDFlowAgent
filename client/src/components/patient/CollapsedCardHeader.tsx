@@ -70,9 +70,9 @@ export default function CollapsedCardHeader({
         <span className="">Last obs: {lastStr ?? "—"}</span>
       </div>
 
-      {/* Row C: Complaint - hidden on mobile to avoid duplication */}
+      {/* Row C: Complaint */}
       {chiefComplaint && (
-        <div className="mt-1 text-sm text-muted-foreground line-clamp-1 hidden md:block">{chiefComplaint}</div>
+        <div className="mt-1 text-sm text-muted-foreground line-clamp-1">{chiefComplaint}</div>
       )}
     </div>
   );
