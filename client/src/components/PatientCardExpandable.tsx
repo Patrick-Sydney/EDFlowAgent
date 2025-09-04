@@ -398,20 +398,23 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             {/* Actions (role-aware) */}
             {!isHCA && (
               <div className="flex items-center gap-2">
-                <button 
-                  className="px-3 py-1.5 rounded border"
-                  onClick={() => {
-                    // Use the proper room management system instead of dummy AssignRoomPanel
-                    const dashboardStore = useDashboardStore.getState();
-                    const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
-                    if (encounter) {
-                      dashboardStore.openRoom(encounter);
-                    }
-                  }}
-                  data-testid="button-assign-room"
-                >
-                  Assign room
-                </button>
+                {/* Room assignment restricted to Charge RN and above */}
+                {(userRole === "charge" || userRole === "md") && (
+                  <button 
+                    className="px-3 py-1.5 rounded border"
+                    onClick={() => {
+                      // Use the proper room management system instead of dummy AssignRoomPanel
+                      const dashboardStore = useDashboardStore.getState();
+                      const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
+                      if (encounter) {
+                        dashboardStore.openRoom(encounter);
+                      }
+                    }}
+                    data-testid="button-assign-room"
+                  >
+                    Assign room
+                  </button>
+                )}
                 {(userRole === "rn" || userRole === "md") && (
                   <button 
                     onClick={() => setDrawerOpen("obs")} 
