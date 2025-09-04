@@ -61,6 +61,7 @@ export default function CollapsedCardHeader({
         {ats && (
           <span className="rounded-full border px-2 py-0.5 bg-background text-foreground">ATS {ats}</span>
         )}
+        {!ats && console.log("ATS chip not showing for patient", patientId, "ats value:", ats)}
         {timerLabel && (
           <span className="inline-flex items-center gap-1">
             <Clock className="h-3 w-3" />
