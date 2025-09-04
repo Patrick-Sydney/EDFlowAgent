@@ -1,6 +1,7 @@
 // Reads from vitalsStore first; falls back to journey events.
 // EWS rule: >=5 → 15m, >=3 → 30m, else 60m
 import { journeyStore } from "@/stores/journeyStore";
+import { vitalsStore } from "@/stores/vitalsStore";
 
 export function getArrivalISO(patientId: string): string | null {
   const evs = journeyStore.list(patientId);
@@ -9,7 +10,19 @@ export function getArrivalISO(patientId: string): string | null {
 }
 
 export function getLatestEws(patientId: string): { ews: number | null; trend: "↑"|"↓"|"="|null } {
-  // For now, fall back to journey events since vitalsStore structure needs investigation
+  // First try vitalsStore for most accurate, real-time EWS data
+  const lastVitals = vitalsStore.last(patientId);
+  const previousEWS = vitalsStore.previousEWS(patientId);
+  
+  if (lastVitals?.ews != null) {
+    let trend: "↑"|"↓"|"="|null = null;
+    if (lastVitals.ews != null && previousEWS != null) {
+      trend = lastVitals.ews > previousEWS ? "↑" : lastVitals.ews < previousEWS ? "↓" : "=";
+    }
+    return { ews: lastVitals.ews, trend };
+  }
+  
+  // Fallback to journey events for backwards compatibility
   const evs = journeyStore.list(patientId)
     .filter(e => e.kind === "ews_change" || e.kind === "vitals")
     .sort((a,b)=> new Date(a.t).getTime() - new Date(b.t).getTime());
