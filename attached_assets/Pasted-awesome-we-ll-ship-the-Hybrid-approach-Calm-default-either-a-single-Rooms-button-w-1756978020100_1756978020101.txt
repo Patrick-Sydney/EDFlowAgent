@@ -1,0 +1,319 @@
+awesome — we’ll ship the **Hybrid** approach:
+
+* **Calm default**: either a *single Rooms button with badge* or a *neutral chip cluster* (switchable in settings).
+* **All actions/details** live in a **Room Management Drawer** (right-side, same pattern as Assign Room).
+* **Contextual banner** only appears when there’s a problem (0 available, blocked >0, cleaning backlog high).
+
+Below are drop-in components + tiny store helpers. Keep your existing room data; these read from a generic `useRoomsStore()` (adapt names if yours differ).
+
+---
+
+# 1) Settings toggle (button vs chips)
+
+```ts
+// stores/uiPrefsStore.ts
+import { create } from "zustand";
+
+type RoomsQuickEntryMode = "button" | "chips";
+
+type UiPrefsState = {
+  roomsQuickEntry: RoomsQuickEntryMode;  // default in calm mode
+  setRoomsQuickEntry: (m: RoomsQuickEntryMode) => void;
+};
+export const useUiPrefsStore = create<UiPrefsState>((set) => ({
+  roomsQuickEntry: "button",
+  setRoomsQuickEntry: (m) => set({ roomsQuickEntry: m }),
+}));
+```
+
+---
+
+# 2) Minimal rooms selectors (counts + thresholds)
+
+```ts
+// selectors/rooms.ts
+// Adapt these two lines to your real store shape:
+import { useRoomsStore } from "@/stores/roomsStore"; // expects rooms: Room[]
+export type RoomStatus = "available"|"occupied"|"cleaning"|"blocked"|"oos";
+
+export function useRoomCounts() {
+  const rooms = useRoomsStore((s) => s.rooms || []);
+  const c = { total: rooms.length, available: 0, occupied: 0, cleaning: 0, blocked: 0, oos: 0 };
+  for (const r of rooms) (c as any)[r.status] += 1;
+  return c;
+}
+
+export function useRoomThresholds() {
+  const { available, blocked, cleaning } = useRoomCounts();
+  return {
+    ok: available > 0 && blocked === 0 && cleaning <= 2,
+    warn: (available === 0) || (cleaning > 2),
+    crit: blocked > 0,
+  };
+}
+```
+
+---
+
+# 3) Quick entry surface (button **or** chips)
+
+```tsx
+// components/rooms/RoomsQuickEntry.tsx
+import React from "react";
+import { useUiPrefsStore } from "@/stores/uiPrefsStore";
+import { useRoomCounts, useRoomThresholds } from "@/selectors/rooms";
+
+export default function RoomsQuickEntry({ onOpen }: { onOpen: () => void }) {
+  const mode = useUiPrefsStore((s) => s.roomsQuickEntry);
+  const counts = useRoomCounts();
+  const t = useRoomThresholds();
+
+  if (mode === "button") {
+    const badgeTone = t.crit ? "bg-red-600" : t.warn ? "bg-amber-500" : "bg-slate-300";
+    return (
+      <button
+        onClick={onOpen}
+        className="inline-flex items-center gap-2 rounded border px-3 py-1.5"
+        title="Open Room Management"
+      >
+        <span className="font-medium">Rooms</span>
+        <span className={`text-xs text-white px-1.5 py-0.5 rounded ${badgeTone}`}>
+          {counts.available}/{counts.total}
+        </span>
+      </button>
+    );
+  }
+
+  // neutral chip cluster
+  const Chip = ({ label, value, emphasize=false, onClick }:{label:string; value:number; emphasize?:boolean; onClick?:()=>void}) => (
+    <button
+      onClick={onClick}
+      className={`text-xs rounded-full border px-2 py-1 mr-2 ${emphasize ? "font-semibold" : ""}`}
+      title="Open Room Management"
+    >
+      {label}: {value}
+    </button>
+  );
+
+  return (
+    <div className="flex items-center">
+      <Chip label="Available" value={counts.available} emphasize />
+      <Chip label="Occupied" value={counts.occupied} />
+      <Chip label="Cleaning" value={counts.cleaning} />
+      <Chip label="Blocked" value={counts.blocked} />
+      <Chip label="OOS" value={counts.oos} />
+      <button onClick={onOpen} className="ml-2 text-xs underline">Manage</button>
+    </div>
+  );
+}
+```
+
+---
+
+# 4) Contextual banner (shows only when action is needed)
+
+```tsx
+// components/rooms/RoomsContextBanner.tsx
+import React from "react";
+import { useRoomCounts, useRoomThresholds } from "@/selectors/rooms";
+
+export default function RoomsContextBanner({ onOpen }: { onOpen: () => void }) {
+  const c = useRoomCounts();
+  const t = useRoomThresholds();
+  const show = t.warn || t.crit;
+  if (!show) return null;
+
+  const tone = t.crit ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200";
+  const msg = t.crit
+    ? `Rooms: ${c.available} available · ${c.cleaning} cleaning · ${c.blocked} blocked`
+    : `Rooms: ${c.available} available · ${c.cleaning} cleaning`;
+
+  return (
+    <div className={`flex items-center justify-between border ${tone} rounded px-3 py-2`}>
+      <div className="text-sm">{msg}</div>
+      <button onClick={onOpen} className="text-sm underline">Open Room Management</button>
+    </div>
+  );
+}
+```
+
+---
+
+# 5) Room Management Drawer (actions live here)
+
+```tsx
+// components/rooms/RoomManagementDrawer.tsx
+import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRoomsStore } from "@/stores/roomsStore"; // adapt
+import { assignRoom } from "@/domain/assignRoom";     // reuse your command
+import { usePatientsRoster } from "@/stores/patientsStore"; // optional for quick assign
+
+type Filter = "all"|"available"|"occupied"|"cleaning"|"blocked"|"oos";
+
+export default function RoomManagementDrawer({ open, onClose }:{open:boolean; onClose:()=>void}) {
+  const [filter, setFilter] = useState<Filter>("available");
+  const rooms = useRoomsStore((s)=> s.rooms || []);
+  const patients = usePatientsRoster?.() || []; // optional; or pass in props
+
+  const list = useMemo(() => {
+    return rooms.filter(r => filter==="all" ? true : r.status === filter);
+  }, [rooms, filter]);
+
+  if (!open) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[98] flex justify-end pointer-events-none">
+      <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={onClose}/>
+      <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto">
+        <header className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+          <div className="font-semibold">Room Management</div>
+          <div className="flex gap-2 text-xs">
+            {(["all","available","occupied","cleaning","blocked","oos"] as Filter[]).map(f =>
+              <button key={f} onClick={()=>setFilter(f)}
+                className={`px-2 py-1 rounded border ${filter===f ? "bg-slate-100" : ""}`}>
+                {f[0].toUpperCase()+f.slice(1)}
+              </button>
+            )}
+          </div>
+        </header>
+
+        <div className="p-3 space-y-2 overflow-y-auto">
+          {list.map(r => (
+            <div key={r.id} className="rounded border p-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">{r.name} <span className="text-xs text-slate-500">· {r.zone}</span></div>
+                  <div className="text-xs text-slate-500">Status: {r.status}{r.patientId ? ` · ${r.patientName ?? ""}`:""}</div>
+                </div>
+                <div className="flex gap-2">
+                  {r.status==="available" && (
+                    <AssignButton room={r.name} onDone={onClose} patients={patients}/>
+                  )}
+                  {r.status==="occupied" && (
+                    <>
+                      <ReassignButton room={r.name} onDone={onClose} patients={patients}/>
+                      <button className="text-xs rounded border px-2 py-1">Release</button>
+                    </>
+                  )}
+                  {r.status==="cleaning" && (
+                    <button className="text-xs rounded border px-2 py-1">Mark ready</button>
+                  )}
+                  {r.status==="blocked" && (
+                    <button className="text-xs rounded border px-2 py-1">Unblock</button>
+                  )}
+                  {r.status==="oos" && (
+                    <button className="text-xs rounded border px-2 py-1">Mark in service</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          {!list.length && <div className="text-sm text-slate-500">No rooms match this filter.</div>}
+        </div>
+      </aside>
+    </div>,
+    document.body
+  );
+}
+
+// Small helpers
+function AssignButton({ room, onDone, patients }:{room:string; onDone:()=>void; patients:any[]}) {
+  const [open, setOpen] = useState(false);
+  const [pid, setPid] = useState<string>("");
+  return (
+    <>
+      <button className="text-xs rounded border px-2 py-1" onClick={()=>setOpen(o=>!o)}>Assign</button>
+      {open && (
+        <div className="mt-2 flex items-center gap-2">
+          <select className="text-xs border rounded px-2 py-1" value={pid} onChange={e=>setPid(e.target.value)}>
+            <option value="">Select patient…</option>
+            {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button
+            className="text-xs rounded bg-slate-900 text-white px-2 py-1"
+            onClick={() => { if(pid) assignRoom(pid, room); onDone(); }}
+          >Save</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ReassignButton({ room, onDone, patients }:{room:string; onDone:()=>void; patients:any[]}) {
+  const [open, setOpen] = useState(false);
+  const [pid, setPid] = useState<string>("");
+  return (
+    <>
+      <button className="text-xs rounded border px-2 py-1" onClick={()=>setOpen(o=>!o)}>Reassign</button>
+      {open && (
+        <div className="mt-2 flex items-center gap-2">
+          <select className="text-xs border rounded px-2 py-1" value={pid} onChange={e=>setPid(e.target.value)}>
+            <option value="">Select patient…</option>
+            {patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button
+            className="text-xs rounded bg-slate-900 text-white px-2 py-1"
+            onClick={() => { if(pid) assignRoom(pid, room); onDone(); }}
+          >Save</button>
+        </div>
+      )}
+    </>
+  );
+}
+```
+
+> The drawer uses your existing `assignRoom()` command so **Patient Card header, lanes, and Journey update instantly** (from our rebuilt flow). You can add “Mark ready / Block / Unblock” wiring later to your rooms store the same way.
+
+---
+
+# 6) Integrate in Charge View
+
+```tsx
+// components/shell/AppHeader.tsx (or Charge header area)
+import RoomsQuickEntry from "@/components/rooms/RoomsQuickEntry";
+import RoomsContextBanner from "@/components/rooms/RoomsContextBanner";
+import RoomManagementDrawer from "@/components/rooms/RoomManagementDrawer";
+
+function ChargeHeaderArea() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <div className="flex items-center justify-between mb-2">
+        <RoomsQuickEntry onOpen={() => setOpen(true)} />
+        {/* ... rest of header controls ... */}
+      </div>
+
+      <div className="mb-2">
+        <RoomsContextBanner onOpen={() => setOpen(true)} />
+      </div>
+
+      <RoomManagementDrawer open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+```
+
+---
+
+# 7) Visual language (calm defaults)
+
+* Neutral borders and white backgrounds.
+* No large filled chips; **only badges** on the button and **contextual banner** when thresholds are breached.
+* Icons optional; if used, keep muted (no saturated fills).
+
+---
+
+# 8) Acceptance criteria
+
+* With **Rooms mode = button**, header shows `Rooms · A/T` with a subtle badge; clicking opens the drawer.
+* With **Rooms mode = chips**, header shows neutral chips; “Manage” opens the drawer.
+* When **available = 0**, **blocked > 0**, or **cleaning > 2**, the **Context Banner** appears with a short message and “Open Room Management”.
+* Assigning a room in the drawer updates, within 1s:
+
+  * **Expanded Patient Card header** location,
+  * **Lanes** (patient → Roomed),
+  * **Patient Journey** (room\_change event).
+
+---
+
+If you want, I can also hand you a quick **Tailwind theme snippet** to ensure the chips and banner meet contrast targets without feeling shouty.
