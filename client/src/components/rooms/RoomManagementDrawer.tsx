@@ -31,7 +31,7 @@ export default function RoomManagementDrawer() {
   return createPortal(
     <div className="fixed inset-0 z-[1200] flex justify-end pointer-events-none">
       <div className="absolute inset-0 bg-black/30 pointer-events-auto" onClick={closeRoom}/>
-      <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto">
+      <aside className="relative w-[520px] max-w-[95vw] h-full bg-white border-l shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Header */}
         <header className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
           <div className="font-semibold">Room Management</div>
@@ -61,7 +61,7 @@ export default function RoomManagementDrawer() {
         </div>
 
         {/* Room list */}
-        <div className="p-3 space-y-2 overflow-y-auto">
+        <div className="flex-1 p-3 space-y-2 overflow-y-auto overscroll-contain">
           {list.map(space => {
             const assignedPatient = encounters.find(e => e.room === space.id);
             return (
