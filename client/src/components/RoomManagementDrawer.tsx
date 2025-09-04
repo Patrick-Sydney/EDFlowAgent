@@ -131,7 +131,7 @@ export default function RoomManagementDrawer() {
   };
 
   return (
-    <div className="fixed inset-0 z-[90]">
+    <div className="fixed inset-0 z-[1100]">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/30" onClick={closeRoom} />
       

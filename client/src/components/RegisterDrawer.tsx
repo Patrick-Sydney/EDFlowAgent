@@ -99,7 +99,7 @@ export default function RegisterDrawer() {
   };
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-[1100]">
       <div className="absolute inset-0 bg-black/30" onClick={closeRegister} />
       {/* RIGHT sheet — match Triage/Room widths */}
       <div className="absolute top-0 right-0 h-full w-full sm:w-[85%] md:w-[75%] lg:w-[720px] bg-white shadow-xl flex flex-col">
