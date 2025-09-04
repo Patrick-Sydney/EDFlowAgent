@@ -121,7 +121,7 @@ export function PatientLane({ lane, encounters }: PatientLaneProps) {
                     rr: encounter.triageRr || undefined,
                     spo2: encounter.triageSpo2 || undefined,
                     hr: encounter.triageHr || undefined,
-                    sbp: encounter.triageSbp || 120,
+                    sbp: encounter.triageSBP || 120,
                     temp: encounter.triageTemp || 36.5,
                     takenAt: new Date().toISOString()
                   }}

@@ -24,8 +24,7 @@ export function assignRoom(patientId: string, roomLabel: string, actor="Charge R
     encounter.room = roomLabel.trim();
     encounter.lastUpdated = new Date();
     
-    // Trigger dashboard store update
-    dashboardState.loadEncounters();
+    // No need to call a refresh method - the mutation is already applied
   }
 
   // 3) recompute the derived index immediately (header updates)
