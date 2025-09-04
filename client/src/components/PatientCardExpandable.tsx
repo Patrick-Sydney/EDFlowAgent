@@ -604,13 +604,15 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             <div className="text-sm text-slate-500 italic">Read-only view for HCA</div>
           )}
 
-          {/* Clinical Snapshot */}
-          <ClinicalSnapshot 
-            patientId={patientId}
-            complaint={complaint}
-            ats={ats}
-            o2Label={o2Label}
-          />
+          {/* Clinical Snapshot - hidden on mobile to avoid duplication */}
+          <div className="hidden md:block">
+            <ClinicalSnapshot 
+              patientId={patientId}
+              complaint={complaint}
+              ats={ats}
+              o2Label={o2Label}
+            />
+          </div>
 
           {/* Vitals Capsule Live */}
           <VitalsCapsuleLive 
