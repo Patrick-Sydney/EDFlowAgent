@@ -395,6 +395,16 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             {/* Actions (role-aware) */}
             {!isHCA && (
               <div className="flex items-center gap-2">
+                {/* Triage button for RN and Charge when patient is in Waiting lane */}
+                {(userRole === "rn" || userRole === "charge") && status === "Waiting" && (
+                  <button 
+                    onClick={() => setDrawerOpen("triage")} 
+                    className="px-3 py-1.5 rounded bg-green-600 text-white"
+                    data-testid="button-start-triage"
+                  >
+                    Triage
+                  </button>
+                )}
                 {/* Room assignment restricted to Charge RN and above */}
                 {(userRole === "charge" || userRole === "md") && (
                   <button 
