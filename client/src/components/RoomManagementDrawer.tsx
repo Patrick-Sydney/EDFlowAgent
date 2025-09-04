@@ -3,7 +3,7 @@ import { useDashboardStore } from "@/stores/dashboardStore";
 import { assignRoom } from "@/domain/assignRoom";
 import { X, Bed, Monitor, Droplets, Shield, Clock, AlertTriangle, CheckCircle } from "lucide-react";
 import TButton from "./ui/TButton";
-import { Segmented, Chips } from "./ui/Segmented";
+import { SegmentedOld as Segmented, Chips } from "./ui/Segmented";
 import { haptic, once } from "@/utils/touch";
 
 const STATUS = {
