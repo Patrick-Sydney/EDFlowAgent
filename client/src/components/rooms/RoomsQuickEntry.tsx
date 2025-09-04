@@ -32,22 +32,23 @@ export default function RoomsQuickEntry() {
     });
   }, [spaces]);
 
-  if (mode === "button") {
-    const badgeTone = t.crit ? "bg-red-600" : t.warn ? "bg-amber-500" : "bg-slate-300";
-    return (
-      <button
-        onClick={() => openRoom({} as any)}
-        className="inline-flex items-center gap-2 rounded border px-3 py-1.5"
-        title="Open Room Management"
-        data-testid="button-rooms"
-      >
-        <span className="font-medium">Rooms</span>
-        <span className={`text-xs text-white px-1.5 py-0.5 rounded ${badgeTone}`}>
-          {counts.available}/{counts.total}
-        </span>
-      </button>
-    );
-  }
+  // Always show the enhanced ribbon view now
+  // if (mode === "button") {
+  //   const badgeTone = t.crit ? "bg-red-600" : t.warn ? "bg-amber-500" : "bg-slate-300";
+  //   return (
+  //     <button
+  //       onClick={() => openRoom({} as any)}
+  //       className="inline-flex items-center gap-2 rounded border px-3 py-1.5"
+  //       title="Open Room Management"
+  //       data-testid="button-rooms"
+  //     >
+  //       <span className="font-medium">Rooms</span>
+  //       <span className={`text-xs text-white px-1.5 py-0.5 rounded ${badgeTone}`}>
+  //         {counts.available}/{counts.total}
+  //       </span>
+  //     </button>
+  //   );
+  // }
 
   // Enhanced ribbon with zones and types
   const TypeChip = ({ type, available, total, status }: { type: string; available: number; total: number; status: string }) => {
