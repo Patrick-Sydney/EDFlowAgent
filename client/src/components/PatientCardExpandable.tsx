@@ -415,7 +415,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                     Assign room
                   </button>
                 )}
-                {(userRole === "rn" || userRole === "md") && (
+                {(userRole === "rn" || userRole === "charge" || userRole === "md") && (
                   <button 
                     onClick={() => setDrawerOpen("obs")} 
                     className="px-3 py-1.5 rounded bg-blue-600 text-white"
