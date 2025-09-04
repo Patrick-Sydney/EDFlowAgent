@@ -140,7 +140,8 @@ export default function Dashboard() {
         ats: (e.ats as 1|2|3|4|5) ?? undefined,
         roomName: e.room,
         age: e.age,
-        sex: e.sex
+        sex: e.sex,
+        isolationRequired: e.isolationRequired === "true"
       };
     };
 
@@ -169,6 +170,7 @@ export default function Dashboard() {
       roomName: e.room,
       age: e.age,
       sex: e.sex,
+      isolationRequired: e.isolationRequired === "true",
       arrivalAt: typeof e.arrivalTime === 'string' ? e.arrivalTime : e.arrivalTime.toISOString()
     });
 
@@ -197,6 +199,7 @@ export default function Dashboard() {
       roomName: e.room,
       age: e.age,
       sex: e.sex,
+      isolationRequired: e.isolationRequired === "true",
       resultsReady: e.lane === "review",
       dispoReady: e.lane === "ready"
     });

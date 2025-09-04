@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock, Bed } from "lucide-react";
+import { Clock, Bed, ShieldAlert } from "lucide-react";
 import EWSChipLive from "./EWSChipLive";
 import { useVitalsLast } from "../../stores/vitalsStore";
 import { useRoomFor } from "../../stores/patientIndexStore";
@@ -20,6 +20,7 @@ export default function CollapsedCardHeader({
   locationLabel,
   chiefComplaint,
   timerLabel,
+  isolationRequired,
 }: {
   patientId: string | number;
   name: string;
@@ -29,6 +30,7 @@ export default function CollapsedCardHeader({
   locationLabel?: string | null;
   chiefComplaint?: string;
   timerLabel?: string; // e.g. "Waiting 00:47"
+  isolationRequired?: boolean;
 }) {
   const last = useVitalsLast(patientId);
   const lastStr = last?.t
@@ -41,12 +43,23 @@ export default function CollapsedCardHeader({
 
   return (
     <div className="min-w-0">
-      {/* Row A: Name (allow 2 lines), Age/Sex to the side */}
-      <div className="flex items-start gap-2 min-w-0">
-        <div className="font-semibold text-lg leading-snug line-clamp-2" title={name}>
-          {name}
+      {/* Row A: Name (allow 2 lines), Age/Sex and Red Flags to the side */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="flex items-start gap-2 min-w-0">
+          <div className="font-semibold text-lg leading-snug line-clamp-2" title={name}>
+            {name}
+          </div>
+          {ageSex && <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{ageSex}</span>}
         </div>
-        {ageSex && <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{ageSex}</span>}
+        {/* Red flag badges in top right */}
+        {isolationRequired && (
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 text-rose-800 bg-rose-50 px-1.5 py-0.5 text-xs font-medium">
+              <ShieldAlert className="h-3 w-3" />
+              ISO
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Row B: Location + live chips + timers */}

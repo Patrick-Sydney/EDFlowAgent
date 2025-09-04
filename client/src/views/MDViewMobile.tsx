@@ -16,6 +16,7 @@ export type MDPatient = {
   mdWaiting?: string;
   resultsReady?: boolean;
   dispoReady?: boolean;
+  isolationRequired?: boolean;
 };
 
 export type MDLane = { 

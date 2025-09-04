@@ -11,6 +11,7 @@ export type PatientLite = {
   ews?: number;
   ats?: 1|2|3|4|5;
   roomName?: string | null;
+  isolationRequired?: boolean;
 };
 
 export type Lane = { id: string; label: string; patients: PatientLite[] };

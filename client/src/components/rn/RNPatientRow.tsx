@@ -42,6 +42,7 @@ export function RNPatientRow({
       ews={p.ews}
       ats={p.ats}
       minVitals={minVitals}
+      isolationRequired={p.isolationRequired}
       primaryLabel={primaryLabel}
       onPrimary={
         primaryLabel === "Start Triage" ? () => onStartTriage(p) :

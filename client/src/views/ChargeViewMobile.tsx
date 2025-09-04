@@ -16,6 +16,7 @@ export type ChargePatient = {
   roomName?: string | null;
   triageStartedAt?: string | null;
   arrivalAt?: string;
+  isolationRequired?: boolean;
 };
 
 export type ChargeLane = { 

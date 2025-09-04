@@ -222,6 +222,7 @@ export type ExpandableCardProps = {
   age?: number;
   sex?: string;
   arrivalTs?: string;
+  isolationRequired?: boolean;
 };
 
 export default function PatientCardExpandable(props: ExpandableCardProps) {
@@ -229,7 +230,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     ctaMode = "collapsed", name, status, timer, complaint, ews, ats, ageSex, dob, nhi, mrn, alerts = [], allergies = [], expandedRole,
     minVitals, patientId, onPrimary, primaryLabel = '+ Obs', onOrderSet, onAssignRoom, onAddObs, onOpenFull,
     statusFlags, locationLabel, alertFlags, lane, o2Label, resultsPending, tasks, triageSummary, assessment, note,
-    onOpenResults, onQuickOrders, onEditNotes, age, sex, arrivalTs
+    onOpenResults, onQuickOrders, onEditNotes, age, sex, arrivalTs, isolationRequired
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -349,6 +350,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             locationLabel={currentRoom ?? localLocationLabel ?? locationLabel ?? undefined}
             chiefComplaint={complaint}
             timerLabel={timer}
+            isolationRequired={isolationRequired}
           />
           {/* Right: status strip for both mobile and desktop */}
           <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
