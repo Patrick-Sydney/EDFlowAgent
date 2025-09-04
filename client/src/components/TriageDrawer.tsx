@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { X, AlertTriangle, Heart } from "lucide-react";
 import TButton from "./ui/TButton";
 import VitalButton from "./VitalButton";
-import { Segmented, Chips } from "./ui/Segmented";
+import { SegmentedOld as Segmented, Chips } from "./ui/Segmented";
 import { haptic, once } from "@/utils/touch";
 
 export default function TriageDrawer() {
