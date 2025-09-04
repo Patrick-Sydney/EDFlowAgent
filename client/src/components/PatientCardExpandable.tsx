@@ -350,7 +350,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             locationLabel={currentRoom ?? localLocationLabel ?? locationLabel ?? undefined}
             chiefComplaint={complaint}
             timerLabel={timer}
-            isolationRequired={isolationRequired}
+            isolationRequired={isolationRequired || alertFlags?.isolation}
           />
           {/* Right: status strip for both mobile and desktop */}
           <div className="ml-2 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>

@@ -44,6 +44,13 @@ export function RNPatientRow({
       ats={p.ats}
       minVitals={minVitals}
       isolationRequired={p.isolationRequired}
+      alertFlags={{
+        isolation: p.isolationRequired ?? false,
+        sepsisActive: false,
+        strokePathway: false,
+        stemiPathway: false,
+        allergySevere: null
+      }}
       data-testid={`patient-card-${p.id}`}
       primaryLabel={primaryLabel}
       onPrimary={

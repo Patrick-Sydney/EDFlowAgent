@@ -52,7 +52,7 @@ export default function CollapsedCardHeader({
           {ageSex && <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{ageSex}</span>}
         </div>
         {/* Red flag badges in top right */}
-        {(isolationRequired || name === "Te Awhina Tai") && (
+        {isolationRequired && (
           <div className="flex items-center gap-1 shrink-0">
             <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 text-rose-800 bg-rose-50 px-1.5 py-0.5 text-xs font-medium">
               <ShieldAlert className="h-3 w-3" />
