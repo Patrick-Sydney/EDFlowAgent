@@ -1,7 +1,9 @@
 // components/patient/HeaderStatusRibbon.tsx
 import React from "react";
 import Chip from "@/components/ui/Chip";
-import { getArrivalISO, getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
+import { getArrivalISO, nextObsDueISO } from "@/lib/ewsAndNextObs";
+import { useEwsChip } from "@/stores/selectors";
+import { useVitalsStore } from "@/stores/vitalsStore";
 
 type Props = {
   patient: {
@@ -14,7 +16,12 @@ type Props = {
 };
 
 export default function HeaderStatusRibbon({ patient, rightActions }: Props) {
-  const { ews, trend } = getLatestEws(patient.id);
+  const { ews } = useEwsChip(patient.id);
+  const previousEws = useVitalsStore((s) => s.previousEWS(patient.id));
+  const trend = ews != null && previousEws != null 
+    ? (ews > previousEws ? "↑" : ews < previousEws ? "↓" : "=")
+    : null;
+  
   const arrISO = getArrivalISO(patient.id);
   const nextISO = nextObsDueISO(patient.id);
 

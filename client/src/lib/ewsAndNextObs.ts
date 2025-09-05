@@ -45,8 +45,9 @@ export function nextObsDueISO(patientId: string): string | null {
   const lastVitals = [...evs].reverse().find(e => e.kind === "vitals");
   if (!lastVitals) return null;
 
-  const { ews } = getLatestEws(patientId);
-  const ewsValue = ews ?? 0;
+  // Use the unified vitals store for EWS value
+  const lastObs = vitalsStore.last(patientId);
+  const ewsValue = lastObs?.ews ?? 0;
   
   const base = new Date(lastVitals.t);
   const mins = ewsValue >= 5 ? 15 : ewsValue >= 3 ? 30 : 60;
