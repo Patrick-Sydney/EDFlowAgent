@@ -1,0 +1,322 @@
+You’re right to make this a hard stop. Let’s **untangle EWS** by making it a **single, versioned, test-backed service** that both Mobile and Desktop Patient Cards call the same way—no component math, no duplicate logic.
+
+Below is a tight plan + drop-in code you can paste. It gives you:
+
+* One **canonical Observation schema** (same field names everywhere)
+* One **pure, versioned EWS calculator** (unit-tested)
+* One **normalizer** (units/rounding/NaNs → consistent)
+* One **save path** for +Obs (mobile & desktop both call it)
+* Chips & timelines read from **selectors only** (no re-calc in UI)
+* A **mismatch detector** to catch any lingering old paths
+
+---
+
+# 0) Decision (locked)
+
+* **Algorithm:** `adult-simple-v1` (our Phase-2 baseline). Keep `NEWS2`/`ADDS` behind a switch for later.
+* **Source of truth:** a pure function `computeEws(observation, algoId)` in `@/clinical/ews`.
+* **Storage:** every saved obs is normalized, scored once, and persisted with the score.
+* **UI:** never computes; it **reads** the score from the latest obs via selectors.
+
+---
+
+# 1) Canonical Observation schema (shared)
+
+**`src/clinical/obs/types.ts`**
+
+```ts
+export type Observation = {
+  t: string;                  // ISO
+  rr?: number;                // breaths/min
+  hr?: number;                // bpm
+  sbp?: number;               // mmHg
+  spo2?: number;              // %
+  temp?: number;              // °C
+  loc?: "A"|"V"|"P"|"U";      // optional, AVPU
+  o2?: { device?: string; lpm?: number; onOxygen?: boolean };
+  source: "obs" | "device";   // manual vs device
+  ews: number;                // computed, persisted
+  algoId: string;             // "adult-simple-v1" (versioned)
+};
+```
+
+---
+
+# 2) Normalizer (one place, both UIs use it)
+
+**`src/clinical/obs/normalize.ts`**
+
+```ts
+export function normalizeRawObs(raw: any) {
+  // Convert to canonical units and round consistently
+  const toNum = (x:any) => (x === "" || x == null ? undefined : Number(x));
+  const rr   = toNum(raw.rr);
+  const hr   = toNum(raw.hr);
+  const sbp  = toNum(raw.sbp);
+  // °F → °C if needed
+  let temp = toNum(raw.temp);
+  if (raw.tempUnit === "F" && temp != null) temp = Math.round(((temp - 32) * 5/9) * 10) / 10;
+  const spo2 = toNum(raw.spo2);
+
+  // Clamp plausible ranges to kill slider jitter / device spikes
+  const clamp = (v: number|undefined, lo: number, hi: number) =>
+    v == null ? undefined : Math.min(hi, Math.max(lo, v));
+
+  return {
+    rr:  clamp(rr,   4, 60),
+    hr:  clamp(hr,  20, 220),
+    sbp: clamp(sbp, 50, 250),
+    spo2:clamp(spo2, 50, 100),
+    temp:clamp(temp, 30, 43),
+    loc: raw.loc as any, // optional
+    o2:  { device: raw.o2Device, lpm: toNum(raw.o2Lpm), onOxygen: !!raw.onOxygen },
+    source: raw.source ?? "obs" as const,
+  };
+}
+```
+
+---
+
+# 3) Versioned EWS calculator (pure + table)
+
+**`src/clinical/ews/index.ts`**
+
+```ts
+export type EwsAlgo = "adult-simple-v1" | "news2" | "adds";
+
+export function computeEws(input: {
+  rr?: number; hr?: number; sbp?: number; spo2?: number; temp?: number;
+  loc?: "A"|"V"|"P"|"U"; onOxygen?: boolean;
+}, algo: EwsAlgo = "adult-simple-v1"): number {
+  if (algo === "adult-simple-v1") return ewsAdultSimpleV1(input);
+  // future: add NEWS2/ADDS here
+  return ewsAdultSimpleV1(input);
+}
+
+function scoreBand(v: number|undefined, bands: [number, number, number, number, number, number][]): number {
+  // not used; left here for extension
+  return 0;
+}
+
+// Adult Simple v1 (Phase-2 baseline)
+// RR, SpO2, Temp, SBP, HR, LOC, O2 gives extra point
+function ewsAdultSimpleV1({
+  rr, spo2, temp, sbp, hr, loc, onOxygen
+}: {
+  rr?: number; spo2?: number; temp?: number; sbp?: number; hr?: number; loc?: "A"|"V"|"P"|"U"; onOxygen?: boolean;
+}): number {
+  let s = 0;
+
+  // RR
+  if (rr != null) {
+    if (rr <= 8) s += 3;
+    else if (rr <= 11) s += 1;
+    else if (rr <= 20) s += 0;
+    else if (rr <= 24) s += 2;
+    else s += 3; // >=25
+  }
+
+  // SpO2
+  if (spo2 != null) {
+    if (spo2 <= 91) s += 3;
+    else if (spo2 <= 93) s += 2;
+    else if (spo2 <= 95) s += 1;
+    else s += 0; // 96-100
+  }
+  if (onOxygen) s += 1; // supplemental O2 adds 1
+
+  // Temp (°C)
+  if (temp != null) {
+    if (temp <= 35.0) s += 3;
+    else if (temp <= 36.0) s += 1;
+    else if (temp <= 38.0) s += 0;
+    else if (temp <= 39.0) s += 1;
+    else s += 2; // >39
+  }
+
+  // SBP
+  if (sbp != null) {
+    if (sbp <= 90) s += 3;
+    else if (sbp <= 100) s += 2;
+    else if (sbp <= 110) s += 1;
+    else if (sbp <= 219) s += 0;
+    else s += 3; // >=220
+  }
+
+  // HR
+  if (hr != null) {
+    if (hr <= 40) s += 3;
+    else if (hr <= 50) s += 1;
+    else if (hr <= 90) s += 0;
+    else if (hr <= 110) s += 1;
+    else if (hr <= 130) s += 2;
+    else s += 3; // >130
+  }
+
+  // LOC (AVPU)
+  if (loc && loc !== "A") s += 3;
+
+  return s;
+}
+```
+
+---
+
+# 4) One save path for +Obs (both UIs call this)
+
+**`src/clinical/obs/saveObservation.ts`**
+
+```ts
+import { normalizeRawObs } from "./normalize";
+import { computeEws } from "@/clinical/ews";
+import { useVitalsStore } from "@/stores/vitalsStore";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+const ALGO: "adult-simple-v1" = "adult-simple-v1";
+
+export function saveObservation(patientId: string, raw: any, actor: "RN"|"HCA"|"MD"="RN") {
+  const now = new Date().toISOString();
+  const n = normalizeRawObs(raw);
+  const ews = computeEws({
+    rr: n.rr, hr: n.hr, sbp: n.sbp, spo2: n.spo2, temp: n.temp,
+    loc: n.loc, onOxygen: n.o2?.onOxygen
+  }, ALGO);
+
+  const obs = { t: now, ...n, ews, algoId: ALGO, source: n.source ?? "obs" } as const;
+
+  // persist obs (immutable)
+  useVitalsStore.getState().append(patientId, obs);
+
+  // Journey: vitals (always)
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(), patientId, t: now,
+    kind: "vitals", label: "Obs",
+    detail: { ...n, ews, algoId: ALGO, source: obs.source, actor, complete: hasCore(n) }
+  });
+
+  // Journey: ews_change (only if changed)
+  const prev = useVitalsStore.getState().lastEws?.(patientId);
+  if (prev == null || prev !== ews) {
+    useJourneyStore.getState().append({
+      id: crypto.randomUUID(), patientId, t: now,
+      kind: "ews_change", label: `EWS ${prev ?? "—"} → ${ews}`,
+      severity: ews >= 5 ? "warn" : undefined,
+      detail: { prev, next: ews, delta: prev == null ? null : ews - prev }
+    });
+  }
+
+  return obs;
+}
+
+function hasCore(n: any) {
+  return n.rr != null && n.hr != null && n.sbp != null && n.spo2 != null && n.temp != null;
+}
+```
+
+> **Mobile Obs form** and **Desktop Obs form** now both call `saveObservation(patientId, formValues, actor)` in their **Save** handler. Delete any inline EWS computation in components.
+
+---
+
+# 5) Read path (chips + timeline)
+
+**Never recalc in UI.** Use a selector for “latest obs with EWS”.
+
+**`src/stores/selectors.ts`**
+
+```ts
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+export function useLatestObs(patientId: string) {
+  return useVitalsStore((s) => s.last?.(patientId)); // implement .last in your store
+}
+
+export function useEwsChip(patientId: string) {
+  const last = useLatestObs(patientId);
+  return { ews: last?.ews, algoId: last?.algoId ?? "adult-simple-v1", t: last?.t };
+}
+```
+
+In the Patient Card header:
+
+```tsx
+const { ews } = useEwsChip(patient.id);
+<Chip tone={ews >= 5 ? "warn" : "neutral"}>EWS {ews ?? "—"}</Chip>
+```
+
+---
+
+# 6) Unit tests (table-driven, catches drift)
+
+**`src/clinical/ews/ews.spec.ts`**
+
+```ts
+import { computeEws } from "./index";
+
+type Row = [string, any, number];
+const rows: Row[] = [
+  ["normal vitals", { rr:16, hr:78, sbp:120, spo2:98, temp:36.8, loc:"A", onOxygen:false }, 0],
+  ["RR 28, others normal", { rr:28, hr:80, sbp:118, spo2:97, temp:36.5, loc:"A" }, 2],
+  ["SBP 85", { rr:18, hr:96, sbp:85, spo2:97, temp:36.8, loc:"A" }, 3],
+  ["SpO2 92 on O2", { rr:18, hr:90, sbp:120, spo2:92, temp:37.2, loc:"A", onOxygen:true }, 3 /*2+1*/],
+  ["Temp 39.5", { rr:18, hr:90, sbp:120, spo2:98, temp:39.5, loc:"A" }, 2],
+  ["LOC P", { rr:16, hr:78, sbp:120, spo2:98, temp:36.8, loc:"P" }, 3],
+  ["Multiple high-risk", { rr:30, hr:135, sbp:88, spo2:90, temp:35.0, loc:"V", onOxygen:true }, /*3+3+3+3+3+1*/16],
+];
+
+describe("EWS adult-simple-v1", () => {
+  it.each(rows)("%s", (_name, obs, expected) => {
+    expect(computeEws(obs, "adult-simple-v1")).toBe(expected);
+  });
+});
+```
+
+Run this locally to lock behavior. If anyone tweaks thresholds, tests fail.
+
+---
+
+# 7) Guardrails (find & kill old code paths)
+
+* **Search & remove** any EWS math in components: `ripgrep -n "ews" src/components`.
+* Add a **lint comment** to the calculator file:
+
+  ```ts
+  // ALL EWS MUST COME FROM computeEws(). UI must never compute scores.
+  ```
+* **Runtime detector** (temporary, dev only): in Patient Card, if you see any prop like `props.ewsCalculated` from component state, `console.warn("EWS inline calc detected; remove")`.
+
+---
+
+# 8) Migration steps (quick)
+
+1. Add the **normalize + computeEws + saveObservation** modules.
+2. Update **ObsQuickForm** (desktop) and **ObsQuickFormMobile** (mobile) Save handlers to call `saveObservation(...)`. Delete any local EWS code.
+3. Update **EWS chip** to use `useEwsChip(patientId)`.
+4. Ensure **vitalsStore** exposes `.append(patientId, obs)` (immutable), `.last(patientId)`, `.lastEws(patientId)`.
+5. Run **unit tests**. Manually test a few cases (low SpO₂ on O₂, high RR, hypotension).
+6. Remove old calculators; grep for duplicates.
+
+---
+
+# 9) Acceptance criteria
+
+* Saving +Obs from **either** form (mobile/desktop) produces **identical** EWS given same inputs.
+* The **EWS chip** shows the same value across collapsed and expanded Patient Cards.
+* **Journey** logs `vitals` (+ `ews_change` if delta) within 1s.
+* **Monitoring** (Obs Due) schedules from the persisted EWS (not from UI).
+* Unit tests pass; any change to thresholds breaks tests (good).
+
+---
+
+# 10) (Optional) Multi-algorithm support
+
+If you later enable `NEWS2`, keep the API:
+
+```ts
+computeEws(input, sitePrefs.ewsAlgo) // "adult-simple-v1" | "news2"
+```
+
+and persist `algoId` on each observation so historical events remain auditable.
+
+---
+
+If you want, I can tailor the `vitalsStore` signatures (`append/last/lastEws`) to your current store file so it’s copy-paste complete.

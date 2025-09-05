@@ -9,18 +9,10 @@ export function getArrivalISO(patientId: string): string | null {
   return arrival?.t ?? null;
 }
 
+// DEPRECATED: Use useEwsChip from @/stores/selectors instead
+// This function is kept for legacy compatibility only
 export function getLatestEws(patientId: string): { ews: number | null; trend: "↑"|"↓"|"="|null } {
-  // First try vitalsStore for most accurate, real-time EWS data
-  const lastVitals = vitalsStore.last(patientId);
-  const previousEWS = vitalsStore.previousEWS(patientId);
-  
-  if (lastVitals?.ews != null) {
-    let trend: "↑"|"↓"|"="|null = null;
-    if (lastVitals.ews != null && previousEWS != null) {
-      trend = lastVitals.ews > previousEWS ? "↑" : lastVitals.ews < previousEWS ? "↓" : "=";
-    }
-    return { ews: lastVitals.ews, trend };
-  }
+  console.warn("getLatestEws is deprecated. Use useEwsChip from @/stores/selectors instead.");
   
   // Fallback to journey events for backwards compatibility
   const evs = journeyStore.list(patientId)
