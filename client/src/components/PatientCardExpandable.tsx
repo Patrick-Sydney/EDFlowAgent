@@ -18,7 +18,7 @@ import NotesTabsLite from "./patient/NotesTabsLite";
 import IdentitySlim from "./patient/IdentitySlim";
 import Chip from "./ui/Chip";
 import SegmentedComponent from "./ui/Segmented";
-import { getLatestEws, nextObsDueISO } from "@/lib/ewsAndNextObs";
+import { nextObsDueISO } from "@/lib/ewsAndNextObs";
 import { useDashboardStore } from "@/stores/dashboardStore";
 import { useRoomFor, usePhaseFor } from "@/stores/patientIndexStore";
 // import { useRoomAndPhase } from "@/hooks/useRoomAndPhase"; // replaced by useRoomFor, usePhaseFor
@@ -280,7 +280,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const roleView = useDashboardStore(s => s.roleView);
   const userRole = roleView || "charge";
   const isHCA = userRole === "hca";
-  const { ews: currentEws, trend: ewsTrend } = getLatestEws(String(patientId));
+  // Remove getLatestEws call to use consistent EWSChipLive component instead
   useEffect(() => {
     const sync = (e: any) => {
       const next = e?.detail?.role || localStorage.getItem("edflow.role") || "charge";
@@ -411,9 +411,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               </div>
               {/* Risk ribbon */}
               <div className="mt-2 flex flex-wrap gap-2">
-                <Chip tone={currentEws != null ? (currentEws >= 5 ? "critical" : currentEws >= 3 ? "warning" : "info") : "default"}>
-                  EWS {currentEws ?? "—"} {ewsTrend ?? ""}
-                </Chip>
+                <EWSChipLive patientId={patientId} />
                 <Chip>ATS {ats ?? "—"}</Chip>
                 {allergies && <Chip tone="warning">Allergies: {allergies}</Chip>}
               </div>
