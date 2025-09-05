@@ -1,0 +1,205 @@
+Perfect — let’s lock this down and wire the single-path EWS flow end-to-end. Below are the **drop-in files/patches** so Mobile + Desktop both use the same save path and the same stored score. No UI math anywhere.
+
+# 1) Canonical vitals store (append/last/lastEws)
+
+**`src/stores/vitalsStore.ts`**
+
+```ts
+import { create } from "zustand";
+
+export type Observation = {
+  t: string; rr?: number; hr?: number; sbp?: number; spo2?: number; temp?: number;
+  loc?: "A"|"V"|"P"|"U";
+  o2?: { device?: string; lpm?: number; onOxygen?: boolean };
+  source: "obs" | "device";
+  ews: number;
+  algoId: string; // "adult-simple-v1" etc.
+};
+
+type VitalsState = {
+  byId: Record<string, Observation[]>;
+  append: (patientId: string, obs: Observation) => void;
+  last: (patientId: string) => Observation | undefined;
+  lastEws: (patientId: string) => number | undefined;
+  hydrate?: (seed: Record<string, Observation[]>) => void;
+};
+
+export const useVitalsStore = create<VitalsState>((set, get) => ({
+  byId: {},
+  append: (patientId, obs) =>
+    set((s) => ({
+      byId: {
+        ...s.byId,
+        [patientId]: [ ...(s.byId[patientId] ?? []), obs ],
+      },
+    })),
+  last: (patientId) => {
+    const arr = get().byId[patientId] ?? [];
+    return arr[arr.length - 1];
+  },
+  lastEws: (patientId) => get().last(patientId)?.ews,
+  hydrate: (seed) => set({ byId: { ...seed } }),
+}));
+```
+
+> Immutable updates guarantee re-render. This is the only place EWS lives with obs.
+
+---
+
+# 2) Shared save function (both UIs call this)
+
+(From earlier plan — unchanged, just paste it in.)
+
+**`src/clinical/obs/saveObservation.ts`**
+
+```ts
+import { normalizeRawObs } from "./normalize";
+import { computeEws } from "@/clinical/ews";
+import { useVitalsStore } from "@/stores/vitalsStore";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+const ALGO = "adult-simple-v1" as const;
+
+export function saveObservation(
+  patientId: string,
+  raw: any,
+  actor: "RN"|"HCA"|"MD"="RN"
+) {
+  const now = new Date().toISOString();
+  const n = normalizeRawObs(raw);
+  const ews = computeEws(
+    { rr: n.rr, hr: n.hr, sbp: n.sbp, spo2: n.spo2, temp: n.temp, loc: n.loc, onOxygen: n.o2?.onOxygen },
+    ALGO
+  );
+
+  const obs = { t: now, ...n, ews, algoId: ALGO, source: n.source ?? "obs" } as const;
+
+  useVitalsStore.getState().append(patientId, obs);
+
+  // Journey: vitals
+  useJourneyStore.getState().append({
+    id: crypto.randomUUID(), patientId, t: now,
+    kind: "vitals", label: "Obs",
+    detail: { ...n, ews, algoId: ALGO, source: obs.source, actor, complete: hasCore(n) }
+  });
+
+  // Journey: ews_change (if delta)
+  const prev = useVitalsStore.getState().lastEws(patientId);
+  if (prev == null || prev !== ews) {
+    useJourneyStore.getState().append({
+      id: crypto.randomUUID(), patientId, t: now,
+      kind: "ews_change", label: `EWS ${prev ?? "—"} → ${ews}`,
+      severity: ews >= 5 ? "warn" : undefined,
+      detail: { prev, next: ews, delta: prev == null ? null : ews - prev }
+    });
+  }
+
+  return obs;
+}
+
+function hasCore(n: any) {
+  return n.rr != null && n.hr != null && n.sbp != null && n.spo2 != null && n.temp != null;
+}
+```
+
+---
+
+# 3) Desktop + Mobile forms → call the same save
+
+**Desktop** — `components/obs/ObsQuickForm.tsx` (save handler only)
+
+```tsx
+import { saveObservation } from "@/clinical/obs/saveObservation";
+
+function onSave() {
+  // gather current form values into `form`
+  const form = { rr, hr, sbp, spo2, temp, loc, onOxygen, o2Device, o2Lpm, source: "obs" };
+  saveObservation(patient.id, form, "RN");
+  onClose?.();
+}
+```
+
+**Mobile** — `components/obs/ObsQuickFormMobile.tsx` (same idea)
+
+```tsx
+import { saveObservation } from "@/clinical/obs/saveObservation";
+
+function onSaveMobile() {
+  const form = { rr, hr, sbp, spo2, temp, loc, onOxygen, o2Device, o2Lpm, source: "obs" };
+  saveObservation(patient.id, form, "RN");
+  onClose?.();
+}
+```
+
+> Remove any inline `computeEws(...)` or EWS state from both components.
+
+---
+
+# 4) EWS chip reads from store (no UI math)
+
+**`src/stores/selectors.ts`**
+
+```ts
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+export function useEwsChip(patientId: string) {
+  return useVitalsStore((s) => {
+    const last = s.last(patientId);
+    return { ews: last?.ews, t: last?.t, algoId: last?.algoId ?? "adult-simple-v1" };
+  });
+}
+```
+
+**`components/patient/EwsChip.tsx`**
+
+```tsx
+import { useEwsChip } from "@/stores/selectors";
+
+export default function EwsChip({ patientId }: { patientId: string }) {
+  const { ews } = useEwsChip(patientId);
+  const tone = ews == null ? "border" : ews >= 5 ? "bg-amber-100 border-amber-300" : "bg-slate-100 border-slate-300";
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-xs ${tone}`}>
+      <span className="font-medium">EWS</span> {ews ?? "—"}
+    </span>
+  );
+}
+```
+
+Use it in both collapsed and expanded cards instead of any prop/state-based EWS.
+
+---
+
+# 5) Guardrail (dev-only mismatch detector)
+
+Drop this temporarily into Patient Card until the migration is clean:
+
+```tsx
+// DEV ONLY
+const debugUiEws = (props as any)?.ews;
+const { ews: trueEws } = useEwsChip(patient.id);
+if (process.env.NODE_ENV !== "production" && debugUiEws != null && debugUiEws !== trueEws) {
+  console.warn("[EWS mismatch] UI:", debugUiEws, "Store:", trueEws, { patientId: patient.id });
+}
+```
+
+Then delete any code paths that supply `props.ews` from component state.
+
+---
+
+# 6) Unit tests (calculator)
+
+Make sure you have the earlier `ews.spec.ts` in `src/clinical/ews/__tests__/ews.spec.ts` and run your test runner. This prevents accidental drift.
+
+---
+
+# 7) Acceptance checks (do these now)
+
+* Save +Obs from **Desktop** → EWS chip updates; Journey shows `vitals` (+ `ews_change` if delta).
+* Save +Obs from **Mobile** with the same numbers → **identical EWS** on the chip and timeline.
+* Monitoring/alerts use **stored** EWS (pull from `useVitalsStore.lastEws`), not UI state.
+* No component calls `computeEws` directly (grep for `computeEws(` should return only the shared module).
+
+---
+
+If you hit any naming mismatches (e.g., your obs form uses different field names), tell me the exact names and I’ll adapt `normalizeRawObs` for a perfect fit.

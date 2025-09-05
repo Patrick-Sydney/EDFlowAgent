@@ -1,136 +1,88 @@
-import { useSyncExternalStore } from "react";
+import { create } from "zustand";
 
+export type Observation = {
+  t: string; rr?: number; hr?: number; sbp?: number; spo2?: number; temp?: number;
+  loc?: "A"|"V"|"P"|"U";
+  o2?: { device?: string; lpm?: number; onOxygen?: boolean };
+  source: "obs" | "device";
+  ews: number;
+  algoId: string; // "adult-simple-v1" etc.
+};
+
+// Legacy type for backward compatibility
 export type ObsPoint = {
   t: string;
   rr?: number; spo2?: number; hr?: number; sbp?: number; temp?: number; ews?: number;
   source?: "triage" | "obs" | "device";
 };
 
-const normalizeId = (id: unknown) => String(id ?? "");
-const LS_KEY = "edflow_vitals_v1";
-let saveTimer: any = null;
+type VitalsState = {
+  byId: Record<string, Observation[]>;
+  append: (patientId: string, obs: Observation) => void;
+  last: (patientId: string) => Observation | undefined;
+  lastEws: (patientId: string) => number | undefined;
+  previousEWS: (patientId: string) => number | undefined;
+  hydrate?: (seed: Record<string, Observation[]>) => void;
+  // Legacy compatibility methods
+  add: (patientId: string, obs: ObsPoint) => void;
+  list: (patientId: string) => Observation[];
+};
 
-class VitalsStore {
-  private data = new Map<string, ObsPoint[]>();
-  private listeners = new Set<() => void>();
-  private cache = new Map<string, { list: ObsPoint[], last?: ObsPoint }>();
-
-  subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
-  private emit() { 
-    this.cache.clear(); // Clear cache when data changes
-    this.listeners.forEach(fn => fn()); 
-  }
-
-  list(patientId: string) { 
-    const id = normalizeId(patientId);
-    if (!this.cache.has(id)) {
-      const list = this.data.get(id) ?? [];
-      this.cache.set(id, { list, last: list[list.length - 1] });
-    }
-    return this.cache.get(id)!.list;
-  }
-  
-  last(patientId: string) { 
-    const id = normalizeId(patientId);
-    if (!this.cache.has(id)) {
-      const list = this.data.get(id) ?? [];
-      this.cache.set(id, { list, last: list[list.length - 1] });
-    }
-    return this.cache.get(id)!.last;
-  }
-
-  // Get the previous EWS score for trend comparison
-  previousEWS(patientId: string): number | undefined {
-    const id = normalizeId(patientId);
-    const list = this.data.get(id) ?? [];
-    const ewsPoints = list.filter(p => typeof p.ews === 'number');
+export const useVitalsStore = create<VitalsState>((set, get) => ({
+  byId: {},
+  append: (patientId, obs) =>
+    set((s) => ({
+      byId: {
+        ...s.byId,
+        [patientId]: [ ...(s.byId[patientId] ?? []), obs ],
+      },
+    })),
+  last: (patientId) => {
+    const arr = get().byId[patientId] ?? [];
+    return arr[arr.length - 1];
+  },
+  lastEws: (patientId) => get().last(patientId)?.ews,
+  previousEWS: (patientId) => {
+    const arr = get().byId[patientId] ?? [];
+    const ewsPoints = arr.filter(p => typeof p.ews === 'number');
     if (ewsPoints.length < 2) return undefined;
     return ewsPoints[ewsPoints.length - 2]?.ews;
-  }
+  },
+  hydrate: (seed) => set({ byId: { ...seed } }),
+  // Legacy compatibility methods
+  add: (patientId, obs) => {
+    const fullObs: Observation = {
+      ...obs,
+      ews: obs.ews ?? 0,
+      algoId: "adult-simple-v1",
+      source: obs.source === "triage" ? "obs" : (obs.source ?? "obs")
+    } as Observation;
+    get().append(patientId, fullObs);
+  },
+  list: (patientId) => get().byId[patientId] ?? [],
+}));
 
-  add(patientId: string | number, point: ObsPoint) {
-    const id = normalizeId(patientId);
-    const list = [...(this.data.get(id) ?? []), point].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
-    console.log("VitalsStore.add:", id, point, "total points:", list.length);
-    console.log("VitalsStore.data state:", Array.from(this.data.entries()));
-    this.data.set(id, list); this.emit();
-    this.persist();
-  }
+// Legacy singleton export for backward compatibility
+export const vitalsStore = {
+  add: (patientId: string, obs: ObsPoint) => useVitalsStore.getState().add(patientId, obs),
+  last: (patientId: string) => useVitalsStore.getState().last(patientId),
+  list: (patientId: string) => useVitalsStore.getState().list(patientId),
+  previousEWS: (patientId: string) => useVitalsStore.getState().previousEWS(patientId),
+  subscribe: (fn: () => void) => useVitalsStore.subscribe(fn),
+};
 
-  bulkUpsert(patientId: string | number, points: ObsPoint[]) {
-    const id = normalizeId(patientId);
-    const merged = [...this.list(id), ...points].sort((a,b)=> Date.parse(a.t)-Date.parse(b.t));
-    const byKey = new Map<string, ObsPoint>();
-    for (const p of merged) byKey.set(p.t, p);
-    this.data.set(id, Array.from(byKey.values())); this.emit();
-    this.persist();
-  }
-
-  hydrateFromLocal() {
-    try {
-      const raw = typeof localStorage !== "undefined" ? localStorage.getItem(LS_KEY) : null;
-      if (!raw) return;
-      const obj = JSON.parse(raw) as Record<string, ObsPoint[]>;
-      Object.entries(obj).forEach(([k, v]) => this.data.set(k, v));
-      this.emit();
-    } catch {}
-  }
-
-  private persist() {
-    if (typeof localStorage === "undefined") return;
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      const obj: Record<string, ObsPoint[]> = {};
-      this.data.forEach((v, k) => { obj[k] = v; });
-      try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch {}
-    }, 120);
-  }
-}
-
-// ---- SINGLETON SAFETY ---------------------------------------------
-// Ensure one shared instance across the whole app, even with mixed import paths.
-// We stash it on window so duplicate module copies still reuse the same store.
-function getSingleton(): VitalsStore {
-  // @ts-ignore
-  const w = typeof window !== "undefined" ? (window as any) : undefined;
-  if (!w) {
-    const s = new VitalsStore();
-    try { s.hydrateFromLocal(); } catch {}
-    return s;
-  }
-  if (!w.__EDFLOW_VITALS__) {
-    w.__EDFLOW_VITALS__ = new VitalsStore();
-    try { w.__EDFLOW_VITALS__.hydrateFromLocal(); } catch {}
-  } else {
-  }
-  return w.__EDFLOW_VITALS__;
-}
-export const vitalsStore: VitalsStore = getSingleton();
-// ------------------------------------------------------------------
-
+// Legacy hook exports for backward compatibility
 export function useVitalsList(patientId: string | number) {
   const id = String(patientId ?? "");
-  return useSyncExternalStore(
-    vitalsStore.subscribe,
-    () => vitalsStore.list(id),
-    () => vitalsStore.list(id)
-  );
+  return useVitalsStore((s) => s.byId[id] ?? []);
 }
 
 export function useVitalsLast(patientId: string | number) {
   const id = String(patientId ?? "");
-  return useSyncExternalStore(
-    vitalsStore.subscribe,
-    () => vitalsStore.last(id),
-    () => vitalsStore.last(id)
-  );
+  return useVitalsStore((s) => s.last(id));
 }
 
 export function useVitalsPreviousEWS(patientId: string | number) {
   const id = String(patientId ?? "");
-  return useSyncExternalStore(
-    vitalsStore.subscribe,
-    () => vitalsStore.previousEWS(id),
-    () => vitalsStore.previousEWS(id)
-  );
+  return useVitalsStore((s) => s.previousEWS(id));
 }

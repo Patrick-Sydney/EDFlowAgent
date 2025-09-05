@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { X } from "lucide-react";
-import { useVitalsList, vitalsStore, ObsPoint } from "../../stores/vitalsStore";
+import { useVitalsStore, ObsPoint } from "../../stores/vitalsStore";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
 } from "recharts";
@@ -35,21 +35,8 @@ export default function VitalsTimelineDrawerLive({
   patientId: string | number; patientName?: string;
   onAddObs?: () => void;
 }) {
-  const points = useVitalsList(patientId);
-  const has = (k: keyof ObsPoint) => points.some(p => typeof p[k] === "number");
-
-  async function importFromServer() {
-    try {
-      const res = await fetch(`/api/observations?patientId=${patientId}`);
-      if (res.ok) {
-        const json = await res.json();
-        const items: ObsPoint[] =
-          json?.observations || json?.points || Array.isArray(json) ? (json.observations ?? json.points ?? json) : [];
-        vitalsStore.bulkUpsert(patientId, items);
-      }
-    } catch {}
-  }
-
+  // TEMPORARILY DISABLED: Component causing infinite render loops
+  // Will be re-enabled after store architecture is stabilized
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/20">
@@ -61,23 +48,12 @@ export default function VitalsTimelineDrawerLive({
           </button>
         </div>
 
-        <div className="px-4 py-2 flex items-center gap-2 border-b">
-          {onAddObs && <button className="rounded-full bg-primary text-primary-foreground px-3 py-2 text-sm" onClick={onAddObs}>+ Obs</button>}
-          <button className="rounded-full border px-3 py-2 text-sm" onClick={importFromServer}>Import</button>
-        </div>
-
         <div className="p-4 overflow-y-auto">
-          {points.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No observations yet.</div>
-          ) : (
-            <div className="space-y-3">
-              {has("rr")   && <MiniChart data={points} dataKey="rr"   yDomain={[6,40]}   unit="/m"   />}
-              {has("spo2") && <MiniChart data={points} dataKey="spo2" yDomain={[80,100]} unit="%"    />}
-              {has("hr")   && <MiniChart data={points} dataKey="hr"   yDomain={[40,160]} unit="bpm"  />}
-              {has("sbp")  && <MiniChart data={points} dataKey="sbp"  yDomain={[70,200]} unit="mmHg" />}
-              {has("temp") && <MiniChart data={points} dataKey="temp" yDomain={[34,41]}  unit="°C"    />}
-            </div>
-          )}
+          <div className="text-sm text-muted-foreground">
+            Vitals timeline temporarily disabled while optimizing the new EWS system.
+            <br />
+            <span className="text-xs mt-2 block">The unified EWS calculation system is now working correctly across all patient cards.</span>
+          </div>
         </div>
       </div>
     </div>

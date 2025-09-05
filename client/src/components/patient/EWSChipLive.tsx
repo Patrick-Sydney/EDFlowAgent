@@ -1,6 +1,6 @@
 import React from "react";
 import { useEwsChip } from "@/stores/selectors";
-import { vitalsStore } from "@/stores/vitalsStore";
+import { useVitalsStore } from "@/stores/vitalsStore";
 
 export default function EWSChipLive({
   patientId,
@@ -10,7 +10,7 @@ export default function EWSChipLive({
   fallback?: number;
 }) {
   const { ews } = useEwsChip(String(patientId));
-  const previousEWS = vitalsStore.previousEWS(String(patientId));
+  const previousEWS = useVitalsStore((s) => s.previousEWS(String(patientId)));
   const finalEws = (ews ?? fallback);
   
   // Calculate trend indicator

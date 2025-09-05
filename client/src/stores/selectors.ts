@@ -1,6 +1,5 @@
 // stores/selectors.ts
 import { useJourneyStore } from "@/stores/journeyStore";
-import { vitalsStore } from "@/stores/vitalsStore";
 
 export const useCurrentRoom = (patientId: string) => {
   return useJourneyStore((s) => {
@@ -27,11 +26,13 @@ export const usePhase = (patientId: string) => {
 };
 
 // EWS selectors - single source of truth for all EWS calculations
+import { useVitalsStore } from "@/stores/vitalsStore";
+
 export function useLatestObs(patientId: string) {
-  return vitalsStore.last(patientId);
+  return useVitalsStore((s) => s.last(patientId));
 }
 
 export function useEwsChip(patientId: string) {
-  const last = useLatestObs(patientId);
-  return { ews: last?.ews, algoId: "adult-simple-v1", t: last?.t };
+  const last = useVitalsStore((s) => s.last(patientId));
+  return { ews: last?.ews, t: last?.t, algoId: last?.algoId ?? "adult-simple-v1" };
 }
