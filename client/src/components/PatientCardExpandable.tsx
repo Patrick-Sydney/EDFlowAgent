@@ -620,10 +620,14 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
               {/* MD specific action - Ready for Review for Roomed lane */}
               {(() => {
                 const isRoomed = phase === "Roomed" || lane === "roomed" || status?.includes("Room");
-                const showButton = userRole === "md" && isRoomed;
-                console.log("Ready for Review Debug (MD role):", { 
+                // Temporary fix: Check localStorage directly since roleView might be cached
+                const actualRole = localStorage.getItem("edflow.role") || roleView || userRole;
+                const showButton = actualRole === "md" && isRoomed;
+                console.log("Ready for Review Debug (Fixed):", { 
                   userRole, 
                   roleView, 
+                  actualRole, 
+                  localStorage: localStorage.getItem("edflow.role"),
                   phase, 
                   lane, 
                   status, 
