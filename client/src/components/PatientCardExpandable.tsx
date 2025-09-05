@@ -240,7 +240,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   
   // Mobile card expansion: use global store to ensure only one card expanded at a time
   const { isExpanded: isMobileExpanded, toggleCard: toggleMobileCard } = useMobileCardStore();
-  const isDesktopView = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+  
+  // Use static media query check instead of dynamic one to prevent render loops
+  const [isDesktopView, setIsDesktopView] = useState(() => 
+    typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches
+  );
+  
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const handleChange = (e: MediaQueryListEvent) => setIsDesktopView(e.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
   
   // Use mobile store for mobile devices, local state for desktop
   const open = isDesktopView ? localOpen : isMobileExpanded(String(patientId));
@@ -298,16 +309,18 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   const currentRoom = useRoomFor(String(patientId));
   const phase = usePhaseFor(String(patientId));
 
-  // Read live room from Journey store for expanded header
-  const liveRoom = useJourneyStore((s) => {
-    const ev = [...s.events].reverse().find(e =>
-      e.patientId === String(patientId) &&
-      (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location")
-    );
-    return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
-  });
+  // Read live room from Journey store for expanded header - memoized to prevent loops
+  const liveRoom = useJourneyStore(
+    useMemo(() => (s) => {
+      const ev = [...s.events].reverse().find(e =>
+        e.patientId === String(patientId) &&
+        (e.kind === "room_change" || e.kind === "room_assigned" || e.kind === "encounter.location")
+      );
+      return ev?.label ?? (typeof ev?.detail === "string" ? ev.detail : ev?.detail?.room);
+    }, [patientId])
+  );
 
-  // Debug: Journey events count
+  // Debug: Journey events count - only when needed
   const eventsCount = useJourneyStore(s => s.events.length);
   
   // Journey filter state - default to "All" so room changes are visible immediately
@@ -330,17 +343,19 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : s.slice(0,26) + '…';
   }, [name]);
 
-  // Memoize patient summary function to prevent infinite re-renders in TaskCardSheet
-  const getPatientSummary = useMemo(() => (pid: string) => ({
-    id: String(patientId),
-    displayName: displayName,
-    age: age,
-    sex: sex,
-    room: currentRoom ?? localLocationLabel ?? locationLabel ?? undefined,
-    ats: ats,
-    ews: typeof ews === 'number' ? ews : (ews as any)?.score,
-    arrivalTs: arrivalTs
-  }), [patientId, displayName, age, sex, currentRoom, localLocationLabel, locationLabel, ats, ews, arrivalTs]);
+  // Memoize patient summary with stable dependencies
+  const getPatientSummary = useMemo(() => {
+    return (pid: string) => ({
+      id: String(patientId),
+      displayName: displayName,
+      age: age,
+      sex: sex,
+      room: currentRoom ?? localLocationLabel ?? locationLabel ?? undefined,
+      ats: ats,
+      ews: typeof ews === 'number' ? ews : (ews as any)?.score,
+      arrivalTs: arrivalTs
+    });
+  }, [patientId, displayName, age, sex, currentRoom, localLocationLabel, locationLabel, ats, ews, arrivalTs]);
 
   const handlePrimary = () => {
     if (onPrimary) return onPrimary();
