@@ -618,11 +618,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 </>
               )}
               {/* MD specific action - Ready for Review for Roomed lane */}
-              {(() => {
-                const showButton = userRole === "md" && (phase === "Roomed" || lane === "roomed" || status?.includes("Room"));
-                console.log("Ready for Review Debug:", { userRole, phase, lane, status, showButton, patientId });
-                return showButton;
-              })() && (
+              {userRole === "md" && (phase === "Roomed" || lane === "roomed" || status?.includes("Room")) && (
                 <button
                   className="rounded-full px-3 py-2 text-sm text-white bg-green-600"
                   onClick={() => setDrawerOpen("readyForReview")}
