@@ -376,6 +376,15 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     if (label.includes("assign") && onAssignRoom) return onAssignRoom();
   };
 
+  // Memoized room assignment handler to prevent infinite loops
+  const handleAssignRoom = useMemo(() => () => {
+    const dashboardStore = useDashboardStore.getState();
+    const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
+    if (encounter) {
+      dashboardStore.openRoom(encounter);
+    }
+  }, [patientId]);
+
   return (
     <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
       {/* Header row - new collapsed header component */}
