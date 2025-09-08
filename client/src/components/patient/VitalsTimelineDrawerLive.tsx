@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { X } from "lucide-react";
-import { useVitalsStore, ObsPoint } from "../../stores/vitalsStore";
+import { useVitalsStore, ObsPoint } from "@/stores/vitalsStore";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
 } from "recharts";

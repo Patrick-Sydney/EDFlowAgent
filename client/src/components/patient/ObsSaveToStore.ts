@@ -1,4 +1,4 @@
-import { vitalsStore, ObsPoint } from "../../stores/vitalsStore";
+import { vitalsStore, ObsPoint } from "@/stores/vitalsStore";
 import { calcEWSFromLatest } from "../../utils/ews";
 
 // EWS computation fallback using the existing EWS calculation system.
