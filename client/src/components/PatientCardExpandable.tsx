@@ -253,6 +253,9 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
   
+  // Memoize patient ID to prevent unnecessary re-evaluations
+  const memoizedPatientId = useMemo(() => String(patientId), [patientId]);
+  
   // Use mobile store for mobile devices, local state for desktop
   const open = isDesktopView ? localOpen : isMobileExpanded(memoizedPatientId);
   
@@ -276,6 +279,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
       }
     }
   }, [isDesktopView, isMobileExpanded, toggleMobileCard, memoizedPatientId]);
+  
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "notes" | "register" | "readyForReview">(false);
   // DISABLED: Task-related state causing infinite loops
@@ -309,8 +313,6 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
   
-  // Memoize patient ID to prevent unnecessary re-evaluations
-  const memoizedPatientId = useMemo(() => String(patientId), [patientId]);
   const currentRoom = useRoomFor(memoizedPatientId);
   const phase = usePhaseFor(memoizedPatientId);
 
