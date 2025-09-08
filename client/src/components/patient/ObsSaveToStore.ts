@@ -29,7 +29,7 @@ export function saveObsToStore(patientId: string | number, values: {
     rr: values.rr, spo2: values.spo2, hr: values.hr, sbp: values.sbp, temp: values.temp,
     ews, source: "obs",
   };
-  vitalsStore.add(patientId, point);
+  vitalsStore.add(String(patientId), point);
 }
 
 // Example usage in your +Obs modal:
