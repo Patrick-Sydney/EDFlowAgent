@@ -150,7 +150,7 @@ export default function PatientJourneyInline({
                             </div>
                             {ev.detail && <div className="text-xs text-muted-foreground">{ev.detail}</div>}
                           </div>
-                          {ev.actor?.role && <div className="text-xs text-muted-foreground shrink-0">{ev.actor.role}</div>}
+                          {ev.actor && typeof ev.actor === 'object' && 'role' in ev.actor && (ev.actor as any).role && <div className="text-xs text-muted-foreground shrink-0">{(ev.actor as any).role}</div>}
                         </li>
                       );
                     })}
