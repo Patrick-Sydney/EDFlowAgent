@@ -1,7 +1,7 @@
 import React from "react";
 import ObservationSetModalTouch from "./ObservationSetModalTouch";
 import { saveObsToStore } from "./patient/ObsSaveToStore";
-import { useDashboardStore } from "../stores/dashboardStore";
+import { useDashboardStore } from "@/stores/dashboardStore";
 
 export function VitalsModalWrapper({
   open,

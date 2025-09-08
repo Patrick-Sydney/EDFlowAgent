@@ -2,7 +2,7 @@ import React from "react";
 import { Clock, Bed, ShieldAlert } from "lucide-react";
 import EWSChipLive from "./EWSChipLive";
 import { useVitalsLast } from "@/stores/vitalsStore";
-import { useRoomFor } from "../../stores/patientIndexStore";
+import { useRoomFor } from "@/stores/patientIndexStore";
 
 /**
  * Desktop-first collapsed header (no CTAs).

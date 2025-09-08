@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { vitalsStore, useVitalsLast } from "@/stores/vitalsStore";
-import { journeyStore } from "../../stores/journeyStore";
+import { useVitalsLast } from "@/stores/vitalsStore";
+import { saveObservation } from "@/clinical/obs/saveObservation";
 import "./obs-slider.css";
 
 type Num = number | undefined;
@@ -168,37 +168,8 @@ export default function ObsQuickForm({ patientId, onSaved }:{
           onClick={async ()=>{
             setSaving(true);
             try{
-              const obs = { t:new Date().toISOString(), rr, spo2, hr, sbp, temp, ews, source:"obs" as const };
-              vitalsStore.add(String(patientId), obs);  // updates chips/timeline immediately
-              // Journey events: vitals set, and EWS change if applicable
-              try {
-                const last = vitalsStore.last(String(patientId));
-                const prevEws = last?.ews ?? null;
-                
-                // Check if we have all core vitals
-                const hasAllCoreVitals = !!(rr && hr && sbp && spo2 && temp);
-                
-                // Event 1: Always create vitals record
-                console.log("Adding vitals journey event for patient:", patientId, "EWS:", ews, "hasAllCore:", hasAllCoreVitals);
-                journeyStore.add(String(patientId), {
-                  kind: "vitals",
-                  label: "Obs",
-                  detail: `RR ${rr ?? "—"}, HR ${hr ?? "—"}, SBP ${sbp ?? "—"}, SpO₂ ${spo2 ?? "—"}%, Temp ${temp ?? "—"}°C (EWS ${ews})`
-                });
-                
-                // Event 2: Only if EWS changed
-                if (prevEws !== null && ews !== prevEws) {
-                  console.log("Adding EWS change journey event:", prevEws, "→", ews);
-                  journeyStore.add(String(patientId), {
-                    kind: "ews_change",
-                    label: `EWS ${prevEws} → ${ews}`,
-                    severity: ews >= 5 ? "warn" : undefined,
-                    detail: `Previous: ${prevEws}, Delta: ${ews >= prevEws ? '+' : ''}${ews - prevEws}`
-                  });
-                } else {
-                  console.log("No EWS change event needed. prevEws:", prevEws, "currentEws:", ews);
-                }
-              } catch {}
+              // Use the shared save function to ensure mobile/desktop sync
+              saveObservation(String(patientId), { rr, spo2, hr, sbp, temp }, "RN");
               onSaved?.();
             } finally { setSaving(false); }
           }}>

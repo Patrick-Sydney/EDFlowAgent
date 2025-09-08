@@ -1,6 +1,6 @@
 import React from "react";
-import { useRoomCounts, useRoomThresholds } from "../../selectors/rooms";
-import { useDashboardStore } from "../../stores/dashboardStore";
+import { useRoomCounts, useRoomThresholds } from "@/selectors/rooms";
+import { useDashboardStore } from "@/stores/dashboardStore";
 
 export default function RoomsContextBanner() {
   const openRoom = useDashboardStore((s) => s.openRoom);
