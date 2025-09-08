@@ -254,13 +254,15 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   }, []);
   
   // Use mobile store for mobile devices, local state for desktop
-  const open = isDesktopView ? localOpen : isMobileExpanded(String(patientId));
-  const handleToggleOpen = () => {
+  const open = isDesktopView ? localOpen : isMobileExpanded(memoizedPatientId);
+  
+  // Memoized toggle handler to prevent infinite loops
+  const handleToggleOpen = useMemo(() => () => {
     if (isDesktopView) {
       setLocalOpen(o => !o);
     } else {
-      const wasExpanded = isMobileExpanded(String(patientId));
-      toggleMobileCard(String(patientId));
+      const wasExpanded = isMobileExpanded(memoizedPatientId);
+      toggleMobileCard(memoizedPatientId);
       
       // If card is being expanded (wasn't expanded before), scroll it into view
       if (!wasExpanded && cardAnchorRef.current) {
@@ -273,7 +275,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         }, 50); // Small delay to ensure expansion animation starts first
       }
     }
-  };
+  }, [isDesktopView, isMobileExpanded, toggleMobileCard, memoizedPatientId]);
   const [openTL, setOpenTL] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState<false | "obs" | "triage" | "notes" | "register" | "readyForReview">(false);
   // DISABLED: Task-related state causing infinite loops
@@ -287,8 +289,8 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
   // }, [patientId]);
   
 
-  // Role awareness (RN-only actions)
-  const roleView = useDashboardStore(s => s.roleView);
+  // Role awareness (RN-only actions) - memoized to prevent re-renders
+  const roleView = useDashboardStore(useMemo(() => (s) => s.roleView, []));
   const userRole = roleView || "charge";
   const isHCA = userRole === "hca";
   // Remove getLatestEws call to use consistent EWSChipLive component instead
@@ -306,8 +308,11 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     };
   }, []);
   const [localLocationLabel, setLocalLocationLabel] = useState<string | null>(locationLabel ?? null);
-  const currentRoom = useRoomFor(String(patientId));
-  const phase = usePhaseFor(String(patientId));
+  
+  // Memoize patient ID to prevent unnecessary re-evaluations
+  const memoizedPatientId = useMemo(() => String(patientId), [patientId]);
+  const currentRoom = useRoomFor(memoizedPatientId);
+  const phase = usePhaseFor(memoizedPatientId);
 
   // Read live room from Journey store for expanded header - memoized to prevent loops
   const liveRoom = useJourneyStore(
@@ -343,19 +348,24 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     return parts.length >= 2 ? `${parts[0]} ${parts[parts.length-1][0]}.` : s.slice(0,26) + '…';
   }, [name]);
 
-  // Memoize patient summary with stable dependencies
+  // Memoize patient summary with only essential stable dependencies
+  const roomDisplay = useMemo(() => 
+    currentRoom ?? localLocationLabel ?? locationLabel ?? undefined, 
+    [currentRoom, localLocationLabel, locationLabel]
+  );
+  
   const getPatientSummary = useMemo(() => {
     return (pid: string) => ({
       id: String(patientId),
       displayName: displayName,
       age: age,
       sex: sex,
-      room: currentRoom ?? localLocationLabel ?? locationLabel ?? undefined,
+      room: roomDisplay,
       ats: ats,
       ews: typeof ews === 'number' ? ews : (ews as any)?.score,
       arrivalTs: arrivalTs
     });
-  }, [patientId, displayName, age, sex, currentRoom, localLocationLabel, locationLabel, ats, ews, arrivalTs]);
+  }, [patientId, displayName, age, sex, roomDisplay, ats, ews, arrivalTs]);
 
   const handlePrimary = () => {
     if (onPrimary) return onPrimary();
@@ -385,12 +395,19 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
     }
   }, [patientId]);
 
+  // Memoized card click handler to prevent infinite loops
+  const handleCardClick = useMemo(() => () => {
+    if (isDesktopView) { 
+      setDesktopOpen(true); 
+    } else { 
+      handleToggleOpen(); 
+    }
+  }, [isDesktopView, handleToggleOpen]);
+
   return (
     <div ref={cardAnchorRef} className="rounded-2xl border bg-card p-3">
       {/* Header row - new collapsed header component */}
-      <div className="w-full text-left cursor-pointer" onClick={()=> {
-        if (isDesktopView) { setDesktopOpen(true); } else { handleToggleOpen(); }
-      }} aria-expanded={open} aria-controls={`exp-${name}`}> 
+      <div className="w-full text-left cursor-pointer" onClick={handleCardClick} aria-expanded={open} aria-controls={`exp-${name}`}> 
         <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
           {/* Left: collapsed header content (no CTAs) */}
           <CollapsedCardHeader
@@ -398,7 +415,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             name={displayName}
             ageSex={ageSex}
             ats={ats}
-            locationLabel={currentRoom ?? localLocationLabel ?? locationLabel ?? undefined}
+            locationLabel={roomDisplay}
             chiefComplaint={complaint}
             timerLabel={timer}
             isolationRequired={isolationRequired || alertFlags?.isolation}
