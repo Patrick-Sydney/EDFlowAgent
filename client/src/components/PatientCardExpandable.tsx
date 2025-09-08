@@ -407,6 +407,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
         open={desktopOpen}
         onOpenChange={setDesktopOpen}
         title={displayName}
+        key={`overlay-${patientId}`}
       >
         {/* ===== Identity + Risk + Actions Header ===== */}
         <header className="sticky top-0 bg-white z-[1] p-4 border-b">
@@ -449,14 +450,7 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
                 {userRole === "charge" && (
                   <button 
                     className="px-3 py-1.5 rounded border"
-                    onClick={() => {
-                      // Use the proper room management system instead of dummy AssignRoomPanel
-                      const dashboardStore = useDashboardStore.getState();
-                      const encounter = dashboardStore.encounters.find(e => String(e.id) === String(patientId));
-                      if (encounter) {
-                        dashboardStore.openRoom(encounter);
-                      }
-                    }}
+                    onClick={handleAssignRoom}
                     data-testid="button-assign-room"
                   >
                     Assign room
