@@ -1,0 +1,171 @@
+That overlay—**“Rendered more hooks than during the previous render”**—means one of your components is calling React hooks in a **different order/count between renders**. It’s almost always caused by **conditional hooks** or **early returns**. Since this appeared after you changed the timeline and touched mobile code, the culprit is likely in the mobile entry (home / card) doing one of these patterns.
+
+Here’s a fast, surgical repair plan.
+
+---
+
+# What causes this (spot the smell)
+
+* `if (...) useState(...)` / `if (...) useEffect(...)`
+* `cond ? useHookA() : useHookB()`
+* `items.map(item => useSomeHook(item))`
+* Early return **before** some hooks only on the first render:
+
+  ```tsx
+  if (!patient) return null;   // then later renders DO have patient and call hooks → boom
+  const s = useStore(...);
+  ```
+
+---
+
+# Fix patterns you can paste
+
+## 1) Never call hooks conditionally
+
+**Bad**
+
+```tsx
+if (isMobile) useEffect(...); else useLayoutEffect(...);
+```
+
+**Good**
+
+```tsx
+useEffect(() => {
+  if (!isMobile) return;
+  // mobile-only work
+}, [isMobile]);
+
+useLayoutEffect(() => {
+  if (isMobile) return;
+  // desktop-only work
+}, [isMobile]);
+```
+
+**Bad**
+
+```tsx
+if (mode === "A") useStoreA(); else useStoreB();
+```
+
+**Good**
+
+```tsx
+const a = useStoreA();
+const b = useStoreB();
+const data = mode === "A" ? a : b;
+```
+
+## 2) Don’t return early before hooks
+
+**Bad**
+
+```tsx
+if (!selectedPatient) return <Empty />;
+const events = useJourneyStore(s => s.events); // first render skipped this hook
+```
+
+**Good**
+
+```tsx
+const events = useJourneyStore(s => s.events); // call hooks unconditionally
+if (!selectedPatient) return <Empty />;
+```
+
+## 3) Never run hooks inside loops
+
+**Bad**
+
+```tsx
+patients.map(p => useVitalsStore(s => s.last(p.id)));  // ❌
+```
+
+**Good**
+
+```tsx
+patients.map(p => <Row key={p.id} id={p.id} />);
+function Row({ id }: { id: string }) {
+  const last = useVitalsStore(s => s.last(id)); // ✅ one hook per component
+  return <Cell last={last} />;
+}
+```
+
+## 4) Remove “mirror to local state” effects
+
+**Bad**
+
+```tsx
+const last = useVitalsStore(s => s.last(pid));
+const [local, setLocal] = useState(last);
+useEffect(() => setLocal(last), [last]);  // can thrash identity → loop/extra hooks
+```
+
+**Good**
+
+```tsx
+const last = useVitalsStore(s => s.last(pid)); // just use it
+```
+
+---
+
+# Quick way to find the offender (5–10 min)
+
+1. **Bisect** the mobile root: temporarily comment out big children (PatientCardMobile, Task panes, etc.). Reload. When the overlay disappears, you found the subtree.
+
+2. In that file, **scan for the smells** above. Typical trouble spots:
+
+   * `isMobile ? <ComponentA/> : <ComponentB/>` where A/B each use different hooks **and** are **conditionally rendered at the same tree level** while also calling hooks in the parent differently.
+   * Early `return null` before some hooks when `selectedPatient`/`role` is missing.
+   * Hooks inside `.map()` for lists.
+
+3. Add this ESLint rule if it isn’t on already (it will point to the exact line):
+
+```json
+// .eslintrc
+{
+  "plugins": ["react-hooks"],
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn"
+  }
+}
+```
+
+---
+
+# Likely concrete fixes in your codebase
+
+* **Mobile main page / shell**
+  If you have:
+
+  ```tsx
+  if (!patient) return <Landing />;
+  const { events } = useJourneyStore(s => s.events);
+  ```
+
+  Move the hook above the `return`.
+
+* **Responsive branching**
+  If you wrote:
+
+  ```tsx
+  if (isMobile) useKeyboardShortcutsMobile();
+  else useKeyboardShortcutsDesktop();
+  ```
+
+  Call both and no-op internally depending on `isMobile`, or split into children components and render one or the other—**but the hooks stay inside those children**, not the parent.
+
+* **Conditional store subscriptions**
+  Ensure all `useJourneyStore(...)`, `useVitalsStore(...)` calls are at the top level and **never** inside `if/?:/switch`.
+
+---
+
+# Sanity check after fix
+
+* Reload mobile main page: overlay gone.
+* Open/close a patient: no hook-order error.
+* Save +Obs on mobile and desktop: EWS chip updates; Journey logs `vitals` (+ `ews_change` if delta).
+
+---
+
+If you paste the top \~60 lines of the **mobile main page component** (where you conditionally render or return early), I’ll mark the exact lines to change and rewrite that snippet with the safe patterns above.

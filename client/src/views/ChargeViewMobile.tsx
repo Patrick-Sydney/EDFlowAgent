@@ -25,6 +25,63 @@ export type ChargeLane = {
   patients: ChargePatient[] 
 };
 
+// Individual patient card component with its own hooks
+function ChargePatientCard({
+  patient: p,
+  lane,
+  onStartTriage,
+  onAssignRoom,
+  onOpenCard,
+  onAddObs,
+}: {
+  patient: ChargePatient;
+  lane: ChargeLane;
+  onStartTriage: (p: ChargePatient) => void;
+  onAssignRoom: (p: ChargePatient) => void;
+  onOpenCard: (p: ChargePatient) => void;
+  onAddObs: (p: ChargePatient) => void;
+}) {
+  const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
+  const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+  const status = lane.id === 'room' ? (p.roomName ?? 'Rooming') : lane.label;
+  const primaryLabel =
+    lane.id === "waiting"  ? "Start Triage" :
+    lane.id === "intriage" ? "Assign Room" : undefined;
+  
+  // Memoized handlers - now safe because they're in component scope, not loop
+  const handlePrimary = useCallback(() => {
+    if (lane.id === "waiting") {
+      onStartTriage(p);
+    } else if (lane.id === "intriage") {
+      onAssignRoom(p);
+    }
+  }, [lane.id, onStartTriage, onAssignRoom, p]);
+  
+  const handleAssignRoom = useCallback(() => onAssignRoom(p), [onAssignRoom, p]);
+  const handleAddObs = useCallback(() => onAddObs(p), [onAddObs, p]);
+  const handleOpenFull = useCallback(() => onOpenCard(p), [onOpenCard, p]);
+  
+  return (
+    <PatientCardExpandable
+      role="Charge"
+      name={name}
+      ageSex={ageSex}
+      status={status}
+      timer={p.waitingFor}
+      complaint={p.chiefComplaint}
+      locationLabel={p.roomName}
+      ews={p.ews}
+      ats={p.ats}
+      patientId={p.id}
+      primaryLabel={primaryLabel}
+      onPrimary={primaryLabel ? handlePrimary : undefined}
+      onAssignRoom={handleAssignRoom}
+      onAddObs={handleAddObs}
+      onOpenFull={handleOpenFull}
+    />
+  );
+}
+
 export default function ChargeViewMobile({
   lanes,
   onStartTriage,
@@ -58,48 +115,17 @@ export default function ChargeViewMobile({
               </h2>
             </div>
             <div className="mt-3 space-y-3">
-              {lane.patients.map((p) => {
-                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
-                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
-                const status = lane.id === 'room' ? (p.roomName ?? 'Rooming') : lane.label;
-                const primaryLabel =
-                  lane.id === "waiting"  ? "Start Triage" :
-                  lane.id === "intriage" ? "Assign Room" : undefined;
-                
-                // Memoized handlers to prevent infinite re-renders
-                const handlePrimary = useCallback(() => {
-                  if (lane.id === "waiting") {
-                    onStartTriage(p);
-                  } else if (lane.id === "intriage") {
-                    onAssignRoom(p);
-                  }
-                }, [lane.id, onStartTriage, onAssignRoom, p]);
-                
-                const handleAssignRoom = useCallback(() => onAssignRoom(p), [onAssignRoom, p]);
-                const handleAddObs = useCallback(() => onAddObs(p), [onAddObs, p]);
-                const handleOpenFull = useCallback(() => onOpenCard(p), [onOpenCard, p]);
-                
-                return (
-                  <PatientCardExpandable
-                    key={p.id}
-                    role="Charge"
-                    name={name}
-                    ageSex={ageSex}
-                    status={status}
-                    timer={p.waitingFor}
-                    complaint={p.chiefComplaint}
-                    locationLabel={p.roomName}
-                    ews={p.ews}
-                    ats={p.ats}
-                    patientId={p.id}
-                    primaryLabel={primaryLabel}
-                    onPrimary={primaryLabel ? handlePrimary : undefined}
-                    onAssignRoom={handleAssignRoom}
-                    onAddObs={handleAddObs}
-                    onOpenFull={handleOpenFull}
-                  />
-                );
-              })}
+              {lane.patients.map((p) => (
+                <ChargePatientCard
+                  key={p.id}
+                  patient={p}
+                  lane={lane}
+                  onStartTriage={onStartTriage}
+                  onAssignRoom={onAssignRoom}
+                  onOpenCard={onOpenCard}
+                  onAddObs={onAddObs}
+                />
+              ))}
             </div>
           </section>
         ))}

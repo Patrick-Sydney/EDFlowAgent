@@ -25,6 +25,50 @@ export type MDLane = {
   patients: MDPatient[] 
 };
 
+// Individual patient card component with its own hooks
+function MDPatientCard({
+  patient: p,
+  lane,
+  primaryMap,
+  onOrderSet,
+  onOpenCard,
+}: {
+  patient: MDPatient;
+  lane: MDLane;
+  primaryMap: Record<MDLane['id'], { label: string; fn: (p: MDPatient) => void }>;
+  onOrderSet: (p: MDPatient) => void;
+  onOpenCard: (p: MDPatient) => void;
+}) {
+  const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
+  const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
+  const status = lane.id === 'worklist' ? (p.roomName ? `Room ${p.roomName}` : 'To see') : lane.id === 'results' ? 'Results' : 'Dispo';
+  const { label, fn } = primaryMap[lane.id];
+  
+  // Memoized handlers - now safe because they're in component scope, not loop
+  const handlePrimary = useCallback(() => fn(p), [fn, p]);
+  const handleOrderSet = useCallback(() => onOrderSet(p), [onOrderSet, p]);
+  const handleOpenFull = useCallback(() => onOpenCard(p), [onOpenCard, p]);
+  
+  return (
+    <PatientCardExpandable
+      role="MD"
+      name={name}
+      ageSex={ageSex}
+      status={status}
+      timer={p.mdWaiting}
+      complaint={p.chiefComplaint}
+      locationLabel={p.roomName}
+      ews={p.ews}
+      ats={p.ats}
+      patientId={p.id}
+      primaryLabel={label}
+      onPrimary={handlePrimary}
+      onOrderSet={handleOrderSet}
+      onOpenFull={handleOpenFull}
+    />
+  );
+}
+
 export default function MDViewMobile({ 
   lanes, 
   onSeeNow, 
@@ -66,37 +110,16 @@ export default function MDViewMobile({
               </h2>
             </div>
             <div className="mt-3 space-y-3">
-              {lane.patients.map((p) => {
-                const name = p.displayName || `${p.givenName ?? ''} ${p.familyName ?? ''}`.trim() || '—';
-                const ageSex = p.age ? `${p.age}${p.sex ? ` ${p.sex}` : ''}` : (p.sex ?? undefined);
-                const status = lane.id === 'worklist' ? (p.roomName ? `Room ${p.roomName}` : 'To see') : lane.id === 'results' ? 'Results' : 'Dispo';
-                const { label, fn } = primaryMap[lane.id];
-                
-                // Memoized handlers to prevent infinite re-renders
-                const handlePrimary = useCallback(() => fn(p), [fn, p]);
-                const handleOrderSet = useCallback(() => onOrderSet(p), [onOrderSet, p]);
-                const handleOpenFull = useCallback(() => onOpenCard(p), [onOpenCard, p]);
-                
-                return (
-                  <PatientCardExpandable
-                    key={p.id}
-                    role="MD"
-                    name={name}
-                    ageSex={ageSex}
-                    status={status}
-                    timer={p.mdWaiting}
-                    complaint={p.chiefComplaint}
-                    locationLabel={p.roomName}
-                    ews={p.ews}
-                    ats={p.ats}
-                    patientId={p.id}
-                    primaryLabel={label}
-                    onPrimary={handlePrimary}
-                    onOrderSet={handleOrderSet}
-                    onOpenFull={handleOpenFull}
-                  />
-                );
-              })}
+              {lane.patients.map((p) => (
+                <MDPatientCard
+                  key={p.id}
+                  patient={p}
+                  lane={lane}
+                  primaryMap={primaryMap}
+                  onOrderSet={onOrderSet}
+                  onOpenCard={onOpenCard}
+                />
+              ))}
             </div>
           </section>
         ))}
