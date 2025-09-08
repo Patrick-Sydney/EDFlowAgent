@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback } from "react";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
-import { useVitalsLast } from "../../stores/vitalsStore";
+import { useVitalsLast } from "@/stores/vitalsStore";
 
 export function RNPatientRow({ 
   p, 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Clock, Bed, ShieldAlert } from "lucide-react";
 import EWSChipLive from "./EWSChipLive";
-import { useVitalsLast } from "../../stores/vitalsStore";
+import { useVitalsLast } from "@/stores/vitalsStore";
 import { useRoomFor } from "../../stores/patientIndexStore";
 
 /**

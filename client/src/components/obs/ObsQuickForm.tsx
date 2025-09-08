@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { vitalsStore, useVitalsLast } from "../../stores/vitalsStore";
+import { vitalsStore, useVitalsLast } from "@/stores/vitalsStore";
 import { journeyStore } from "../../stores/journeyStore";
 import "./obs-slider.css";
 

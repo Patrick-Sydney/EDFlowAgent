@@ -1,6 +1,6 @@
 import React from "react";
 import EWSChipLive from "./EWSChipLive";
-import { useVitalsLast } from "../../stores/vitalsStore";
+import { useVitalsLast } from "@/stores/vitalsStore";
 
 export default function ClinicalSnapshot({
   patientId, complaint, ats, o2Label, rightAddon,

@@ -1,5 +1,5 @@
 import React from "react";
-import { useVitalsLast } from "../../stores/vitalsStore";
+import { useVitalsLast } from "@/stores/vitalsStore";
 
 export default function VitalsCapsuleLive({
   patientId,

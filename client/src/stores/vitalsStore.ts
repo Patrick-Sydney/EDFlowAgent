@@ -28,39 +28,56 @@ type VitalsState = {
   list: (patientId: string) => Observation[];
 };
 
-export const useVitalsStore = create<VitalsState>((set, get) => ({
-  byId: {},
-  append: (patientId, obs) =>
-    set((s) => ({
-      byId: {
-        ...s.byId,
-        [patientId]: [ ...(s.byId[patientId] ?? []), obs ],
-      },
-    })),
-  last: (patientId) => {
-    const arr = get().byId[patientId] ?? [];
-    return arr[arr.length - 1];
-  },
-  lastEws: (patientId) => get().last(patientId)?.ews,
-  previousEWS: (patientId) => {
-    const arr = get().byId[patientId] ?? [];
-    const ewsPoints = arr.filter(p => typeof p.ews === 'number');
-    if (ewsPoints.length < 2) return undefined;
-    return ewsPoints[ewsPoints.length - 2]?.ews;
-  },
-  hydrate: (seed) => set({ byId: { ...seed } }),
-  // Legacy compatibility methods
-  add: (patientId, obs) => {
-    const fullObs: Observation = {
-      ...obs,
-      ews: obs.ews ?? 0,
-      algoId: "adult-simple-v1",
-      source: obs.source === "triage" ? "obs" : (obs.source ?? "obs")
-    } as Observation;
-    get().append(patientId, fullObs);
-  },
-  list: (patientId) => get().byId[patientId] ?? [],
-}));
+function createVitalsStore() {
+  return create<VitalsState>((set, get) => ({
+    byId: {},
+    append: (patientId, obs) =>
+      set((s) => ({
+        byId: {
+          ...s.byId,
+          [patientId]: [ ...(s.byId[patientId] ?? []), obs ],
+        },
+      })),
+    last: (patientId) => {
+      const arr = get().byId[patientId] ?? [];
+      return arr[arr.length - 1];
+    },
+    lastEws: (patientId) => get().last(patientId)?.ews,
+    previousEWS: (patientId) => {
+      const arr = get().byId[patientId] ?? [];
+      const ewsPoints = arr.filter(p => typeof p.ews === 'number');
+      if (ewsPoints.length < 2) return undefined;
+      return ewsPoints[ewsPoints.length - 2]?.ews;
+    },
+    hydrate: (seed) => set({ byId: { ...seed } }),
+    // Legacy compatibility methods
+    add: (patientId, obs) => {
+      const fullObs: Observation = {
+        ...obs,
+        ews: obs.ews ?? 0,
+        algoId: "adult-simple-v1",
+        source: obs.source === "triage" ? "obs" : (obs.source ?? "obs")
+      } as Observation;
+      get().append(patientId, fullObs);
+    },
+    list: (patientId) => get().byId[patientId] ?? [],
+  }));
+}
+
+// ✅ Singleton across duplicate module loads / HMR
+const g = globalThis as any;
+export const useVitalsStore =
+  g.__ED_VITALS_STORE__ || (g.__ED_VITALS_STORE__ = createVitalsStore());
+
+// DEV sentinel: warn if someone somehow created a second instance
+if (import.meta?.env?.DEV) {
+  if (!g.__ED_VITALS_STORE_MARK__) {
+    g.__ED_VITALS_STORE_MARK__ = useVitalsStore;
+    console.log("[vitalsStore] singleton created", useVitalsStore);
+  } else if (g.__ED_VITALS_STORE_MARK__ !== useVitalsStore) {
+    console.warn("[vitalsStore] duplicate instance detected — check import paths");
+  }
+}
 
 // Legacy singleton export for backward compatibility
 export const vitalsStore = {

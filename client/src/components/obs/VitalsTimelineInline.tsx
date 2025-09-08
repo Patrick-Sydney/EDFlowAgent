@@ -3,7 +3,7 @@ import {
   ResponsiveContainer, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ReferenceLine
 } from "recharts";
-import { useVitalsList } from "../../stores/vitalsStore";
+import { useVitalsList } from "@/stores/vitalsStore";
 
 type Obs = {
   t: string;         // ISO-ish time

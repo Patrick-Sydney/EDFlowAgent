@@ -1,0 +1,202 @@
+You’re seeing the classic “mobile updates, desktop doesn’t” because you effectively have **two different store instances** (or one side isn’t subscribing). This happens when:
+
+* Mobile imports the vitals store from one path and Desktop from another (e.g., `@/stores/vitalsStore` **and** `../stores/vitalsStore`) → Vite treats them as **two modules**, each creating its **own Zustand store**.
+* Or Desktop reads the store **imperatively** (`getState()`) instead of via a hook, so it never re-renders.
+
+Below is a tight fix that makes the vitals/Journey stores **true singletons**, forces both cards to **use the same hook**, and adds a **dev sentinel** that yells if two instances appear.
+
+---
+
+# 1) Make the vitals store a hard singleton (works across duplicate imports & HMR)
+
+**`src/stores/vitalsStore.ts`** (replace your export with this pattern)
+
+```ts
+import { create } from "zustand";
+
+export type Observation = {
+  t: string; rr?: number; hr?: number; sbp?: number; spo2?: number; temp?: number;
+  loc?: "A"|"V"|"P"|"U";
+  o2?: { device?: string; lpm?: number; onOxygen?: boolean };
+  source: "obs" | "device";
+  ews: number;
+  algoId: string;
+};
+
+type VitalsState = {
+  byId: Record<string, Observation[]>;
+  append: (patientId: string, obs: Observation) => void;
+  last: (patientId: string) => Observation | undefined;
+  lastEws: (patientId: string) => number | undefined;
+};
+
+function createVitalsStore() {
+  return create<VitalsState>((set, get) => ({
+    byId: {},
+    append: (patientId, obs) =>
+      set((s) => ({ byId: { ...s.byId, [patientId]: [ ...(s.byId[patientId] ?? []), obs ] } })),
+    last: (patientId) => {
+      const arr = get().byId[patientId] ?? [];
+      return arr[arr.length - 1];
+    },
+    lastEws: (patientId) => get().last(patientId)?.ews,
+  }));
+}
+
+// ✅ Singleton across duplicate module loads / HMR
+const g = globalThis as any;
+export const useVitalsStore =
+  g.__ED_VITALS_STORE__ || (g.__ED_VITALS_STORE__ = createVitalsStore());
+
+// DEV sentinel: warn if someone somehow created a second instance
+if (import.meta?.env?.DEV) {
+  // @ts-ignore
+  if (!g.__ED_VITALS_STORE_MARK__) g.__ED_VITALS_STORE_MARK__ = useVitalsStore;
+  // @ts-ignore
+  else if (g.__ED_VITALS_STORE_MARK__ !== useVitalsStore) {
+    console.warn("[vitalsStore] duplicate instance detected — check import paths");
+  }
+}
+```
+
+Do the **same singleton wrapper** for any other shared stores used in cards (at least `journeyStore`, possibly `roomsStore`, `taskStore`). Duplicate instances there can also cause “mobile vs desktop” drift.
+
+---
+
+# 2) Stop path-splitting: one import path everywhere
+
+In **all files** (mobile & desktop), ensure imports use **the same path**. Pick one style and stick to it:
+
+```ts
+// good — everywhere
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+// avoid mixing with this (creates another module in Vite)
+import { useVitalsStore } from "../../stores/vitalsStore";     // ❌
+```
+
+If you don’t have an alias, add it:
+
+**`vite.config.ts`**
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+});
+```
+
+Run a quick grep and unify:
+
+```
+ripgrep -n "stores/vitalsStore"
+```
+
+---
+
+# 3) Ensure both cards **subscribe**, not poll
+
+Both cards should render the same **EWS chip component** that subscribes to the store via a hook (not `getState()`).
+
+**`src/components/patient/EwsChip.tsx`**
+
+```tsx
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+export default function EwsChip({ patientId }: { patientId: string }) {
+  const last = useVitalsStore((s) => s.last(patientId)); // subscribes
+  const ews = last?.ews;
+  const tone = ews == null ? "border"
+              : ews >= 5 ? "bg-amber-100 border-amber-300"
+              : "bg-slate-100 border-slate-300";
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-xs ${tone}`}>
+      <span className="font-medium">EWS</span> {ews ?? "—"}
+    </span>
+  );
+}
+```
+
+Then, in **both** Desktop and Mobile Patient Cards, use:
+
+```tsx
+<EwsChip patientId={patient.id} />
+```
+
+…and **delete** any legacy `props.ews` or `useVitalsStore.getState()` usage.
+
+---
+
+# 4) Verify both forms call the **same** save path
+
+Both Desktop and Mobile +Obs save handlers must call the shared function:
+
+```ts
+import { saveObservation } from "@/clinical/obs/saveObservation";
+
+saveObservation(patient.id, formValues, "RN"); // Desktop
+saveObservation(patient.id, formValues, "RN"); // Mobile
+```
+
+No `computeEws(...)` in components; only in `saveObservation`.
+
+---
+
+# 5) Quick smoke test (tell-tale checks)
+
+Add this dev log in **both** card components, just once:
+
+```tsx
+import { useVitalsStore } from "@/stores/vitalsStore";
+console.log("vitalsStore identity", useVitalsStore); // Same function reference on both cards = good
+```
+
+If Mobile and Desktop print different function refs → you still have a **duplicate import path** somewhere. Fix paths or the alias.
+
+---
+
+# 6) Common gotcha: barrel files creating a second store
+
+If you have both:
+
+* `@/stores/index.ts` re-exporting `useVitalsStore`, **and**
+* places importing directly from `@/stores/vitalsStore`
+
+…Vite can load the file twice in some setups. Choose one strategy:
+
+* Either **always import directly** from `@/stores/vitalsStore`, or
+* Only import from the **barrel** and make the barrel import from the single path.
+
+(With the singleton wrapper above, you’re safe either way, but consistency keeps things clean.)
+
+---
+
+# 7) Optional: lock eslint so this doesn’t regress
+
+**`.eslintrc`**
+
+```json
+{
+  "plugins": ["react-hooks", "import"],
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "import/no-duplicates": "error"
+  }
+}
+```
+
+---
+
+# 8) Acceptance criteria (what you should see now)
+
+* Add +Obs on **Mobile** → **both** Mobile and Desktop EWS chips update within the same second.
+* Refresh the page: the same last EWS shows on both cards.
+* Console shows **one** `vitalsStore identity` function reference in both cards (identical).
+* No conditional hooks warnings; no “maximum update depth” loops.
+
+If anything still doesn’t sync after this, the remaining cause will be a **desktop card reading a cached prop** instead of the store. Swap it to `<EwsChip patientId={...}/>` and you’ll be golden.
