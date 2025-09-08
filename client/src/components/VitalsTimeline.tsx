@@ -18,7 +18,7 @@ export interface CareEvent { t: string; label: string; kind?: 'lactate' | 'cultu
 
 // Import your existing EWS function (adjust the path for your project)
 import { calcEWSFromLatest } from "@/utils/ews";
-import { computeEwsFromObservations } from "@/utils/monitoring";
+// REMOVED: import { computeEwsFromObservations } from "@/utils/monitoring"; // UI must never compute EWS!
 
 // ---- Helpers ----
 const parseNumber = (s?: string) => (s ? Number(String(s).replace(/[^0-9.\-]/g, "")) : NaN);
@@ -27,7 +27,7 @@ const getSBP = (bp?: string) => (bp ? parseNumber(bp.split("/")[0]) : NaN);
 function toMinutes(ts: string) { return Math.floor(new Date(ts).getTime() / 60000); }
 function fmtTime(ts: string) { return new Date(ts).toLocaleTimeString(); }
 
-// Build a per-timestamp snapshot of vitals + EWS
+// Build a per-timestamp snapshot of vitals (PURE - no EWS computation)
 function buildSeries(observations: Observation[]): { points: any[]; ews: EwsPoint[] } {
   const sorted = observations.slice().sort((a,b)=> a.takenAt.localeCompare(b.takenAt));
   const snapshots = new Map<number, { t: string; HR?: number; SBP?: number; Temp?: number; RR?: number; SpO2?: number; triage?: boolean }>();
@@ -54,33 +54,9 @@ function buildSeries(observations: Observation[]): { points: any[]; ews: EwsPoin
     return { ...p, ...last };
   });
 
-  // compute EWS at each point where inputs exist
-  const ews: EwsPoint[] = [];
-  let prevScore: number | undefined = undefined;
-  for (const p of ff) {
-    const inputs = { RR: p.RR, SpO2: p.SpO2, Temp: p.Temp, SBP: p.SBP, HR: p.HR } as LatestVitals;
-    const haveAll = [inputs.RR, inputs.SpO2, inputs.Temp, inputs.SBP, inputs.HR].every(v => typeof v === 'number' && isFinite(v as number));
-    if (haveAll) {
-      try {
-        // Convert to format expected by monitoring system
-        const obsArray = [
-          { type: "HR" as const, value: String(inputs.HR), takenAt: p.t, recordedBy: "System", id: `hr-${p.t}` },
-          { type: "RR" as const, value: String(inputs.RR), takenAt: p.t, recordedBy: "System", id: `rr-${p.t}` },
-          { type: "SpO2" as const, value: String(inputs.SpO2), takenAt: p.t, recordedBy: "System", id: `spo2-${p.t}` },
-          { type: "Temp" as const, value: String(inputs.Temp), takenAt: p.t, recordedBy: "System", id: `temp-${p.t}` },
-          { type: "BP" as const, value: `${inputs.SBP}/80`, takenAt: p.t, recordedBy: "System", id: `bp-${p.t}` }
-        ];
-        const r = computeEwsFromObservations(obsArray);
-        const d = prevScore === undefined ? undefined : r.score - prevScore;
-        ews.push({ t: p.t, score: r.score, delta: d });
-        prevScore = r.score;
-      } catch (e) {
-        ews.push({ t: p.t, score: NaN });
-      }
-    } else {
-      ews.push({ t: p.t, score: NaN });
-    }
-  }
+  // PURE: Do NOT compute EWS in UI! EWS should come from vitalsStore only.
+  // If you need EWS data, fetch it separately from the store that already has computed EWS values
+  const ews: EwsPoint[] = []; // Empty for now - should be populated from store if needed
 
   return { points: ff, ews };
 }

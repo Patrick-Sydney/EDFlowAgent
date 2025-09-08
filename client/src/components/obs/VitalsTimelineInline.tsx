@@ -31,17 +31,22 @@ function coerceMs(x:any): number | undefined {
   return undefined;
 }
 
-// Use the project's canonical hook (same one used by the working modal)
+// Use the project's canonical hook (same one used by the working modal) - PURE
 function useVitalsSeries(patientId: string | number) {
   // The hook already subscribes to store updates; we just normalize timestamps.
-  const list = (useVitalsList as any)(String(patientId)) as Obs[] | undefined;
-  return (Array.isArray(list) ? list : []).map((r:any) => {
-    const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
-    return {
-      ...r,
-      t: ms != null ? new Date(ms).toISOString() : (r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date),
-    } as Obs;
-  });
+  const list = useVitalsList(String(patientId)) as Obs[] | undefined;
+  
+  // Memoize the transformation to prevent new arrays on every render
+  return useMemo(() => {
+    if (!Array.isArray(list)) return [];
+    return list.map((r:any) => {
+      const ms = coerceMs(r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date);
+      return {
+        ...r,
+        t: ms != null ? new Date(ms).toISOString() : (r.t ?? r.time ?? r.timestamp ?? r.ts ?? r.date),
+      } as Obs;
+    });
+  }, [list]);
 }
 
 const fmtTime = (iso: string) => {
