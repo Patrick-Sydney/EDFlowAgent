@@ -1,0 +1,241 @@
+That runtime overlay (“**Maximum update depth exceeded**”) means **something sets state on every render** of the expanded Patient Card—creating a loop. This cropped up right after the EWS refactor, so the culprit is almost certainly one of:
+
+1. A component that **recomputes EWS or reshapes vitals** and then **writes to a store** inside an effect that runs every render.
+2. A **Zustand subscribe/useEffect** that **sets state** but has **no stable dependency** (or sits inside the component).
+3. A component that **mirrors store data into local state** with an effect like `useEffect(() => setX(derive(store)), [storeSlice])`, where `derive` returns a new reference each time → the effect fires forever.
+
+Below is a **surgical fix plan** plus paste-in patches that stop the loop and keep the single-path EWS intact.
+
+---
+
+## 0) Two quick isolations (1 minute)
+
+Do these toggles to find the offender fast:
+
+* In `PatientCardExpandable`, **temporarily** comment out these children one by one and re-open the card:
+
+  * `VitalsTimelineInline`
+  * `PatientJourneyInline`
+  * Your `EwsChip` / vitals capsule
+
+The one that, when removed, makes the overlay disappear is the loop source. 99% of the time it’s a `useEffect` in one of those that **sets state** without a stable dependency.
+
+---
+
+## 1) Never compute or write EWS in the card
+
+Search the repo for any stray UI compute/writes:
+
+```txt
+computeEws(
+append(           // vitalsStore.append inside components
+useJourneyStore.getState().append(   // in effects of read-only components
+subscribe((s) => s.events            // subscribe inside component
+set( (s) =>                           // Zustand set inside PatientCard/* files
+```
+
+If you find any in **PatientCard/Timeline/Results/Journey** components:
+
+* **Delete** the `computeEws` calls from UI.
+* **Delete** any “sync” effects that write to a store on render.
+* UI should **only read** via selectors (`useVitalsStore(s => s.last(pid))`, `useJourneyStore(s => s.events)`).
+
+(You already have `saveObservation()` doing all EWS work—keep it the only write path.)
+
+---
+
+## 2) Make the EWS chip 100% passive (no effects)
+
+Replace your chip with this pure, non-stateful version:
+
+```tsx
+// components/patient/EwsChip.tsx
+import { useVitalsStore } from "@/stores/vitalsStore";
+import React from "react";
+
+export default function EwsChip({ patientId }: { patientId: string }) {
+  const last = useVitalsStore((s) => s.last(patientId)); // passive read
+  const ews = last?.ews;
+  const tone =
+    ews == null ? "border"
+    : ews >= 5 ? "bg-amber-100 border-amber-300"
+    : "bg-slate-100 border-slate-300";
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-xs ${tone}`}>
+      <span className="font-medium">EWS</span> {ews ?? "—"}
+    </span>
+  );
+}
+```
+
+> No `useEffect`, no local `setState`, no subscriptions—just a selector read. This **cannot** create an update loop.
+
+---
+
+## 3) Stabilize the Vitals timeline (common loop source)
+
+If your timeline **sets local state** from processed series in an effect like:
+
+```tsx
+useEffect(() => {
+  setSeries(buildSeries(vitals));   // <- causes setState every render as `vitals` ref changes
+}, [vitals]);
+```
+
+…replace with **pure memoization**:
+
+```tsx
+// components/obs/VitalsTimelineInline.tsx
+import React, { useMemo } from "react";
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+export default function VitalsTimelineInline({ patientId }: { patientId: string }) {
+  const data = useVitalsStore((s) => s.byId[patientId] ?? []);  // passive
+  const series = useMemo(() => buildSeries(data), [data]);      // NO setState
+  return <Chart series={series} />;
+}
+```
+
+Make sure `buildSeries` is a pure function (no store writes).
+If you must keep internal UI state (e.g., selected range), **do not** recompute and set state inside an effect based on a derived object that changes identity each render.
+
+---
+
+## 4) Move all **Zustand subscribe** calls out of components
+
+If you have something like this **inside any component**:
+
+```tsx
+useEffect(() => {
+  const unsub = useJourneyStore.subscribe((s) => s.events, () => {
+    setLocal(…);                    // <-- triggers setState each time any event arrives
+  });
+  return unsub;
+}, []);  // sometimes missing deps and recreated on every render
+```
+
+Replace it with a **hook selector**:
+
+```tsx
+const events = useJourneyStore((s) => s.events);   // passive read
+```
+
+If you need to maintain a **derived index** (e.g., phase/room), keep the subscribe **at module scope** inside that store and only `set` the derived store there (you already do this in the index stores I gave you).
+
+---
+
+## 5) Guard against “mirror to local state” patterns
+
+If any Patient Card child does:
+
+```tsx
+const last = useVitalsStore((s) => s.last(pid));
+const [local, setLocal] = useState(last);
+useEffect(() => setLocal(last), [last]); // ← endless if `last` is a fresh object each time
+```
+
+Delete the mirror and use `last` directly.
+If you absolutely need local, key it off a **stable primitive**, e.g., the timestamp:
+
+```tsx
+const last = useVitalsStore((s) => s.last(pid));
+const [local, setLocal] = useState<Observation | undefined>(undefined);
+const lastT = last?.t;
+useEffect(() => { setLocal(last); }, [lastT]);   // only when time changes
+```
+
+---
+
+## 6) Ensure `saveObservation` doesn’t read-after-write
+
+Your `saveObservation` should get the **previous EWS** **before** storing the new one, otherwise you’ll never log `ews_change` (not the loop, but a correctness fix):
+
+```ts
+const prev = useVitalsStore.getState().lastEws(patientId);  // <-- get prev first
+useVitalsStore.getState().append(patientId, obs);
+// …then compare prev vs ews and append ews_change if different
+```
+
+(If you already did it this way, you’re good.)
+
+---
+
+## 7) Tripwire: see who is writing
+
+Temporarily wrap `set` in any suspect store to find repeat writers:
+
+```ts
+// in a suspect store file (dev only)
+const wrap = <T extends Function>(fn: T, name: string) =>
+  ((...args: any[]) => { console.debug(`[store:set] ${name}`); return (fn as any)(...args); }) as any;
+
+export const useJourneyStore = create<JourneyState>((origSet, get) => {
+  const set = wrap(origSet, "journey");  // <- see if something hammers it
+  return {
+    events: [],
+    append: (ev) => set((s) => ({ events: [...s.events, ev] })),
+    hydrate: (evs) => set(() => ({ events: [...evs] })),
+  };
+});
+```
+
+If the console floods **while just opening the card**, you still have a component writing to a store from render/effect.
+
+---
+
+## 8) Known safe versions to drop in
+
+If you want a **copy-paste** safe set for the three usual suspects, here they are:
+
+**A) EWS chip** – see §2 above.
+
+**B) Vitals timeline wrapper (pure)**
+
+```tsx
+import React, { useMemo } from "react";
+import { useVitalsStore } from "@/stores/vitalsStore";
+
+export function VitalsTimelineInline({ patientId }: { patientId: string }) {
+  const data = useVitalsStore((s) => s.byId[patientId] ?? []);
+  const series = useMemo(() => buildSeries(data), [data]); // pure
+  return <Chart series={series} />;
+}
+```
+
+**C) Patient Journey inline (pure)**
+
+```tsx
+import React, { useMemo } from "react";
+import { useJourneyStore } from "@/stores/journeyStore";
+
+export function PatientJourneyInline({ patientId, mode = "All", hours = 8 }:{
+  patientId: string; mode?: "All"|"Clinical"|"Moves"; hours?: number;
+}) {
+  const events = useJourneyStore((s) => s.events);
+  const feed = useMemo(() => {
+    const cutoff = Date.now() - hours * 3600_000;
+    const move = new Set(["arrival","triage","room_change","transport_start","transport_return","communication"]);
+    const clinical = new Set(["vitals","ews_change","order","result","med_admin","note","task","alert"]);
+    return events
+      .filter(e => e.patientId === patientId)
+      .filter(e => new Date(e.t).getTime() >= cutoff)
+      .filter(e => mode==="All" ? true : mode==="Moves" ? move.has(e.kind) : clinical.has(e.kind))
+      .sort((a,b) => new Date(b.t).getTime() - new Date(a.t).getTime());
+  }, [events, patientId, mode, hours]);
+
+  return <JourneyList items={feed} />;
+}
+```
+
+> Again: **no setState, no subscribe, no writes**.
+
+---
+
+## 9) After you patch
+
+* Expand a Patient Card: overlay should open without the red error.
+* Save +Obs on mobile or desktop: EWS chip updates; Journey logs `vitals` (+ `ews_change` if delta).
+* No component uses `computeEws` except `saveObservation.ts`.
+
+If you still hit the overlay after applying the above, send me the **smallest file** that still loops (ideally the one you isolated in step 0). I’ll rewrite that specific component to be pure and drop the fix in-line.

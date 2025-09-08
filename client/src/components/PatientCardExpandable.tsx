@@ -540,7 +540,9 @@ export default function PatientCardExpandable(props: ExpandableCardProps) {
             />
 
             <div className="mt-3">
-              <VitalsTimelineInline patientId={patientId} height={280} />
+              {/* TEMPORARILY DISABLED FOR DEBUGGING: */}
+              {/* <VitalsTimelineInline patientId={patientId} height={280} /> */}
+              <div className="p-4 text-center text-muted-foreground border rounded">VitalsTimelineInline temporarily disabled</div>
             </div>
           </section>
 
