@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { useJourney } from "../../stores/journeyStore";
+import { useJourney } from "@/stores/journeyStore";
 
 export default function NotesInline({ patientId, onWriteNote }:{ patientId: string|number; onWriteNote: ()=>void; }) {
   const events = useJourney(patientId);
@@ -18,7 +18,7 @@ export default function NotesInline({ patientId, onWriteNote }:{ patientId: stri
           {notes.slice(0,4).map(n => (
             <li key={n.id} className="rounded-lg border p-2">
               <div className="text-xs text-muted-foreground">{new Date(n.t).toLocaleString()}</div>
-              <div className="text-sm">{n.detail ?? n.label}</div>
+              <div className="text-sm">{typeof n.detail === "string" ? n.detail : n.label}</div>
             </li>
           ))}
           {notes.length > 4 && <div className="text-xs text-muted-foreground">Showing latest {Math.min(4, notes.length)} of {notes.length}.</div>}
