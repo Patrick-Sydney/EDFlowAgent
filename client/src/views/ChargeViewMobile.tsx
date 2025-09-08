@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
 
@@ -66,6 +66,19 @@ export default function ChargeViewMobile({
                   lane.id === "waiting"  ? "Start Triage" :
                   lane.id === "intriage" ? "Assign Room" : undefined;
                 
+                // Memoized handlers to prevent infinite re-renders
+                const handlePrimary = useCallback(() => {
+                  if (lane.id === "waiting") {
+                    onStartTriage(p);
+                  } else if (lane.id === "intriage") {
+                    onAssignRoom(p);
+                  }
+                }, [lane.id, onStartTriage, onAssignRoom, p]);
+                
+                const handleAssignRoom = useCallback(() => onAssignRoom(p), [onAssignRoom, p]);
+                const handleAddObs = useCallback(() => onAddObs(p), [onAddObs, p]);
+                const handleOpenFull = useCallback(() => onOpenCard(p), [onOpenCard, p]);
+                
                 return (
                   <PatientCardExpandable
                     key={p.id}
@@ -80,14 +93,10 @@ export default function ChargeViewMobile({
                     ats={p.ats}
                     patientId={p.id}
                     primaryLabel={primaryLabel}
-                    onPrimary={
-                      lane.id === "waiting" ? () => onStartTriage(p) :
-                      lane.id === "intriage" ? () => onAssignRoom(p) :
-                      undefined
-                    }
-                    onAssignRoom={() => onAssignRoom(p)}
-                    onAddObs={() => onAddObs(p)}
-                    onOpenFull={() => onOpenCard(p)}
+                    onPrimary={primaryLabel ? handlePrimary : undefined}
+                    onAssignRoom={handleAssignRoom}
+                    onAddObs={handleAddObs}
+                    onOpenFull={handleOpenFull}
                   />
                 );
               })}

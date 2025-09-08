@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
 import { useVitalsLast } from "../../stores/vitalsStore";
 
@@ -18,17 +18,56 @@ export function RNPatientRow({
   onOpenVitals: (p: any) => void;
 }) {
   const last = useVitalsLast(p.id);
-  const minVitals = last ? { 
-    rr: last.rr, 
-    spo2: last.spo2, 
-    hr: last.hr, 
-    sbp: last.sbp, 
-    temp: last.temp, 
-    takenAt: last.t 
-  } : undefined;
   
-  const status = laneLabel === "Room" ? (p.roomName ?? "Rooming") : laneLabel;
-  const primaryLabel = laneLabel === "Waiting" ? "Start Triage" : laneLabel === "Triage" ? "+ Obs" : undefined;
+  // Memoize objects to prevent infinite re-renders
+  const minVitals = useMemo(() => 
+    last ? { 
+      rr: last.rr, 
+      spo2: last.spo2, 
+      hr: last.hr, 
+      sbp: last.sbp, 
+      temp: last.temp, 
+      takenAt: last.t 
+    } : undefined,
+    [last]
+  );
+  
+  const status = useMemo(() => 
+    laneLabel === "Room" ? (p.roomName ?? "Rooming") : laneLabel,
+    [laneLabel, p.roomName]
+  );
+  
+  const primaryLabel = useMemo(() => 
+    laneLabel === "Waiting" ? "Start Triage" : laneLabel === "Triage" ? "+ Obs" : undefined,
+    [laneLabel]
+  );
+  
+  // Memoize alert flags to prevent object recreation
+  const alertFlags = useMemo(() => ({
+    isolation: p.isolationRequired ?? false,
+    sepsisActive: false,
+    strokePathway: false,
+    stemiPathway: false,
+    allergySevere: null
+  }), [p.isolationRequired]);
+  
+  // Memoize event handlers to prevent function recreation
+  const handlePrimary = useCallback(() => {
+    if (primaryLabel === "Start Triage") {
+      onStartTriage(p);
+    } else if (primaryLabel === "+ Obs") {
+      console.log("RNPatientRow onPrimary + Obs clicked for patient:", p);
+      onOpenObs(p);
+    }
+  }, [primaryLabel, onStartTriage, onOpenObs, p]);
+  
+  const handleAddObs = useCallback((patient: any) => {
+    onOpenObs(patient || p);
+  }, [onOpenObs, p]);
+  
+  const handleOpenFull = useCallback(() => {
+    onOpenCard(p);
+  }, [onOpenCard, p]);
   
 
   return (
@@ -45,26 +84,12 @@ export function RNPatientRow({
       ats={p.ats}
       minVitals={minVitals}
       isolationRequired={p.isolationRequired}
-      alertFlags={{
-        isolation: p.isolationRequired ?? false,
-        sepsisActive: false,
-        strokePathway: false,
-        stemiPathway: false,
-        allergySevere: null
-      }}
+      alertFlags={alertFlags}
       data-testid={`patient-card-${p.id}`}
       primaryLabel={primaryLabel}
-      onPrimary={
-        primaryLabel === "Start Triage" ? () => onStartTriage(p) :
-        primaryLabel === "+ Obs" ? () => {
-          console.log("RNPatientRow onPrimary + Obs clicked for patient:", p);
-          onOpenObs(p);
-        } : undefined
-      }
-      onAddObs={(patient) => {
-        onOpenObs(patient || p);
-      }}
-      onOpenFull={() => onOpenCard(p)}
+      onPrimary={primaryLabel ? handlePrimary : undefined}
+      onAddObs={handleAddObs}
+      onOpenFull={handleOpenFull}
     />
   );
 }

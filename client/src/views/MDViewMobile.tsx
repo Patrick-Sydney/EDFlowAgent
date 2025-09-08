@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import RNMobileLaneNav, { LanePill } from "@/components/rn/RNMobileLaneNav";
 import PatientCardExpandable from "@/components/PatientCardExpandable";
 
@@ -72,6 +72,11 @@ export default function MDViewMobile({
                 const status = lane.id === 'worklist' ? (p.roomName ? `Room ${p.roomName}` : 'To see') : lane.id === 'results' ? 'Results' : 'Dispo';
                 const { label, fn } = primaryMap[lane.id];
                 
+                // Memoized handlers to prevent infinite re-renders
+                const handlePrimary = useCallback(() => fn(p), [fn, p]);
+                const handleOrderSet = useCallback(() => onOrderSet(p), [onOrderSet, p]);
+                const handleOpenFull = useCallback(() => onOpenCard(p), [onOpenCard, p]);
+                
                 return (
                   <PatientCardExpandable
                     key={p.id}
@@ -86,9 +91,9 @@ export default function MDViewMobile({
                     ats={p.ats}
                     patientId={p.id}
                     primaryLabel={label}
-                    onPrimary={() => fn(p)}
-                    onOrderSet={() => onOrderSet(p)}
-                    onOpenFull={() => onOpenCard(p)}
+                    onPrimary={handlePrimary}
+                    onOrderSet={handleOrderSet}
+                    onOpenFull={handleOpenFull}
                   />
                 );
               })}
