@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useJourneyStore, JourneyEvent } from "@/stores/journeyStore";
+import { formatJourneyLine } from "./formatJourney";
 import clsx from "clsx";
 
 type Props = { 
@@ -148,7 +149,10 @@ export default function PatientJourneyInline({
                               <span className="font-medium">{KIND_LABEL[ev.kind] ?? ev.kind}</span>
                               <span className="ml-2">{ev.label}</span>
                             </div>
-                            {ev.detail && <div className="text-xs text-muted-foreground">{ev.detail}</div>}
+                            {(() => {
+                              const { meta } = formatJourneyLine(ev);
+                              return meta && <div className="text-xs text-muted-foreground">{meta}</div>
+                            })()}
                           </div>
                           {ev.actor && typeof ev.actor === 'object' && 'role' in ev.actor && (ev.actor as any).role && <div className="text-xs text-muted-foreground shrink-0">{(ev.actor as any).role}</div>}
                         </li>

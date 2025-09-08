@@ -1,0 +1,165 @@
+You’re getting:
+
+> **Objects are not valid as a React child … (keys rr, hr, sbp, spo2, temp, loc, o2, source, ews, algoId, actor, complete)**
+
+That’s exactly the **`detail`** payload we added to the new **`vitals`** Journey event. Somewhere in the desktop Patient Card (almost certainly the **Journey list**), you’re doing something like:
+
+```tsx
+{/* ❌ this will crash if detail is an object */}
+<span>{ev.detail}</span>
+```
+
+Prior to the EWS refactor your `detail` was probably a string, so it “worked”. Now it’s an object and React throws.
+
+Below is a **drop-in fix** that:
+
+* never renders raw objects,
+* formats **vitals** rows nicely (compact summary with EWS),
+* keeps all other kinds safe.
+
+---
+
+## 1) Add a formatter
+
+**`components/journey/formatJourney.ts`**
+
+```tsx
+import type { JourneyEvent } from "@/stores/journeyStore";
+
+export function formatJourneyLine(ev: JourneyEvent): { title: string; meta?: string } {
+  // Default title
+  let title = ev.label || prettyKind(ev.kind);
+  let meta: string | undefined;
+
+  switch (ev.kind) {
+    case "vitals": {
+      const d: any = ev.detail || {};
+      // compact vitals summary
+      const parts: string[] = [];
+      if (isNum(d.rr))  parts.push(`RR ${d.rr}`);
+      if (isNum(d.hr))  parts.push(`HR ${d.hr}`);
+      if (isNum(d.sbp)) parts.push(`SBP ${d.sbp}`);
+      if (isNum(d.spo2))parts.push(`SpO₂ ${d.spo2}%`);
+      if (isNum(d.temp))parts.push(`Temp ${d.temp}°C`);
+      const ews = isNum(d.ews) ? ` (EWS ${d.ews})` : "";
+      title = ev.label || "Obs";
+      meta = parts.join(" · ") + ews;
+      break;
+    }
+    case "ews_change": {
+      // label already has "EWS a → b"
+      title = ev.label || "EWS change";
+      break;
+    }
+    case "task": {
+      const d: any = ev.detail || {};
+      title = `Task: ${d.kind ?? ""}`.trim();
+      meta = [d.status, d.assigneeRole].filter(Boolean).join(" · ") || undefined;
+      break;
+    }
+    case "order":
+    case "result":
+    case "med_admin":
+    case "note":
+    case "communication":
+    case "room_change":
+    case "triage":
+    case "arrival":
+    case "alert":
+    case "assessment_nursing":
+    case "monitoring_start":
+    case "monitoring_update":
+    case "monitoring_stop":
+    case "disposition_set":
+    default: {
+      // prefer string label; only show detail if it's a string
+      const d = ev.detail;
+      if (!title && typeof d === "string") title = d;
+      if (typeof d === "string") meta = d;
+      break;
+    }
+  }
+  return { title: title || prettyKind(ev.kind), meta };
+}
+
+function prettyKind(k: string) {
+  return k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+const isNum = (n: any) => typeof n === "number" && Number.isFinite(n);
+```
+
+---
+
+## 2) Use the formatter in your Journey row
+
+Find where you render journey events (often `components/journey/PatientJourneyInline.tsx` or a `JourneyEventRow`). Replace any `{ev.detail}` usage.
+
+**Before (fragile)**
+
+```tsx
+<li>
+  <span className="title">{ev.label || ev.kind}</span>
+  <span className="detail">{ev.detail}</span> {/* ❌ crashes for objects */}
+</li>
+```
+
+**After (safe)**
+
+```tsx
+import { formatJourneyLine } from "./formatJourney";
+
+function JourneyEventRow({ ev }: { ev: JourneyEvent }) {
+  const { title, meta } = formatJourneyLine(ev);
+  return (
+    <li className="flex items-start justify-between gap-2 py-1">
+      <span className="text-sm">{title}</span>
+      {meta && <span className="text-xs text-slate-500">{meta}</span>}
+    </li>
+  );
+}
+```
+
+And in the list:
+
+```tsx
+{items.map(ev => <JourneyEventRow key={ev.id} ev={ev} />)}
+```
+
+---
+
+## 3) If you show toasts/debug lines anywhere
+
+Search for direct renders of `event.detail`:
+
+```
+rg -n "{ev.detail}" src
+rg -n "event.detail" src
+```
+
+Change any such spot to:
+
+```tsx
+{typeof ev.detail === "string" ? ev.detail : undefined}
+```
+
+(or use `formatJourneyLine` there too).
+
+---
+
+## 4) Why this fixes your crash
+
+* The error is React protecting you: **objects can’t be printed** directly.
+* After the EWS work, `vitals.detail` is an **object** (by design) so we can drive monitoring and analytics.
+* The formatter converts that object into a human string **only for rendering**, and ignores objects elsewhere.
+
+---
+
+## 5) Quick acceptance
+
+1. Open desktop Patient Card.
+2. Save +Obs.
+3. No red overlay; Journey shows a line like:
+   `Obs — RR 24 · HR 112 · SBP 93 · SpO₂ 92% · Temp 38.4°C (EWS 6)`
+4. EWS chip updates; `EWS a → b` appears if it changed.
+
+If you want, I can also give you a one-liner “Vitals pill” component to reuse next to the “Obs” label, but the formatter above resolves the crash immediately and keeps the feed calm.
